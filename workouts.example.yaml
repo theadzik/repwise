@@ -1,0 +1,225 @@
+# Example configuration. Copy it and edit to describe your own training:
+#
+#     cp workouts.example.yaml workouts.yaml
+#
+# workouts.yaml is gitignored, so your routine and Garmin ids stay private.
+# Pass --config to use a file somewhere else entirely.
+#
+# What follows is a complete, valid 3x/week A/B full body split. The
+# garmin_name and garmin_category values are real Garmin identifiers, but the
+# workout ids are placeholders -- replace them with your own (see below).
+#
+# Per-exercise fields:
+#   name            label used in this tool's output
+#   garmin_name     exercise name as stored in the Garmin workout
+#   garmin_category Garmin's exercise category, used when the name does not
+#                   match: Garmin auto-detects exercises while you lift, so the
+#                   name it logs can differ from the programmed one, or be null
+#   rep_low         bottom of the range, where each new weight starts
+#   rep_high        top of the range; hitting it on every set earns a weight jump
+#   rep_step        reps added when a target is met (default 1; use 2 when the
+#                   watch counts each side separately)
+#   sets            prescribed working sets
+#   rest            seconds between sets (documentation only)
+#   load            barbell | dumbbell | cable | machine | bodyweight
+#                   picks the weight step, and bodyweight never gains load
+#   weight_step     kg added on a weight jump, overriding the load type
+#   unit            reps (default) or seconds for timed holds
+#   video           reference link (documentation only)
+#
+# To find your own values:
+#   1. Build the workouts in Garmin Connect.
+#   2. Take each garmin_workout_id from its Connect URL, e.g.
+#      https://connect.garmin.com/modern/workout/111111111
+#   3. Run `workout update --dump` after a session and read exerciseName and
+#      category off the dumped workout JSON.
+
+settings:
+  garmin:
+    # Where OAuth tokens are cached after the first interactive login.
+    token_store: ~/.garminconnect
+    # How many recent activities to scan when looking for the last session.
+    activity_search_limit: 25
+    # Where --dump and `fetch` write their JSON.
+    dump_dir: .
+
+  # kg added when an exercise tops out its rep range, by load type. An
+  # exercise can override this with its own weight_step.
+  weight_steps:
+    barbell: 2.5
+    dumbbell: 1.0
+    cable: 5.0
+    machine: 5.0
+
+workouts:
+  - key: Workout A
+    garmin_workout_id: "111111111"
+    # An activity is matched to this workout when its name starts with one of
+    # these, case-insensitively. Add your own language if you rename sessions.
+    activity_prefixes: ["workout a", "training a"]
+    exercises:
+      - name: Barbell Back Squat
+        garmin_name: BARBELL_BACK_SQUAT
+        garmin_category: SQUAT
+        rep_low: 6
+        rep_high: 10
+        sets: 4
+        rest: 120
+        load: barbell
+        # Squats recruit enough musculature to take bigger jumps than the
+        # upper body lifts. Drop to the barbell default once 5 kg starts
+        # failing.
+        weight_step: 5.0
+
+      - name: Barbell Bench Press
+        garmin_name: BARBELL_BENCH_PRESS
+        garmin_category: BENCH_PRESS
+        rep_low: 6
+        rep_high: 10
+        sets: 4
+        rest: 120
+        load: barbell
+
+      - name: Barbell Row
+        garmin_name: BARBELL_ROW
+        garmin_category: ROW
+        rep_low: 8
+        rep_high: 12
+        sets: 4
+        rest: 90
+        load: barbell
+
+      - name: Barbell Overhead Press
+        garmin_name: OVERHEAD_BARBELL_PRESS
+        garmin_category: SHOULDER_PRESS
+        rep_low: 8
+        rep_high: 12
+        sets: 3
+        rest: 120
+        load: barbell
+
+      - name: Dumbbell Biceps Curl
+        garmin_name: DUMBBELL_BICEPS_CURL
+        garmin_category: CURL
+        rep_low: 10
+        rep_high: 15
+        sets: 3
+        rest: 75
+        load: dumbbell
+
+      - name: Cable Overhead Triceps Extension
+        garmin_name: CABLE_OVERHEAD_TRICEPS_EXTENSION
+        garmin_category: TRICEPS_EXTENSION
+        rep_low: 10
+        rep_high: 15
+        sets: 3
+        rest: 75
+        load: cable
+
+      # Appears in both workouts. A target earned in either one is synced to
+      # the other, so the two copies cannot drift apart. Shared exercises must
+      # be programmed identically everywhere; the config is rejected otherwise.
+      - name: Standing Calf Raise
+        garmin_name: WEIGHTED_STANDING_CALF_RAISE
+        garmin_category: CALF_RAISE
+        rep_low: 12
+        rep_high: 20
+        sets: 3
+        rest: 60
+        load: machine
+
+      # A timed hold: the range is seconds, and it progresses one second at a
+      # time rather than gaining load.
+      - name: Plank
+        garmin_name: PLANK
+        garmin_category: PLANK
+        rep_low: 30
+        rep_high: 60
+        sets: 3
+        rest: 60
+        load: bodyweight
+        unit: seconds
+
+  - key: Workout B
+    garmin_workout_id: "222222222"
+    activity_prefixes: ["workout b", "training b"]
+    exercises:
+      - name: Barbell Deadlift
+        garmin_name: BARBELL_DEADLIFT
+        garmin_category: DEADLIFT
+        rep_low: 6
+        rep_high: 10
+        sets: 3
+        rest: 150
+        load: barbell
+        weight_step: 5.0
+
+      # The watch counts each lunge separately, one per leg, so this is
+      # programmed in the watch's units: double the usual 8-12 per leg, and
+      # stepping by 2 keeps both legs even at 16, 18, 20, 22, 24.
+      - name: Alternating Dumbbell Lunge
+        garmin_name: ALTERNATING_DUMBBELL_LUNGE
+        garmin_category: LUNGE
+        rep_low: 16
+        rep_high: 24
+        rep_step: 2
+        sets: 4
+        rest: 90
+        load: dumbbell
+
+      # Note the category: Garmin files pulldowns under PULL_UP.
+      - name: Lat Pull-down
+        garmin_name: LAT_PULLDOWN
+        garmin_category: PULL_UP
+        rep_low: 8
+        rep_high: 12
+        sets: 4
+        rest: 90
+        load: cable
+
+      - name: Incline Dumbbell Bench Press
+        garmin_name: INCLINE_DUMBBELL_BENCH_PRESS
+        garmin_category: BENCH_PRESS
+        rep_low: 8
+        rep_high: 12
+        sets: 4
+        rest: 90
+        load: dumbbell
+
+      - name: Dumbbell Lateral Raise
+        garmin_name: DUMBBELL_LATERAL_RAISE
+        garmin_category: LATERAL_RAISE
+        rep_low: 12
+        rep_high: 15
+        sets: 3
+        rest: 60
+        load: dumbbell
+
+      # Stored as WEIGHTED_LEG_CURL in the workout but logged as plain
+      # LEG_CURL in activities, so the category is what bridges the two.
+      - name: Leg Curl
+        garmin_name: WEIGHTED_LEG_CURL
+        garmin_category: LEG_CURL
+        rep_low: 10
+        rep_high: 15
+        sets: 3
+        rest: 75
+        load: machine
+
+      - name: Standing Calf Raise
+        garmin_name: WEIGHTED_STANDING_CALF_RAISE
+        garmin_category: CALF_RAISE
+        rep_low: 12
+        rep_high: 20
+        sets: 3
+        rest: 60
+        load: machine
+
+      - name: Sit-up
+        garmin_name: SIT_UP
+        garmin_category: SIT_UP
+        rep_low: 10
+        rep_high: 15
+        sets: 3
+        rest: 60
+        load: bodyweight

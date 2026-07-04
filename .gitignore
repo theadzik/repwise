@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+
+# Virtualenvs
+.venv/
+venv/
+
+# Your own routine and Garmin workout ids. Start from workouts.example.yaml.
+workouts.yaml
+
+# Garmin payloads saved by `fetch` and `update --dump`
+dumps/
+workout-*.json
+dump-*.json
