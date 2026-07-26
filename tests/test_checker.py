@@ -53,9 +53,7 @@ def test_an_exercise_missing_from_the_config_is_reported():
 
 
 def test_a_set_count_mismatch_is_reported():
-    findings = check_workout(
-        configured(spec(sets=3, rest=120)), payload(SQUAT_GROUP)
-    )
+    findings = check_workout(configured(spec(sets=3, rest=120)), payload(SQUAT_GROUP))
     assert "3 sets in config, 4 in Garmin" in findings[0].detail
 
 

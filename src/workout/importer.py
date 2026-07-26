@@ -88,7 +88,9 @@ def describe_workout(payload: dict) -> ImportedWorkout:
     for block in iter_exercise_blocks(payload):
         garmin_name = block.step.get("exerciseName")
         category = block.step.get("category")
-        if not garmin_name and not category:
+        # Either identifies the exercise; a step carrying neither is not one.
+        label = garmin_name or category
+        if not label:
             continue
 
         condition = (block.step.get("endCondition") or {}).get("conditionTypeKey")
@@ -97,7 +99,6 @@ def describe_workout(payload: dict) -> ImportedWorkout:
         if target is None:
             continue  # a step with no target of its own, e.g. a lap.button hold
 
-        label = garmin_name or category
         load, guessed = guess_load(label, target.weight)
         width = TIME_RANGE_WIDTH if time_based else REP_RANGE_WIDTH
 
@@ -165,7 +166,9 @@ def render_exercise(exercise: ImportedExercise) -> list[str]:
     ]
     if exercise.rest is not None:
         lines.append(f"        rest: {exercise.rest}")
-    suffix = "   # TODO: guessed from the exercise name" if exercise.guessed_load else ""
+    suffix = (
+        "   # TODO: guessed from the exercise name" if exercise.guessed_load else ""
+    )
     lines.append(f"        load: {exercise.load}{suffix}")
     if exercise.time_based:
         lines.append("        unit: seconds")

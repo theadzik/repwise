@@ -39,7 +39,9 @@ def test_update_defaults_to_a_dry_run():
 
 
 def test_update_accepts_its_flags():
-    args = build_parser().parse_args(["update", "--apply", "--activity", "42", "--dump"])
+    args = build_parser().parse_args(
+        ["update", "--apply", "--activity", "42", "--dump"]
+    )
     assert args.apply and args.dump
     assert args.activity == "42"
 

@@ -110,7 +110,9 @@ def _logged_for(
     candidates = [
         by_name.get(normalise(step_exercise_name(step) or "")),
         by_name.get(normalise(spec.garmin_name)),
-        by_category.get(normalise(spec.garmin_category)) if spec.garmin_category else None,
+        by_category.get(normalise(spec.garmin_category))
+        if spec.garmin_category
+        else None,
     ]
     for logged in candidates:
         if logged:

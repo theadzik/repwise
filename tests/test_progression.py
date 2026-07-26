@@ -38,13 +38,17 @@ def test_add_one_rep_when_target_met():
 
 
 def test_repeat_when_any_set_misses():
-    target, why = next_target(SQUAT, Target(8, 20.0), [P(8, 20.0), P(8, 20.0), P(6, 20.0)])
+    target, why = next_target(
+        SQUAT, Target(8, 20.0), [P(8, 20.0), P(8, 20.0), P(6, 20.0)]
+    )
     assert target == Target(8, 20.0)
     assert "missed" in why
 
 
 def test_exceeding_target_still_counts_as_met():
-    target, _ = next_target(SQUAT, Target(7, 20.0), [P(9, 20.0), P(8, 20.0), P(7, 20.0)])
+    target, _ = next_target(
+        SQUAT, Target(7, 20.0), [P(9, 20.0), P(8, 20.0), P(7, 20.0)]
+    )
     assert target == Target(8, 20.0)
 
 

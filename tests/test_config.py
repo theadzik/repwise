@@ -1,5 +1,7 @@
 """Loading and validating workouts.yaml."""
 
+import re
+
 import pytest
 from conftest import EXAMPLE_CONFIG, FIXTURE
 
@@ -113,7 +115,9 @@ def test_zero_weight_step_is_rejected(write_config):
 
 def test_exercise_weight_step_overrides_the_load_type(write_config):
     text = FIXTURE.replace(
-        "        load: barbell\n", "        load: barbell\n        weight_step: 7.5\n", 1
+        "        load: barbell\n",
+        "        load: barbell\n        weight_step: 7.5\n",
+        1,
     )
     squat = load_config(write_config(text))["Workout A"].exercises[0]
     assert squat.weight_step == 7.5
@@ -150,7 +154,9 @@ def test_example_config_is_valid():
 
 
 def test_example_shares_an_exercise_between_workouts():
-    assert "WEIGHTED_STANDING_CALF_RAISE" in load_config(EXAMPLE_CONFIG).shared_exercises()
+    assert (
+        "WEIGHTED_STANDING_CALF_RAISE" in load_config(EXAMPLE_CONFIG).shared_exercises()
+    )
 
 
 def test_deadlift_steps_by_five():
@@ -185,7 +191,8 @@ def test_missing_default_config_points_at_the_example(tmp_path, monkeypatch):
     monkeypatch.setattr(config_module, "DEFAULT_CONFIG", missing)
     monkeypatch.setattr(config_module, "EXAMPLE_CONFIG", str(example))
 
-    with pytest.raises(ConfigError, match="cp workouts.example.yaml workouts.yaml"):
+    hint = re.escape("cp workouts.example.yaml workouts.yaml")
+    with pytest.raises(ConfigError, match=hint):
         load_config(missing)
 
 

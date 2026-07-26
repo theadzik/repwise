@@ -15,16 +15,16 @@ EXAMPLE_CONFIG = os.path.join(REPO_ROOT, "workouts.example.yaml")
 
 def spec(**kwargs) -> ExerciseSpec:
     """An ExerciseSpec with sensible defaults, overridable per test."""
-    base = dict(
-        name="Barbell Back Squat",
-        garmin_name="BARBELL_BACK_SQUAT",
-        garmin_category="SQUAT",
-        rep_low=6,
-        rep_high=10,
-        sets=3,
-        load="barbell",
-        weight_step=5.0,
-    )
+    base = {
+        "name": "Barbell Back Squat",
+        "garmin_name": "BARBELL_BACK_SQUAT",
+        "garmin_category": "SQUAT",
+        "rep_low": 6,
+        "rep_high": 10,
+        "sets": 3,
+        "load": "barbell",
+        "weight_step": 5.0,
+    }
     return ExerciseSpec(**{**base, **kwargs})
 
 

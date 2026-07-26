@@ -12,16 +12,16 @@ import os
 import sys
 from typing import Any
 
+from .checker import Finding, check_workout
 from .config import DEFAULT_CONFIG, ConfigError, load_config
-from .checker import check_workout
 from .garmin.client import (
     STRENGTH,
     GarminConnectTooManyRequestsError,
     GarminSession,
     connect,
 )
-from .importer import describe_workout, render_config
 from .garmin.payloads import performed_sets
+from .importer import describe_workout, render_config
 from .models import Config, ExerciseSpec, Workout
 from .planner import (
     ActivityNotFound,
@@ -296,14 +296,16 @@ def command_import(args: argparse.Namespace, config: Config) -> int:
 def command_check(args: argparse.Namespace, config: Config) -> int:
     session = connect(config.garmin)
 
-    findings = []
+    findings: list[Finding] = []
     for workout in config:
         try:
             payload = session.workout(workout.garmin_workout_id)
         except Exception as exc:  # noqa: BLE001 - report and carry on
-            print(f"{workout.key}: could not fetch workout "
-                  f"{workout.garmin_workout_id}: {exc}")
-            findings.append(True)
+            detail = f"could not fetch workout {workout.garmin_workout_id}: {exc}"
+            print(f"{workout.key}: {detail}")
+            # A workout that cannot be read is itself an error-level finding,
+            # so an unreachable workout still fails the command.
+            findings.append(Finding(workout.key, detail, "error"))
             continue
 
         found = check_workout(workout, payload)
@@ -316,7 +318,7 @@ def command_check(args: argparse.Namespace, config: Config) -> int:
         print()
         findings.extend(found)
 
-    serious = [f for f in findings if getattr(f, "severity", "error") != "note"]
+    serious = [f for f in findings if f.severity != "note"]
     print(f"{len(serious)} issue(s) across {len(config.workouts)} workout(s)")
     return EXIT_NOTHING_USABLE if serious else EXIT_OK
 
@@ -327,8 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
     # they keep the default formatter and its wrapping.
     parser = argparse.ArgumentParser(
         prog="workout",
-        description="Advance Garmin strength workout targets using double "
-        "progression.",
+        description="Advance Garmin strength workout targets using double progression.",
         epilog=(
             "examples:\n"
             "  workout update            show what the last session earned\n"
