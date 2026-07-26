@@ -94,18 +94,13 @@ def test_save_workout_goes_through_update_workout():
     assert api.updated == [("111", payload)]
 
 
-def test_push_always_names_the_device():
-    """The library defaults to the last-used device only.
-
-    This tool addresses every device the config selects, so the id has to be
-    passed explicitly rather than left to default.
-    """
+def test_push_lets_the_library_pick_the_last_used_device():
+    """No device id is passed, so garminconnect targets the last-used device."""
     s, api = writer()
 
-    s.push_workout("111", 4242)
+    s.push_workout("111")
 
-    assert api.pushed == [("111", 4242)]
-    assert api.pushed[0][1] is not None, "never rely on the library's default"
+    assert api.pushed == [("111", None)]
 
 
 def test_pending_messages_takes_the_url_from_the_library():
