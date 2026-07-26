@@ -81,6 +81,7 @@ repos:
         # Fixable findings are formatting, not judgement calls: table pipe
         # padding, list markers, blank lines around blocks.
         args: [--fix]
+        exclude: ^CHANGELOG\.md$
 
   # --- schemas --------------------------------------------------------------
   - repo: https://github.com/python-jsonschema/check-jsonschema
