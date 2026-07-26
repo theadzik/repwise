@@ -11,10 +11,19 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 keywords = ["garmin", "strength-training", "progressive-overload"]
-dependencies = ["garminconnect>=0.3.6", "pyyaml"]
+# Pinned to exact versions. This is an application rather than a library, so a
+# reproducible install matters more than being co-installable, and Dependabot
+# raises a PR per release. garminconnect in particular has broken
+# authentication before, so the working version is recorded deliberately.
+dependencies = [
+    "garminconnect==0.3.6",
+    "pyyaml==6.0.3",
+]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = [
+    "pytest==9.1.1",
+]
 
 [project.scripts]
 workout = "workout.cli:main"

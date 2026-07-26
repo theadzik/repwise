@@ -1,0 +1,36 @@
+# Dependabot configuration.
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates
+version: 2
+
+updates:
+  - package-ecosystem: "pip"
+    # pyproject.toml is the only manifest, and it lives in the repository root.
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+
+    # No versioning-strategy needed: the dependencies are pinned with "==", so
+    # a new release never satisfies the existing constraint and the default
+    # behaviour already raises a PR to move the pin.
+
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+    groups:
+      # Test tooling churns often and cannot affect the Garmin integration, so
+      # batch it into one PR. Everything else, garminconnect above all, gets an
+      # individual PR: it is the dependency whose updates have already broken
+      # authentication once, so its changes must stay easy to attribute and
+      # revert on their own.
+      test-tooling:
+        patterns:
+          - "pytest"
+          - "pytest-*"
+
+  # Add a "github-actions" entry here once .github/workflows exists; with no
+  # workflows there is nothing for Dependabot to update.
