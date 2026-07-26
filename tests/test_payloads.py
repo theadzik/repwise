@@ -182,32 +182,3 @@ def test_duration_is_kept_for_timed_holds():
     payload = {"exerciseSets": [active("PLANK", "PLANK", 1, 0.0, duration=46.0)]}
     by_name, _ = performed_sets(payload)
     assert by_name["plank"][0].as_time().reps == 46
-
-
-# --- send-to-device messages ----------------------------------------------
-
-
-def test_device_message_matches_the_shape_garmin_expects():
-    """Captured from Connect's own "Send to Device" request."""
-    from workout.garmin.payloads import device_message
-
-    message = device_message(4242, "111111111", "Workout B")
-    assert message == {
-        "deviceId": 4242,
-        "messageUrl": "workout-service/workout/FIT/111111111",
-        "messageType": "workouts",
-        "messageName": "Workout B",
-        "groupName": None,
-        "priority": 1,
-        "fileType": "FIT",
-        "metaDataId": 111111111,
-    }
-
-
-def test_device_message_ids_are_integers():
-    """Garmin rejects the string form, and the config keeps ids as strings."""
-    from workout.garmin.payloads import device_message
-
-    message = device_message("4242", "111111111", "Workout B")
-    assert isinstance(message["deviceId"], int)
-    assert isinstance(message["metaDataId"], int)

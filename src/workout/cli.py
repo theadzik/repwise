@@ -21,7 +21,7 @@ from .garmin.client import (
     connect,
 )
 from .importer import describe_workout, render_config
-from .garmin.payloads import device_message, performed_sets
+from .garmin.payloads import performed_sets
 from .models import Config, ExerciseSpec, Workout
 from .planner import (
     ActivityNotFound,
@@ -111,17 +111,14 @@ def push_to_devices(
         print("\nNo devices to push to.")
         return
 
-    messages = [
-        device_message(
-            int(device["deviceId"]), workout.garmin_workout_id, workout.key
-        )
-        for workout in workouts
-        for device in devices
-    ]
-    session.send_to_device(messages)
+    sent = 0
+    for workout in workouts:
+        for device in devices:
+            session.push_workout(workout.garmin_workout_id, int(device["deviceId"]))
+            sent += 1
 
     names = ", ".join(d.get("productDisplayName", "device") for d in devices)
-    print(f"\nQueued {len(messages)} send(s) to {names}.")
+    print(f"\nQueued {sent} send(s) to {names}.")
     print("Sync your watch to pick up the new targets.")
 
 

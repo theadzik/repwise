@@ -113,12 +113,29 @@ The POST body is a **JSON array**. A bare object returns HTTP 500:
 ```
 
 `deviceId` comes from `get_devices()` and is **required per message** - there is
-no broadcast form. Sending to several devices means one array entry each, which
-is what `--push` builds. `metaDataId` and the id in `messageUrl` are both the
-workout id. `priority` is only a hint; the server rewrites it.
+no broadcast form. `metaDataId` and the id in `messageUrl` are both the workout
+id. `priority` is only a hint; the server rewrites it.
+
+**garminconnect 0.3.7 does this for you.** `push_workout_to_device(workout_id,
+device_id)` builds exactly the payload above, so this tool no longer constructs
+it. Two details of that method are worth knowing:
+
+- Omitting `device_id` sends to the **last-used device only**. Because `--push`
+  addresses every device the config selects, it always passes the id explicitly
+  and calls the method once per device.
+- It looks the workout name up itself with `get_workout_by_id`, so the message
+  is labelled with Garmin's name rather than your config's `key`, at the cost of
+  one extra request per push.
+
+The same release added `update_workout(workout_id, workout_json)`, which is the
+PUT this tool uses to save a workout. It forces `workoutId` in the body to match
+the id in the URL, so the workout keeps its identity and any calendar schedules
+pointing at it stay valid.
 
 The GET returns `numOfMessages` and a `messages` list, and is the way to confirm
-something was queued. The queue drains when the watch syncs.
+something was queued. The queue drains when the watch syncs. garminconnect has
+no getter for it, so `GarminSession.pending_messages()` makes that call by hand,
+taking the URL from the library rather than repeating it.
 
 Things that do not work, for the record:
 
