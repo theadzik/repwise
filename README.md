@@ -460,13 +460,14 @@ skipped - never silently ignored.
 ### Tests
 
 ```bash
+.venv/bin/pip install -e ".[dev]"    # pytest, if not already installed
 .venv/bin/python -m pytest -q
 ```
 
 One test module per source module. No network access, so everything runs
 offline: `test_payloads.py` works from trimmed copies of real Garmin
-responses rather than live calls. `test_config.py` also validates the
-checked-in `workouts.yaml`, so a bad edit fails the suite.
+responses rather than live calls. `test_config.py` also validates
+`workouts.example.yaml`, so a bad edit to the shipped example fails the suite.
 
 ### Garmin schema notes
 
