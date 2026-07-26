@@ -46,17 +46,27 @@ class GarminSession:
         return self._api.get_workout_by_id(workout_id)
 
     def list_workouts(
-        self, sport_type: str | None = STRENGTH, limit: int = 200
+        self, sport_type: str | None = STRENGTH, page_size: int = 200
     ) -> list[dict[str, Any]]:
-        """Workout summaries, newest first.
+        """Every workout summary, newest first, following pagination.
 
         `sportTypeKey` filters server-side. There is no name search: Garmin
         ignores searchTerm and friends, so callers filter names themselves.
+
+        Garmin caps a response at the requested size rather than reporting a
+        total, so a full page means there may be more and we have to ask again.
         """
-        params: dict[str, Any] = {"start": 0, "limit": limit}
-        if sport_type:
-            params["sportTypeKey"] = sport_type
-        return self._api.connectapi(WORKOUTS_URL, params=params) or []
+        found: list[dict[str, Any]] = []
+        start = 0
+        while True:
+            params: dict[str, Any] = {"start": start, "limit": page_size}
+            if sport_type:
+                params["sportTypeKey"] = sport_type
+            page = self._api.connectapi(WORKOUTS_URL, params=params) or []
+            found.extend(page)
+            if len(page) < page_size:
+                return found
+            start += page_size
 
     def devices(self) -> list[dict[str, Any]]:
         """Registered devices, for addressing a send-to-device message."""
