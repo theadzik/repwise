@@ -22,7 +22,6 @@ settings:
     token_store: ~/.garminconnect   # where OAuth tokens are cached
     activity_search_limit: 25       # recent activities scanned for a match
     dump_dir: .                     # where --dump and `fetch` write JSON
-    device_ids: []                  # devices --push sends to; empty means all
 
   weight_steps:        # kg added when a range is topped out, by load type
     barbell: 2.5
@@ -36,7 +35,6 @@ settings:
 | `garmin.token_store` | `~/.garminconnect` | Where OAuth tokens are cached. Delete the directory to force a fresh login |
 | `garmin.activity_search_limit` | `25` | How many recent activities to scan for a name match |
 | `garmin.dump_dir` | `.` | Where `--dump` and `fetch` write JSON |
-| `garmin.device_ids` | `[]` | Device ids `--push` targets. Empty means every registered device |
 | `weight_steps` | - | kg added per load type when a rep range is topped out |
 
 ## Workout fields

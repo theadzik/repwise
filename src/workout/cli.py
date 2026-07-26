@@ -93,32 +93,17 @@ def pick_activity(
     )
 
 
-def push_to_devices(
-    session: GarminSession, config: Config, workouts: list[Workout]
-) -> None:
-    """Queue a send-to-device message for each workout that was written.
+def push_to_watch(session: GarminSession, workouts: list[Workout]) -> None:
+    """Queue each written workout for the watch to collect on its next sync.
 
     Editing a workout in Garmin Connect does not reach the watch on its own;
-    the device only collects a new copy when a message is waiting for it.
+    the device only collects a new copy when a message is waiting for it. The
+    message goes to the device you last used.
     """
-    wanted = config.garmin.device_ids
-    devices = [
-        device
-        for device in session.devices()
-        if not wanted or int(device.get("deviceId", 0)) in wanted
-    ]
-    if not devices:
-        print("\nNo devices to push to.")
-        return
-
-    sent = 0
     for workout in workouts:
-        for device in devices:
-            session.push_workout(workout.garmin_workout_id, int(device["deviceId"]))
-            sent += 1
+        session.push_workout(workout.garmin_workout_id)
 
-    names = ", ".join(d.get("productDisplayName", "device") for d in devices)
-    print(f"\nQueued {sent} send(s) to {names}.")
+    print(f"\nQueued {len(workouts)} send(s) to your last-used device.")
     print("Sync your watch to pick up the new targets.")
 
 
@@ -183,7 +168,7 @@ def command_update(args: argparse.Namespace, config: Config) -> int:
     print(f"\nWrote {updated} updated step(s) to Garmin.")
 
     if args.push:
-        push_to_devices(session, config, written)
+        push_to_watch(session, written)
 
     return EXIT_OK
 

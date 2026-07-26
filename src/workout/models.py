@@ -56,8 +56,6 @@ class GarminSettings:
     token_store: str = "~/.garminconnect"
     activity_search_limit: int = 25
     dump_dir: str = "."
-    #: Devices to send workouts to. Empty means every registered device.
-    device_ids: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)

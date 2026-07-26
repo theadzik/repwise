@@ -67,10 +67,6 @@ class GarminSession:
                 return found
             start += page_size
 
-    def devices(self) -> list[dict[str, Any]]:
-        """Registered devices, for addressing a send-to-device message."""
-        return self._api.get_devices() or []
-
     def pending_messages(self) -> list[dict[str, Any]]:
         """Messages queued for your devices but not yet collected.
 
@@ -86,18 +82,18 @@ class GarminSession:
         """Replace a workout definition, keeping its id and any schedules."""
         return self._api.update_workout(workout_id, payload)
 
-    def push_workout(self, workout_id: str, device_id: int) -> Any:
-        """Queue a workout for one device to collect on its next sync.
+    def push_workout(self, workout_id: str) -> Any:
+        """Queue a workout for the last-used device to collect on its next sync.
 
         Editing a workout does not reach the watch on its own; a message has to
         be waiting for the device, which is what Connect's "Send to Device"
         button queues.
 
-        The device is always named explicitly: left to itself the library sends
-        to the last-used device only, whereas this tool addresses every device
-        the config selects.
+        Passing no device id lets garminconnect target the device you last used.
+        Addressing a specific device, or several, means passing `device_id` to
+        `push_workout_to_device` once per device.
         """
-        return self._api.push_workout_to_device(workout_id, device_id)
+        return self._api.push_workout_to_device(workout_id)
 
 
 def connect(settings: GarminSettings, prompt: bool = True) -> GarminSession:

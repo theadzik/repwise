@@ -146,7 +146,6 @@ def load_config(path: str = DEFAULT_CONFIG) -> Config:
             garmin_raw.get("activity_search_limit") or defaults.activity_search_limit
         ),
         dump_dir=os.path.expanduser(garmin_raw.get("dump_dir") or defaults.dump_dir),
-        device_ids=tuple(int(d) for d in garmin_raw.get("device_ids") or ()),
     )
 
     workouts: dict[str, Workout] = {}

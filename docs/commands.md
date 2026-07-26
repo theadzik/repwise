@@ -90,20 +90,17 @@ workout update --apply --push
 ```text
 Wrote Workout B (111111111)
 
-Queued 1 send(s) to Forerunner 945.
+Queued 1 send(s) to your last-used device.
 Sync your watch to pick up the new targets.
 ```
 
 It requires `--apply` - without it nothing has been written, so there is
 nothing to send - and refuses with exit code 3 if used alone.
 
-By default every registered device gets a message. Restrict that with
-`device_ids` under `settings.garmin` if you have more than one and only want
-some of them to receive workouts.
-
-Each message is queued through garminconnect's `push_workout_to_device()`, one
-per device. The endpoint itself is undocumented; see
-[Garmin's API](garmin-api.md#device-messages).
+The message goes to **the device you last used**, which is the right one if you
+train with a single watch. Sending to a specific device, or to several, is not
+currently exposed; see [Garmin's API](garmin-api.md#device-messages) for what
+that would take.
 
 ## list
 

@@ -120,9 +120,9 @@ id. `priority` is only a hint; the server rewrites it.
 device_id)` builds exactly the payload above, so this tool no longer constructs
 it. Two details of that method are worth knowing:
 
-- Omitting `device_id` sends to the **last-used device only**. Because `--push`
-  addresses every device the config selects, it always passes the id explicitly
-  and calls the method once per device.
+- Omitting `device_id` sends to the **last-used device only**, which is what
+  `--push` relies on. Targeting a particular device, or several, means reading
+  ids from `get_devices()` and calling the method once per device.
 - It looks the workout name up itself with `get_workout_by_id`, so the message
   is labelled with Garmin's name rather than your config's `key`, at the cost of
   one extra request per push.
