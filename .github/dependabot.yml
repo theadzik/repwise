@@ -17,8 +17,12 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+    # Conventional commits, so Dependabot's PRs pass the same commit-msg hook
+    # as everything else: "build(deps): ..." and "build(deps-dev): ...".
+    # "deps" is not a conventional type, "build" is. Neither bumps the version
+    # on its own; see docs/releasing.md.
     commit-message:
-      prefix: "deps"
+      prefix: "build"
       include: "scope"
 
     groups:
