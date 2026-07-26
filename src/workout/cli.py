@@ -21,7 +21,7 @@ from .garmin.client import (
     connect,
 )
 from .importer import describe_workout, render_config
-from .garmin.payloads import performed_sets
+from .garmin.payloads import device_message, performed_sets
 from .models import Config, ExerciseSpec, Workout
 from .planner import (
     ActivityNotFound,
@@ -93,7 +93,43 @@ def pick_activity(
     )
 
 
+def push_to_devices(
+    session: GarminSession, config: Config, workouts: list[Workout]
+) -> None:
+    """Queue a send-to-device message for each workout that was written.
+
+    Editing a workout in Garmin Connect does not reach the watch on its own;
+    the device only collects a new copy when a message is waiting for it.
+    """
+    wanted = config.garmin.device_ids
+    devices = [
+        device
+        for device in session.devices()
+        if not wanted or int(device.get("deviceId", 0)) in wanted
+    ]
+    if not devices:
+        print("\nNo devices to push to.")
+        return
+
+    messages = [
+        device_message(
+            int(device["deviceId"]), workout.garmin_workout_id, workout.key
+        )
+        for workout in workouts
+        for device in devices
+    ]
+    session.send_to_device(messages)
+
+    names = ", ".join(d.get("productDisplayName", "device") for d in devices)
+    print(f"\nQueued {len(messages)} send(s) to {names}.")
+    print("Sync your watch to pick up the new targets.")
+
+
 def command_update(args: argparse.Namespace, config: Config) -> int:
+    if args.push and not args.apply:
+        print("--push only makes sense with --apply: there is nothing to send yet.")
+        return EXIT_CONFIG
+
     session = connect(config.garmin)
 
     activity = pick_activity(session, config, args.activity)
@@ -139,13 +175,19 @@ def command_update(args: argparse.Namespace, config: Config) -> int:
         print("\nNothing to write.")
         return EXIT_OK
 
+    written: list[Workout] = []
     for each in plans:
         if not each.moved:
             continue
         session.save_workout(each.workout.garmin_workout_id, each.payload)
         print(f"Wrote {each.workout.key} (workout {each.workout.garmin_workout_id})")
+        written.append(each.workout)
 
     print(f"\nWrote {updated} updated step(s) to Garmin.")
+
+    if args.push:
+        push_to_devices(session, config, written)
+
     return EXIT_OK
 
 
@@ -310,6 +352,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  workout update            show what the last session earned\n"
             "  workout update --apply    write those targets back to Garmin\n"
             "  workout update --dump     save the raw Garmin JSON, change nothing\n"
+            "  workout update --apply --push   also send them to your watch\n"
             "  workout fetch             download the workout definitions\n"
             "  workout list              show your Garmin workouts and ids\n"
             "  workout import -o f.yaml  build config from Garmin workouts\n"
@@ -331,7 +374,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Read the most recent matching activity, work out the next "
         "target for every exercise, and show the plan. Nothing is sent to "
         "Garmin unless --apply is given. A target that moves is also synced "
-        "into any other workout containing that exercise.",
+        "into any other workout containing that exercise. Editing a workout "
+        "does not reach the watch by itself, so --push queues it for the device "
+        "to collect on its next sync.",
     )
     update.add_argument("--apply", action="store_true", help="write changes to Garmin")
     update.add_argument(
@@ -339,6 +384,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     update.add_argument(
         "--dump", action="store_true", help="also save the raw Garmin JSON payloads"
+    )
+    update.add_argument(
+        "--push",
+        action="store_true",
+        help="queue the updated workouts for your watch (requires --apply)",
     )
     update.set_defaults(func=command_update)
 
