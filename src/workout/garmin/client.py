@@ -14,7 +14,12 @@ from garminconnect import Garmin, GarminConnectTooManyRequestsError
 
 from ..models import GarminSettings
 
-__all__ = ["GarminSession", "GarminConnectTooManyRequestsError", "connect"]
+__all__ = ["GarminSession", "GarminConnectTooManyRequestsError", "connect", "STRENGTH"]
+
+#: Garmin's sportTypeKey for strength training, the only kind this tool handles.
+STRENGTH = "strength_training"
+
+WORKOUTS_URL = "/workout-service/workouts"
 
 
 class GarminSession:
@@ -38,6 +43,19 @@ class GarminSession:
 
     def workout(self, workout_id: str) -> dict[str, Any]:
         return self._api.get_workout_by_id(workout_id)
+
+    def list_workouts(
+        self, sport_type: str | None = STRENGTH, limit: int = 200
+    ) -> list[dict[str, Any]]:
+        """Workout summaries, newest first.
+
+        `sportTypeKey` filters server-side. There is no name search: Garmin
+        ignores searchTerm and friends, so callers filter names themselves.
+        """
+        params: dict[str, Any] = {"start": 0, "limit": limit}
+        if sport_type:
+            params["sportTypeKey"] = sport_type
+        return self._api.connectapi(WORKOUTS_URL, params=params) or []
 
     # --- writes ---
 

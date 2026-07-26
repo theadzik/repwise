@@ -106,10 +106,63 @@ warnings - exercises that were skipped and why.
 Exit codes: `0` success, `1` nothing usable in the activity, `2` rate limited,
 `3` bad configuration.
 
-### Fetching workouts
+### Getting started from Garmin
+
+Build the workouts in Garmin Connect first, then let the tool read them.
+
+```bash
+workout list                    # your strength workouts and their ids
+workout list --all              # every workout, whatever the sport
+workout import -o workouts.yaml # turn them into a config
+```
+
+`import` fills in everything Garmin actually knows and marks the rest `TODO`.
+It writes to stdout unless `-o` is given, and refuses to overwrite an existing
+file without `--force`. **It never modifies your config in place**, so your
+comments and tuned values are safe.
+
+Garmin knows less than this tool needs, so three things are inferred:
+
+| Field | How |
+|---|---|
+| `rep_low` | Garmin's current target becomes the bottom of the range |
+| `rep_high` | A suggestion: `rep_low` plus a few. **Check it** |
+| `load` | Guessed from the exercise name (`BARBELL_*`, `DUMBBELL_*`, `CABLE_*`), else `machine` if loaded and `bodyweight` if not |
+
+`rep_step`, `weight_step` and `video` have no Garmin equivalent at all and are
+left to you. Everything else - `sets`, `rest`, `unit`, `garmin_name`,
+`garmin_category`, `garmin_workout_id` - is read straight from the payload.
+
+Select a subset with `--name` (substring, case-insensitive) or `--id`. Garmin's
+API has no server-side name search, so filtering happens locally.
+
+### Checking for drift
+
+```bash
+workout check
+```
+
+Compares your config against the Garmin workouts and reports where they
+disagree: an exercise renamed in the Garmin app, a set count changed, an
+exercise present in one but not the other.
+
+Worth running occasionally, because a wrong `garmin_name` does not fail loudly -
+matching falls back to `garmin_category`, so the run keeps working until the
+fallback stops working too:
+
+```text
+Workout A (111111111)
+   ! Standing Calf Raise: config says WEIGHTED_STANDING_CALF_RAISE, Garmin says
+     STANDING_CALF_RAISE. Matched by category CALF_RAISE, so it works, but the
+     name is wrong
+```
+
+Exits non-zero when it finds anything beyond a note, so it fits in a cron job.
+
+### Fetching raw payloads
 
 Downloads workout definitions as JSON. Mostly a connectivity check and a way to
-inspect Garmin's payloads.
+inspect Garmin's schema by hand.
 
 ```bash
 workout fetch                   # every workout in workouts.yaml
@@ -202,6 +255,8 @@ src/workout/
     config.py              workouts.yaml -> models, with validation
     progression.py         the rules. No I/O, no Garmin types
     planner.py             match steps to exercises, decide the changes
+    importer.py            Garmin workout -> config YAML
+    checker.py             compare config against Garmin
     cli.py                 argument parsing and output
     garmin/
         client.py          authentication and the Garmin session
@@ -212,6 +267,9 @@ tests/
     test_config.py         loading and validation
     test_payloads.py       schema mapping, using trimmed real payloads
     test_planner.py        matching and planning
+    test_importer.py       import and YAML rendering
+    test_checker.py        drift detection
+    test_cli.py            argument parsing and help
 ```
 
 The dependencies run one way: `cli` -> `planner` -> `progression` -> `models`,
@@ -468,6 +526,9 @@ bridges the two, which is why `garmin_category` is worth filling in.
   `weight_step`.
 - Adding a command: a subparser in `cli.py` plus a function taking
   `(args, config)`.
+- Garmin's workout list API: `sportTypeKey` filters server-side and `orderBy`
+  sorts, but there is no name search - `searchTerm`, `name`, `q` and friends are
+  silently ignored, so name filtering must be done locally.
 
 ### Authentication and troubleshooting
 

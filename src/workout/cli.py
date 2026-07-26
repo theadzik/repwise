@@ -13,7 +13,14 @@ import sys
 from typing import Any
 
 from .config import DEFAULT_CONFIG, ConfigError, load_config
-from .garmin.client import GarminConnectTooManyRequestsError, GarminSession, connect
+from .checker import check_workout
+from .garmin.client import (
+    STRENGTH,
+    GarminConnectTooManyRequestsError,
+    GarminSession,
+    connect,
+)
+from .importer import describe_workout, render_config
 from .garmin.payloads import performed_sets
 from .models import Config, ExerciseSpec, Workout
 from .planner import (
@@ -191,6 +198,105 @@ def command_fetch(args: argparse.Namespace, config: Config) -> int:
     return EXIT_NOTHING_USABLE if failed else EXIT_OK
 
 
+def command_list(args: argparse.Namespace, config: Config) -> int:
+    session = connect(config.garmin)
+    sport = None if args.all else STRENGTH
+    workouts = session.list_workouts(sport_type=sport)
+
+    if not workouts:
+        print("No workouts found.")
+        return EXIT_NOTHING_USABLE
+
+    known = {w.garmin_workout_id for w in config}
+    print(f"{'ID':<12} {'UPDATED':<11} {'':<3}NAME")
+    for entry in workouts:
+        workout_id = str(entry.get("workoutId"))
+        updated = (entry.get("updateDate") or "")[:10]
+        mark = "*" if workout_id in known else " "
+        name = entry.get("workoutName") or "(unnamed)"
+        if args.all:
+            kind = (entry.get("sportType") or {}).get("sportTypeKey", "?")
+            name = f"{name}  [{kind}]"
+        print(f"{workout_id:<12} {updated:<11} {mark:<3}{name}")
+
+    print(f"\n{len(workouts)} workout(s); * already in your config")
+    return EXIT_OK
+
+
+def _select(session: GarminSession, args: argparse.Namespace) -> list[dict[str, Any]]:
+    """The workout summaries an import or check should cover."""
+    workouts = session.list_workouts(sport_type=STRENGTH)
+    if args.id:
+        wanted = [w for w in workouts if str(w.get("workoutId")) == args.id]
+        if not wanted:
+            raise ActivityNotFound(f"No strength workout with id {args.id}.")
+        return wanted
+    if args.name:
+        needle = args.name.lower()
+        wanted = [w for w in workouts if needle in (w.get("workoutName") or "").lower()]
+        if not wanted:
+            names = ", ".join(repr(w.get("workoutName")) for w in workouts)
+            raise ActivityNotFound(
+                f"No strength workout matching {args.name!r}. Found: {names}"
+            )
+        return wanted
+    return workouts
+
+
+def command_import(args: argparse.Namespace, config: Config) -> int:
+    session = connect(config.garmin)
+    summaries = _select(session, args)
+
+    imported = [
+        describe_workout(session.workout(str(s["workoutId"]))) for s in summaries
+    ]
+    text = render_config(imported)
+
+    if not args.output:
+        print(text)
+        return EXIT_OK
+
+    if os.path.exists(args.output) and not args.force:
+        print(f"{args.output} already exists. Pass --force to overwrite it.")
+        return EXIT_CONFIG
+
+    with open(args.output, "w") as fh:
+        fh.write(text)
+
+    exercises = sum(len(w.exercises) for w in imported)
+    print(f"Wrote {len(imported)} workout(s), {exercises} exercises -> {args.output}")
+    print("Check the TODO comments before using it.")
+    return EXIT_OK
+
+
+def command_check(args: argparse.Namespace, config: Config) -> int:
+    session = connect(config.garmin)
+
+    findings = []
+    for workout in config:
+        try:
+            payload = session.workout(workout.garmin_workout_id)
+        except Exception as exc:  # noqa: BLE001 - report and carry on
+            print(f"{workout.key}: could not fetch workout "
+                  f"{workout.garmin_workout_id}: {exc}")
+            findings.append(True)
+            continue
+
+        found = check_workout(workout, payload)
+        print(f"{workout.key} ({workout.garmin_workout_id})")
+        if not found:
+            print("  ok")
+        for finding in found:
+            marker = {"error": "!!", "warning": " !", "note": "  "}[finding.severity]
+            print(f"  {marker} {finding.detail}")
+        print()
+        findings.extend(found)
+
+    serious = [f for f in findings if getattr(f, "severity", "error") != "note"]
+    print(f"{len(serious)} issue(s) across {len(config.workouts)} workout(s)")
+    return EXIT_NOTHING_USABLE if serious else EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Raw formatting on the top level only: argparse would otherwise reflow the
     # examples into a single paragraph. The subcommands are plain prose, so
@@ -205,6 +311,9 @@ def build_parser() -> argparse.ArgumentParser:
             "  workout update --apply    write those targets back to Garmin\n"
             "  workout update --dump     save the raw Garmin JSON, change nothing\n"
             "  workout fetch             download the workout definitions\n"
+            "  workout list              show your Garmin workouts and ids\n"
+            "  workout import -o f.yaml  build config from Garmin workouts\n"
+            "  workout check             report config/Garmin drift\n"
             "\n"
             "Your routine lives in workouts.yaml; copy workouts.example.yaml to\n"
             "get started. Nothing is written to Garmin without --apply."
@@ -246,6 +355,46 @@ def build_parser() -> argparse.ArgumentParser:
         help="workout ids; defaults to every workout in the config",
     )
     fetch.set_defaults(func=command_fetch)
+
+    listing = sub.add_parser(
+        "list",
+        help="list your Garmin workouts and their ids",
+        description="Show the strength workouts in your Garmin account, with "
+        "the ids to put in workouts.yaml. Entries already in your config are "
+        "marked with an asterisk.",
+    )
+    listing.add_argument(
+        "--all", action="store_true", help="include non-strength workouts"
+    )
+    listing.set_defaults(func=command_list)
+
+    importer = sub.add_parser(
+        "import",
+        help="generate config from a Garmin workout",
+        description="Read workouts built in Garmin Connect and print them as "
+        "workouts.yaml content. Garmin stores a single target rather than a rep "
+        "range and records no load type, so those are inferred and marked TODO. "
+        "Writes to stdout unless -o is given; your config is never modified.",
+    )
+    picker = importer.add_mutually_exclusive_group()
+    picker.add_argument("--name", help="only workouts whose name contains this")
+    picker.add_argument("--id", metavar="ID", help="only this workout id")
+    importer.add_argument(
+        "-o", "--output", metavar="PATH", help="write to this file instead of stdout"
+    )
+    importer.add_argument(
+        "--force", action="store_true", help="overwrite an existing output file"
+    )
+    importer.set_defaults(func=command_import)
+
+    check = sub.add_parser(
+        "check",
+        help="compare your config against Garmin",
+        description="Report where workouts.yaml and the Garmin workouts "
+        "disagree: wrong exercise names, differing set counts, and exercises "
+        "present in one but not the other. Read-only.",
+    )
+    check.set_defaults(func=command_check)
 
     return parser
 
