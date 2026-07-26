@@ -20,7 +20,7 @@ Credentials are never stored by this tool - only the tokens Garmin issues.
 ## Common symptoms
 
 | Symptom | Cause and fix |
-|---|---|
+| --- | --- |
 | `429` / rate limited | Too many login attempts from your IP. Wait it out; once tokens are cached the login endpoint is skipped entirely |
 | `401` after working before | Stale tokens. Delete the token store and log in again |
 | Cloudflare challenge | Only affects browser automation. This tool goes through `garminconnect`, built on `curl_cffi`, which is not subject to it |

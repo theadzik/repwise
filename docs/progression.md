@@ -55,7 +55,7 @@ Given the exercise's config, the target currently stored in Garmin, and the sets
 actually performed:
 
 | # | Condition | Result |
-|---|---|---|
+| --- | --- | --- |
 | 1 | No sets logged | Unchanged |
 | 2 | Fewer than `sets` at the working weight | Bank the weight, consolidate reps |
 | 3 | Same weight, floor below target | Repeat unchanged (rule 4) |
@@ -72,7 +72,7 @@ Case 5 caps at `rep_high`, so an off-step target cannot overshoot the range.
 A squat, range 6-10, 4 sets, 2.5 kg step, stored target 7 x 20 kg:
 
 | Performed | Next target | Why |
-|---|---|---|
+| --- | --- | --- |
 | 7,7,7,7 @ 20 | 8 x 20 | Matched, add a rep |
 | 7,7,10,10 @ 20 | 8 x 20 | Weakest set still 7 |
 | 8,8,8,8 @ 20 | 9 x 20 | Beat it everywhere |

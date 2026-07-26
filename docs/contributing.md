@@ -1,6 +1,7 @@
 # Contributing
 
 - [Development setup](#development-setup)
+- [Checks](#checks)
 - [Tests](#tests)
 - [Where to make a change](#where-to-make-a-change)
 - [Commit messages](#commit-messages)
@@ -14,13 +15,53 @@ Read [architecture](architecture.md) first for the module layout, and
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/pre-commit install --hook-type commit-msg
+.venv/bin/pre-commit install
 cp workouts.example.yaml workouts.yaml
 ```
 
 Dependencies are pinned exactly in `pyproject.toml`. It is an application
 rather than a library, so a reproducible install matters more than being
 co-installable, and Dependabot raises a PR per release.
+
+## Checks
+
+`pre-commit install` wires up three git hooks: the checks below on every commit,
+the message format on `commit-msg`, and the test suite on push.
+
+| Hook | What it does |
+| --- | --- |
+| `ruff-check --fix` | Lints and fixes what is mechanically fixable. Rules in `[tool.ruff.lint]` |
+| `ruff-format` | Formats. 88 columns, the same defaults as Black |
+| `mypy` | Type checks `src` and `tests`. Settings in `[tool.mypy]` |
+| `markdownlint --fix` | Markdown, using `.markdownlint.json` |
+| `codespell` | Typos, in prose and code alike |
+| `check-yaml`, `check-toml` | The config files parse |
+| `check-dependabot` | GitHub will actually accept `dependabot.yml` |
+| `detect-private-key`, `check-added-large-files` | Accidents |
+| `forbid-private-files` | Refuses to commit `workouts.yaml` or a raw dump, which `.gitignore` covers but `git add -f` does not |
+| `commitizen` | The commit message is conventional. See [releasing](releasing.md) |
+| `pytest` | On push only, so a failing test does not block saving work in progress |
+
+Every tool reads its settings from `pyproject.toml`, so a bare `ruff check`,
+`mypy` or `pytest` behaves exactly as the hook does. Run the lot without
+committing:
+
+```bash
+.venv/bin/pre-commit run --all-files
+```
+
+Invoke it as `.venv/bin/pre-commit`: that puts the virtualenv first on `PATH`,
+which is how the `mypy` and `pytest` hooks find the project's dependencies. A
+globally installed `pre-commit` will not find them.
+
+Hooks that fix rather than report - `ruff-format`, `markdownlint`,
+`end-of-file-fixer` - abort the commit when they change a file. Stage the
+change and commit again; the second attempt passes. `git commit --no-verify`
+skips the lot when you need it to.
+
+Two pins per tool have to stay in step: `rev:` in `.pre-commit-config.yaml` and
+the exact version in `pyproject.toml`. `pre-commit autoupdate` moves the first,
+Dependabot the second.
 
 ## Tests
 
@@ -42,7 +83,7 @@ data and returns plain data, which is the point of keeping it pure.
 ## Where to make a change
 
 | Change | Where |
-|---|---|
+| --- | --- |
 | The routine | `workouts.yaml`. Nothing else needs touching |
 | What a new user starts from | `workouts.example.yaml`, which the tests validate |
 | A progression rule | `next_target()` in `progression.py`, plus `test_progression.py` |
@@ -54,12 +95,7 @@ data and returns plain data, which is the point of keeping it pure.
 
 ## Commit messages
 
-Conventional Commits, enforced by a `commit-msg` hook that a fresh clone has to
-install once:
-
-```bash
-.venv/bin/pre-commit install --hook-type commit-msg
-```
+Conventional Commits, enforced by the `commit-msg` hook installed above:
 
 ```text
 fix(progression): stop a deload rebasing the target upward

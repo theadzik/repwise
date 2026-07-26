@@ -21,7 +21,7 @@ is where the fix goes.
 wrong:
 
 | Payload | Field | Unit |
-|---|---|---|
+| --- | --- | --- |
 | Exercise set (activity) | `weight` | grams - `20000.0` means 20 kg |
 | Workout step | `weightValue` | whatever `weightUnit` says, normally kilograms - `30.0` means 30 kg |
 
@@ -38,7 +38,7 @@ weight onto such a step has to set the unit explicitly.
 ## Fields relied on
 
 | Payload | Field | Used for |
-|---|---|---|
+| --- | --- | --- |
 | Workout step | `exerciseName` | Matching to an exercise |
 | Workout step | `category` | Fallback match, e.g. `SQUAT` |
 | Workout step | `endCondition.conditionTypeKey` | `reps` normally, `time` for timed holds |
@@ -73,7 +73,7 @@ Garmin auto-detects the exercise while you lift, so what it logs need not match
 what the workout programs, and can be null entirely:
 
 | Programmed in the workout | Logged in the activity |
-|---|---|
+| --- | --- |
 | `STANDING_ALTERNATING_DUMBBELL_CURLS` | `SEATED_DUMBBELL_BICEPS_CURL` |
 | `WEIGHTED_LEG_CURL` | `LEG_CURL` |
 | `CABLE_OVERHEAD_TRICEPS_EXTENSION` | `null` |

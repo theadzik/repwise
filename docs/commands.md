@@ -27,7 +27,7 @@ workout update --activity 1234    # use a specific activity
 ```
 
 | Flag | Effect |
-|---|---|
+| --- | --- |
 | *(none)* | Dry run. Prints the plan and writes nothing |
 | `--apply` | Write the new targets to Garmin Connect |
 | `--push` | Queue the written workouts for your devices. Requires `--apply` |
@@ -63,7 +63,7 @@ Dry run: 3 step(s) would change. Re-run with --apply.
 ```
 
 | Marker | Meaning |
-|---|---|
+| --- | --- |
 | `*` | This step would change |
 | *(space)* | Unchanged, with the reason why |
 | `!` | Warning: the exercise was skipped, and why |
@@ -124,7 +124,7 @@ workout import --id 111111111     # only this workout
 ```
 
 | Flag | Effect |
-|---|---|
+| --- | --- |
 | `-o`, `--output PATH` | Write to a file instead of stdout |
 | `--force` | Overwrite an existing file |
 | `--name TEXT` | Only workouts whose name contains this, case-insensitively |
@@ -137,7 +137,7 @@ Garmin knows less than this tool needs, so three fields are inferred and want
 checking:
 
 | Field | How |
-|---|---|
+| --- | --- |
 | `rep_low` | Garmin's current target becomes the bottom of the range |
 | `rep_high` | A suggestion: `rep_low` plus a few. **Check it** |
 | `load` | Guessed from the exercise name (`BARBELL_*`, `DUMBBELL_*`, `CABLE_*`), else `machine` if loaded and `bodyweight` if not |
@@ -186,7 +186,7 @@ Files land in `settings.garmin.dump_dir`.
 ## Exit codes
 
 | Code | Meaning |
-|---|---|
+| --- | --- |
 | `0` | Success |
 | `1` | Nothing usable in the activity, or a fetch failed |
 | `2` | Rate limited by Garmin |

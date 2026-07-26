@@ -8,7 +8,7 @@ number is derived from them by
 The work is split in two, deliberately:
 
 | When | What runs | What it does |
-|---|---|---|
+| --- | --- | --- |
 | Every commit | `cz check`, via pre-commit's `commit-msg` hook | Rejects a message that is not conventional |
 | At release time | `cz bump`, by hand | Reads every commit since the last tag, picks the new version, writes it, updates the changelog, commits and tags |
 
@@ -25,19 +25,21 @@ commit](#why-not-bump-on-every-commit).
 
 ## Setup
 
-The hook is not active in a fresh clone until it is installed - pre-commit
-config is version controlled, but git hooks are per clone:
+The hook is not active in a fresh clone until it is installed - the config is
+version controlled, but git hooks are per clone:
 
 ```bash
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/pre-commit install --hook-type commit-msg
+.venv/bin/pre-commit install
 ```
 
-`--hook-type commit-msg` is required. Plain `pre-commit install` only installs
-the `pre-commit` stage, which never sees the commit message, and the check would
-silently never run.
+`default_install_hook_types` in `.pre-commit-config.yaml` is what makes the bare
+`install` enough. Without it, `pre-commit install` wires up the `pre-commit`
+stage alone - which never sees a commit message - and this check would silently
+never run.
 
-To stop it: `.venv/bin/pre-commit uninstall --hook-type commit-msg`.
+To stop it: `.venv/bin/pre-commit uninstall`. See
+[contributing](contributing.md#checks) for the other hooks.
 
 ## Commit message format
 
@@ -81,7 +83,7 @@ The type decides the release. These are the accepted types and their effect on
 the next `cz bump`:
 
 | Type | Version effect | In the changelog |
-|---|---|---|
+| --- | --- | --- |
 | `feat` | minor | yes |
 | `fix` | patch | yes |
 | `refactor` | patch | yes |
@@ -107,14 +109,17 @@ git push --follow-tags
 `--follow-tags` matters. A plain `git push` sends the bump commit and leaves the
 tag behind, so the release exists locally and nowhere else.
 
-`cz bump` with no commits worth releasing since the last tag exits with
-`NO_COMMITS_FOUND` and changes nothing, which makes the dry run safe to run any
-time.
+With nothing worth releasing since the last tag, `cz bump` changes nothing and
+says so - `NO_COMMITS_FOUND` when there are no commits at all,
+`NO_COMMITS_TO_BUMP` when there are but none of them earn a release. The second
+case prints a misleading `bump: version 0.1.0 → 0.1.0` line first; it is not
+about to re-cut the existing tag, and the refusal on the next line is the real
+answer.
 
 One bump touches four things:
 
 | What | How |
-|---|---|
+| --- | --- |
 | `[project].version` in `pyproject.toml` | `version_provider = "pep621"`, so this is the single source of truth |
 | `__version__` in `src/workout/__init__.py` | Listed in `version_files`, kept in step |
 | `CHANGELOG.md` | Prepended, grouped by type |

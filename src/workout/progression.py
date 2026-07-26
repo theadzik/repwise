@@ -48,7 +48,7 @@ class PerformedSet:
 
     def as_time(self) -> PerformedSet:
         """Recast a timed hold so its seconds are the thing being progressed."""
-        return PerformedSet(int(round(self.seconds)), self.weight, self.seconds)
+        return PerformedSet(round(self.seconds), self.weight, self.seconds)
 
 
 def working_weight(performed: list[PerformedSet]) -> float:

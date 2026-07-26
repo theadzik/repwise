@@ -31,7 +31,7 @@ settings:
 ```
 
 | Setting | Default | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | `garmin.token_store` | `~/.garminconnect` | Where OAuth tokens are cached. Delete the directory to force a fresh login |
 | `garmin.activity_search_limit` | `25` | How many recent activities to scan for a name match |
 | `garmin.dump_dir` | `.` | Where `--dump` and `fetch` write JSON |
@@ -49,7 +49,7 @@ workouts:
 ```
 
 | Field | Required | Meaning |
-|---|:---:|---|
+| --- | :---: | --- |
 | `key` | yes | Workout name, must be unique |
 | `garmin_workout_id` | yes | Garmin workout to update; the id in the Connect URL |
 | `activity_prefixes` | yes | Prefixes that match an activity name to this workout, compared case-insensitively |
@@ -73,7 +73,7 @@ other languages - an activity called "Trening A" matches `trening a`.
 ```
 
 | Field | Required | Default | Meaning |
-|---|:---:|---|---|
+| --- | :---: | --- | --- |
 | `name` | yes | | Label used in this tool's output |
 | `garmin_name` | yes | | Exercise identifier as stored in the Garmin workout |
 | `garmin_category` | no | none | Garmin's category, used when the name does not match |
@@ -142,7 +142,7 @@ silently skipped, and [`workout check`](commands.md#check) finds these for you.
 Categories are not always the obvious ones. Some real examples:
 
 | `garmin_name` | `garmin_category` |
-|---|---|
+| --- | --- |
 | `LAT_PULLDOWN` | `PULL_UP` |
 | `FACE_PULL_WITH_EXTERNAL_ROTATION` | `ROW` |
 | `OVERHEAD_BARBELL_PRESS` | `SHOULDER_PRESS` |

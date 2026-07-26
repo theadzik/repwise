@@ -86,18 +86,18 @@ def test_plan_advances_a_met_target():
     assert [c.new for c in plan.changes] == [Target(8, 20.0)]
     assert plan.moved, "the step changed"
     # The payload itself is updated, ready to be written back.
-    assert step_target(list(payload["workoutSegments"][0]["workoutSteps"])[0]) == Target(
-        8, 20.0
-    )
+    steps = payload["workoutSegments"][0]["workoutSteps"]
+    assert step_target(next(iter(steps))) == Target(8, 20.0)
 
 
 def test_plan_matches_by_category_when_the_logged_name_differs():
     """Garmin logs SEATED_... where the workout programs STANDING_..."""
-    payload = workout(
-        rep_step("STANDING_ALTERNATING_DUMBBELL_CURLS", "CURL", 10, 7.0)
-    )
+    payload = workout(rep_step("STANDING_ALTERNATING_DUMBBELL_CURLS", "CURL", 10, 7.0))
     performed = performed_sets(
-        {"exerciseSets": [active("SEATED_DUMBBELL_BICEPS_CURL", "CURL", 10, 7000.0)] * 2}
+        {
+            "exerciseSets": [active("SEATED_DUMBBELL_BICEPS_CURL", "CURL", 10, 7000.0)]
+            * 2
+        }
     )
     plan = plan_workout(a_workout(exercises=[CURLS]), payload, performed)
 

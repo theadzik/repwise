@@ -67,7 +67,7 @@ keeping an exercise in sync when it appears in more than one workout.
 ## Commands
 
 | Command | What it does |
-|---|---|
+| --- | --- |
 | `workout update` | Advance targets from your last session. Dry run by default |
 | `workout update --apply --push` | Write the new targets and send them to your watch |
 | `workout list` | Show your Garmin workouts and their ids |
@@ -92,7 +92,7 @@ control. Every field is described in [Configuration](docs/configuration.md).
 For users:
 
 | Page | Contents |
-|---|---|
+| --- | --- |
 | [Getting started](docs/getting-started.md) | Install to first update, step by step |
 | [Commands](docs/commands.md) | Every command, flag, output marker and exit code |
 | [Configuration](docs/configuration.md) | The `workouts.yaml` reference, and finding your exercise identifiers |
@@ -102,7 +102,7 @@ For users:
 For contributors:
 
 | Page | Contents |
-|---|---|
+| --- | --- |
 | [Architecture](docs/architecture.md) | Module layout, dependency and data-flow diagrams |
 | [Garmin's API](docs/garmin-api.md) | The undocumented payloads and endpoints, and their traps |
 | [Contributing](docs/contributing.md) | Dev setup, tests, where to make a change |

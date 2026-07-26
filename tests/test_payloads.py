@@ -146,7 +146,9 @@ def active(name, category, reps, grams, duration=40.0):
 
 
 def test_activity_weight_is_grams():
-    by_name, _ = performed_sets({"exerciseSets": [active("SQUAT", "SQUAT", 9, 20000.0)]})
+    by_name, _ = performed_sets(
+        {"exerciseSets": [active("SQUAT", "SQUAT", 9, 20000.0)]}
+    )
     assert by_name["squat"][0].weight == 20.0
 
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .garmin.payloads import (
+    ExerciseBlock,
     iter_exercise_blocks,
     normalise,
     step_category,
@@ -42,11 +43,11 @@ def check_workout(workout: Workout, payload: dict) -> list[Finding]:
 
     blocks = list(iter_exercise_blocks(payload))
     by_name = {normalise(step_exercise_name(b.step) or ""): b for b in blocks}
-    by_category = {}
-    for block in blocks:
-        category = step_category(block.step)
+    by_category: dict[str, list[ExerciseBlock]] = {}
+    for entry in blocks:
+        category = step_category(entry.step)
         if category:
-            by_category.setdefault(normalise(category), []).append(block)
+            by_category.setdefault(normalise(category), []).append(entry)
 
     seen = set()
     for spec in workout.exercises:
@@ -80,10 +81,7 @@ def check_workout(workout: Workout, payload: dict) -> list[Finding]:
         seen.add(id(block))
 
         if block.sets != spec.sets:
-            note(
-                f"{spec.name}: {spec.sets} sets in config, "
-                f"{block.sets} in Garmin"
-            )
+            note(f"{spec.name}: {spec.sets} sets in config, {block.sets} in Garmin")
         if block.rest is not None and spec.rest and block.rest != spec.rest:
             note(
                 f"{spec.name}: rest {spec.rest}s in config, {block.rest}s in "
