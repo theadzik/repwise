@@ -101,7 +101,8 @@ By default every registered device gets a message. Restrict that with
 `device_ids` under `settings.garmin` if you have more than one and only want
 some of them to receive workouts.
 
-The endpoint behind this is undocumented; see
+Each message is queued through garminconnect's `push_workout_to_device()`, one
+per device. The endpoint itself is undocumented; see
 [Garmin's API](garmin-api.md#device-messages).
 
 ## list

@@ -16,7 +16,7 @@ keywords = ["garmin", "strength-training", "progressive-overload"]
 # raises a PR per release. garminconnect in particular has broken
 # authentication before, so the working version is recorded deliberately.
 dependencies = [
-    "garminconnect==0.3.6",
+    "garminconnect==0.3.7",
     "pyyaml==6.0.3",
 ]
 

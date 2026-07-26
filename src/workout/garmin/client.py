@@ -20,7 +20,6 @@ __all__ = ["GarminSession", "GarminConnectTooManyRequestsError", "connect", "STR
 STRENGTH = "strength_training"
 
 WORKOUTS_URL = "/workout-service/workouts"
-DEVICE_MESSAGES_URL = "/device-service/devicemessage/messages"
 
 
 class GarminSession:
@@ -73,27 +72,32 @@ class GarminSession:
         return self._api.get_devices() or []
 
     def pending_messages(self) -> list[dict[str, Any]]:
-        """Messages queued for your devices but not yet collected."""
-        payload = self._api.connectapi(DEVICE_MESSAGES_URL) or {}
+        """Messages queued for your devices but not yet collected.
+
+        garminconnect has no getter for this, so the call is made by hand, but
+        the URL still comes from the library rather than being repeated here.
+        """
+        payload = self._api.connectapi(self._api.garmin_connect_devicemessage_url) or {}
         return payload.get("messages") or []
 
     # --- writes ---
 
     def save_workout(self, workout_id: str, payload: dict[str, Any]) -> Any:
-        """Replace a workout definition."""
-        url = f"/workout-service/workout/{workout_id}"
-        return self._api.client.put("connectapi", url, json=payload, api=True)
+        """Replace a workout definition, keeping its id and any schedules."""
+        return self._api.update_workout(workout_id, payload)
 
-    def send_to_device(self, messages: list[dict[str, Any]]) -> Any:
-        """Queue device messages, the way Connect's "Send to Device" does.
+    def push_workout(self, workout_id: str, device_id: int) -> Any:
+        """Queue a workout for one device to collect on its next sync.
 
         Editing a workout does not reach the watch on its own; a message has to
-        be queued for the device to collect on its next sync. The body is a
-        JSON array -- a bare object is rejected.
+        be waiting for the device, which is what Connect's "Send to Device"
+        button queues.
+
+        The device is always named explicitly: left to itself the library sends
+        to the last-used device only, whereas this tool addresses every device
+        the config selects.
         """
-        return self._api.client.post(
-            "connectapi", DEVICE_MESSAGES_URL, json=messages, api=True
-        )
+        return self._api.push_workout_to_device(workout_id, device_id)
 
 
 def connect(settings: GarminSettings, prompt: bool = True) -> GarminSession:
