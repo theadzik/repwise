@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Any, Iterator
 
 from ..progression import PerformedSet, Target
@@ -49,6 +50,55 @@ def iter_workout_steps(workout: dict[str, Any]) -> Iterator[dict[str, Any]]:
                 yield from walk(step.get("workoutSteps"))
             else:
                 yield step
+
+    for segment in workout.get("workoutSegments") or []:
+        yield from walk(segment.get("workoutSteps"))
+
+
+@dataclass(frozen=True)
+class ExerciseBlock:
+    """An exercise step together with the repeat group that surrounds it.
+
+    `iter_workout_steps` flattens the tree, which is what the planner wants.
+    Importing needs the structure back: how many iterations the repeat group
+    prescribes, and how long the rest step alongside it lasts.
+    """
+
+    step: dict[str, Any]
+    sets: int
+    rest: int | None
+
+
+def _rest_seconds(steps: list[dict[str, Any]]) -> int | None:
+    """Seconds from the rest step of a repeat group, when it is a fixed time."""
+    for step in steps:
+        if (step.get("stepType") or {}).get("stepTypeKey") != "rest":
+            continue
+        end = step.get("endCondition") or {}
+        # A lap.button rest has no duration, only a prompt to press the button.
+        if end.get("conditionTypeKey") == "time" and step.get("endConditionValue"):
+            return int(step["endConditionValue"])
+    return None
+
+
+def iter_exercise_blocks(workout: dict[str, Any]) -> Iterator[ExerciseBlock]:
+    """Yield each exercise with its set count and rest, for importing."""
+
+    def walk(steps: list[dict[str, Any]] | None) -> Iterator[ExerciseBlock]:
+        for step in steps or []:
+            children = step.get("workoutSteps")
+            if children:
+                sets = int(step.get("numberOfIterations") or 1)
+                rest = _rest_seconds(children)
+                for inner in walk(children):
+                    # An inner repeat group keeps its own count.
+                    yield ExerciseBlock(
+                        inner.step,
+                        inner.sets if inner.sets > 1 else sets,
+                        inner.rest if inner.rest is not None else rest,
+                    )
+            elif step.get("exerciseName") or step.get("category"):
+                yield ExerciseBlock(step, 1, None)
 
     for segment in workout.get("workoutSegments") or []:
         yield from walk(segment.get("workoutSteps"))

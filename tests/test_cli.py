@@ -59,3 +59,35 @@ def test_a_command_is_required(capsys):
 def test_config_is_a_global_option():
     args = build_parser().parse_args(["--config", "other.yaml", "update"])
     assert args.config == "other.yaml"
+
+
+# --- the Garmin-loading commands ------------------------------------------
+
+
+def test_list_defaults_to_strength_only():
+    args = build_parser().parse_args(["list"])
+    assert args.all is False
+
+
+def test_import_defaults_to_stdout():
+    args = build_parser().parse_args(["import"])
+    assert args.output is None, "no -o means print"
+    assert args.force is False
+    assert args.name is None and args.id is None
+
+
+def test_import_output_takes_a_path():
+    args = build_parser().parse_args(["import", "-o", "out.yaml"])
+    assert args.output == "out.yaml"
+
+
+def test_import_name_and_id_are_mutually_exclusive(capsys):
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["import", "--name", "A", "--id", "1"])
+    assert "not allowed with" in capsys.readouterr().err
+
+
+def test_check_takes_no_arguments():
+    args = build_parser().parse_args(["check"])
+    assert args.func.__name__ == "command_check"
