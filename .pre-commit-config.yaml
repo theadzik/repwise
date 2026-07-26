@@ -1,16 +1,132 @@
-# Runs on `git commit` once installed:
+# Hooks run on `git commit` and `git push`, once installed:
 #
-#   .venv/bin/pre-commit install --hook-type commit-msg
+#   .venv/bin/pre-commit install
 #
-# The hook only validates the message. Bumping the version and tagging is a
-# release-time job, not a per-commit one - see docs/releasing.md.
+# Everything at once, without committing:
+#
+#   .venv/bin/pre-commit run --all-files
+#
+# The `language: system` hooks below use the tools from the project's own
+# virtualenv, so run pre-commit as `.venv/bin/pre-commit` - it puts that
+# directory first on PATH. A globally installed pre-commit will not find them.
+
+# Without this, `pre-commit install` wires up the pre-commit stage alone and the
+# message check and the test run would silently never happen.
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+
+# A hook with no `stages` of its own runs on commit only, so that pushing does
+# not re-check everything the commit already checked. This is a default, not an
+# override: a few upstream hooks declare their own stages and are pinned below.
+default_stages: [pre-commit]
+
 repos:
+  # --- file hygiene ---------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # These three ship with `stages: [pre-commit, pre-push, manual]` of their
+      # own, which default_stages does not override, so say it here.
+      - id: check-added-large-files
+        # A raw Garmin dump is megabytes of JSON and has no business in git.
+        stages: [pre-commit]
+      - id: end-of-file-fixer
+        stages: [pre-commit]
+      - id: trailing-whitespace
+        # Two trailing spaces are a deliberate line break in Markdown.
+        args: [--markdown-linebreak-ext=md]
+        stages: [pre-commit]
+
+      - id: check-merge-conflict
+      # pyproject.toml carries every tool setting, so a typo there breaks
+      # the build, the linters and the release process at once.
+      - id: check-toml
+      # workouts.example.yaml, dependabot.yml and this file.
+      - id: check-yaml
+      - id: debug-statements
+      - id: detect-private-key
+      - id: mixed-line-ending
+
+  # --- Python: lint and format ----------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Keep in step with the ruff pin in pyproject.toml. Rules come from
+    # [tool.ruff] there, so this and `ruff check` cannot disagree.
+    rev: v0.16.0
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  # --- Python: types --------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        # Deliberately not the mirrors-mypy hook: type checking is only useful
+        # with the project's own dependencies importable, and an isolated hook
+        # environment has neither garminconnect nor this package installed.
+        entry: mypy
+        language: system
+        types: [python]
+        # Which paths to check comes from [tool.mypy], not from the staged set;
+        # checking one file at a time would miss cross-module errors.
+        pass_filenames: false
+
+  # --- Markdown -------------------------------------------------------------
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    # Rules come from .markdownlint.json: 80-column prose, tables and code
+    # blocks exempt.
+    rev: v0.49.1
+    hooks:
+      - id: markdownlint
+        # Fixable findings are formatting, not judgement calls: table pipe
+        # padding, list markers, blank lines around blocks.
+        args: [--fix]
+
+  # --- schemas --------------------------------------------------------------
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.37.4
+    hooks:
+      # check-yaml proves dependabot.yml parses; this proves GitHub will accept
+      # it, which is otherwise only discovered by pushing and waiting.
+      - id: check-dependabot
+
+  # --- spelling -------------------------------------------------------------
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.3
+    hooks:
+      # This repository is more prose than code, and the prose is the product.
+      - id: codespell
+
+  # --- commit messages ------------------------------------------------------
   - repo: https://github.com/commitizen-tools/commitizen
     # Keep in step with the commitizen pin in pyproject.toml, so the rules
-    # enforced here are the ones `cz bump` reads. `pre-commit autoupdate` moves
-    # this line.
+    # enforced here are the ones `cz bump` reads when deciding a release.
     rev: v4.16.5
     hooks:
       # `cz check`, reading [tool.commitizen] from pyproject.toml.
       - id: commitizen
         stages: [commit-msg]
+
+  # --- project-specific -----------------------------------------------------
+  - repo: local
+    hooks:
+      # .gitignore already covers these, but `git add -f` and `git add -A` in a
+      # stale checkout do not care. Publishing a Garmin workout id or a raw
+      # activity dump cannot be undone by a later commit.
+      - id: forbid-private-files
+        name: refuse to commit private Garmin data
+        language: fail
+        entry: >-
+          this file is gitignored on purpose - it holds your Garmin workout ids
+          or a raw activity dump. Unstage it rather than forcing it in.
+        files: ^(workouts\.yaml|dumps/.*|dump-.*\.json|workout-.*\.json)$
+
+      # On push rather than on commit: the suite is offline and takes under a
+      # second, but a failing test should not block saving work in progress.
+      - id: pytest
+        name: pytest
+        entry: python -m pytest -q
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]

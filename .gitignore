@@ -14,3 +14,5 @@ workouts.yaml
 dumps/
 workout-*.json
 dump-*.json
+
+*_cache/
