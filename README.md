@@ -307,8 +307,38 @@ tests/
     test_cli.py            argument parsing and help
 ```
 
-The dependencies run one way: `cli` -> `planner` -> `progression` -> `models`,
-with `garmin` used only by `cli` and `planner`. Two boundaries carry the weight:
+Every arrow points inward: nothing in `progression.py` or `models.py` imports
+the CLI, the planner, or Garmin.
+
+```mermaid
+flowchart TD
+    cli["cli.py"]
+
+    subgraph app["application"]
+        planner["planner.py"]
+        importer["importer.py"]
+        checker["checker.py"]
+        config["config.py"]
+    end
+
+    subgraph adapter["garmin/ - the only Garmin schema knowledge"]
+        garmin["client.py<br/>payloads.py"]
+    end
+
+    subgraph domain["domain - no I/O, no Garmin types"]
+        progression["progression.py"]
+        models["models.py"]
+    end
+
+    cli --> planner & importer & checker & config
+    cli --> garmin
+    planner & importer & checker --> garmin
+    planner & garmin --> progression
+    planner & checker & config --> models
+    progression --> models
+```
+
+Two boundaries carry the weight:
 
 - **`progression.py` knows nothing about Garmin or YAML.** It takes a spec, a
   current target, and a list of performed sets. That is what makes the rules
@@ -322,19 +352,20 @@ which is why the dry run cannot accidentally write.
 
 ### Data flow
 
-```text
-workouts.yaml ---> load_workouts() ---> Workout / ExerciseSpec
-                                                |
-Garmin activity ---> performed_sets() ---> [PerformedSet]
-                                                |
-                                                v
-Garmin workout ---> step_target() ---> Target ---> next_target() ---> Target
-                                                                        |
-                                                    apply_target() <----+
-                                                          |
-                                                          v
-                                              PUT /workout-service/workout/{id}
-```bash
+```mermaid
+flowchart TD
+    YAML["workouts.yaml"] -->|load_config| SPEC["Workout / ExerciseSpec"]
+    ACT["Garmin activity"] -->|performed_sets| PERF["PerformedSet list"]
+    WKT["Garmin workout"] -->|step_target| CUR["current Target"]
+
+    SPEC --> RULES{{"next_target()"}}
+    PERF --> RULES
+    CUR --> RULES
+
+    RULES --> NEW["new Target"]
+    NEW -->|apply_target| MUT["mutated workout payload"]
+    MUT -->|"save_workout, when applying"| OUT[("Garmin Connect")]
+```
 
 Steps:
 
