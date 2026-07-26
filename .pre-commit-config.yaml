@@ -1,0 +1,16 @@
+# Runs on `git commit` once installed:
+#
+#   .venv/bin/pre-commit install --hook-type commit-msg
+#
+# The hook only validates the message. Bumping the version and tagging is a
+# release-time job, not a per-commit one - see docs/releasing.md.
+repos:
+  - repo: https://github.com/commitizen-tools/commitizen
+    # Keep in step with the commitizen pin in pyproject.toml, so the rules
+    # enforced here are the ones `cz bump` reads. `pre-commit autoupdate` moves
+    # this line.
+    rev: v4.16.5
+    hooks:
+      # `cz check`, reading [tool.commitizen] from pyproject.toml.
+      - id: commitizen
+        stages: [commit-msg]

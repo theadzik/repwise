@@ -106,6 +106,7 @@ For contributors:
 | [Architecture](docs/architecture.md) | Module layout, dependency and data-flow diagrams |
 | [Garmin's API](docs/garmin-api.md) | The undocumented payloads and endpoints, and their traps |
 | [Contributing](docs/contributing.md) | Dev setup, tests, where to make a change |
+| [Releasing](docs/releasing.md) | Commit message format, and how the version is derived from it |
 
 ## Licence
 

@@ -3,6 +3,7 @@
 - [Development setup](#development-setup)
 - [Tests](#tests)
 - [Where to make a change](#where-to-make-a-change)
+- [Commit messages](#commit-messages)
 - [Conventions](#conventions)
 
 Read [architecture](architecture.md) first for the module layout, and
@@ -13,6 +14,7 @@ Read [architecture](architecture.md) first for the module layout, and
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
+.venv/bin/pre-commit install --hook-type commit-msg
 cp workouts.example.yaml workouts.yaml
 ```
 
@@ -49,6 +51,23 @@ data and returns plain data, which is the point of keeping it pure.
 | A new load type | `settings.weight_steps`, otherwise loading rejects any exercise using it. A single exercise can instead set its own `weight_step` |
 | A new command | A subparser in `cli.py` plus a function taking `(args, config)` |
 | A new Garmin call | A method on `GarminSession` in `garmin/client.py`, so the `garminconnect` dependency stays in one place |
+
+## Commit messages
+
+Conventional Commits, enforced by a `commit-msg` hook that a fresh clone has to
+install once:
+
+```bash
+.venv/bin/pre-commit install --hook-type commit-msg
+```
+
+```text
+fix(progression): stop a deload rebasing the target upward
+```
+
+The type decides the next version number, so it is not decoration: `feat` is a
+minor release, `fix` a patch, and `docs` or `chore` release nothing. The full
+list, and how a release is cut, is in [releasing](releasing.md).
 
 ## Conventions
 

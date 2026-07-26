@@ -22,6 +22,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "commitizen==4.16.5",
+    "pre-commit==4.6.1",
     "pytest==9.1.1",
 ]
 
@@ -30,6 +32,26 @@ workout = "workout.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Conventional commits in, version numbers out. `cz check` runs from
+# .pre-commit-config.yaml on every commit message; `cz bump` reads the commits
+# since the last tag and decides the release. See docs/releasing.md.
+[tool.commitizen]
+name = "cz_conventional_commits"
+# Read and write [project].version above, so the version is stated once.
+version_provider = "pep621"
+# Bare "0.2.0", not "v0.2.0". This is Commitizen's own default and matches the
+# hand-cut 0.1.0 tag, so it is stated only to pin it: the default has changed
+# upstream before, and a silent change would start a second tag series.
+tag_format = "$version"
+version_files = ["src/workout/__init__.py:__version__"]
+update_changelog_on_bump = true
+# History before 0.1.0 predates conventional commits, so there is nothing to
+# generate a changelog from.
+changelog_start_rev = "0.1.0"
+# Pre-1.0: a breaking change bumps the minor, not the major. Drop this line
+# when releasing 1.0.0, after which "!" means a major bump.
+major_version_zero = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
