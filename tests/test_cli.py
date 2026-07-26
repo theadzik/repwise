@@ -91,3 +91,23 @@ def test_import_name_and_id_are_mutually_exclusive(capsys):
 def test_check_takes_no_arguments():
     args = build_parser().parse_args(["check"])
     assert args.func.__name__ == "command_check"
+
+
+def test_push_defaults_off():
+    assert build_parser().parse_args(["update"]).push is False
+
+
+def test_push_is_accepted_with_apply():
+    args = build_parser().parse_args(["update", "--apply", "--push"])
+    assert args.apply and args.push
+
+
+def test_push_without_apply_is_refused(capsys):
+    """Nothing has been written yet, so there is nothing to send."""
+    from workout.cli import EXIT_CONFIG, command_update
+    from workout.models import Config
+
+    args = build_parser().parse_args(["update", "--push"])
+    code = command_update(args, Config({}))
+    assert code == EXIT_CONFIG
+    assert "only makes sense with --apply" in capsys.readouterr().out

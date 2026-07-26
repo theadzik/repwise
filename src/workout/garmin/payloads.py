@@ -152,6 +152,31 @@ def apply_target(step: dict[str, Any], target: Target) -> None:
             step["weightUnit"] = dict(KILOGRAM_UNIT)
 
 
+# --- sending a workout to a device -----------------------------------------
+
+
+def device_message(device_id: int, workout_id: str, name: str) -> dict[str, Any]:
+    """One entry of the device message queue, requesting a workout download.
+
+    Editing a workout in Garmin Connect is not enough to reach the watch: the
+    device only picks up a new copy when a message is queued for it, which is
+    what the Connect app's "Send to Device" button does. The watch drains the
+    queue on its next sync.
+
+    Garmin sets its own `priority` server-side, so the value sent is a hint.
+    """
+    return {
+        "deviceId": int(device_id),
+        "messageUrl": f"workout-service/workout/FIT/{workout_id}",
+        "messageType": "workouts",
+        "messageName": name,
+        "groupName": None,
+        "priority": 1,
+        "fileType": "FIT",
+        "metaDataId": int(workout_id),
+    }
+
+
 # --- logged activities -----------------------------------------------------
 
 

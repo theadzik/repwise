@@ -69,10 +69,11 @@ The main command. Reads your latest logged session and advances the targets in
 the matching Garmin workout.
 
 ```bash
-workout update                  # dry run, shows changes
-workout update --apply          # write to Garmin
-workout update --dump           # save raw JSON, change nothing
-workout update --activity 1234  # use a specific activity
+workout update                    # dry run, shows changes
+workout update --apply            # write to Garmin
+workout update --apply --push     # and send them to your watch
+workout update --dump             # save raw JSON, change nothing
+workout update --activity 1234    # use a specific activity
 workout --config other.yaml update
 ```
 
@@ -105,6 +106,39 @@ warnings - exercises that were skipped and why.
 
 Exit codes: `0` success, `1` nothing usable in the activity, `2` rate limited,
 `3` bad configuration.
+
+### Getting the change onto your watch
+
+Editing a workout in Garmin Connect **does not reach the watch on its own**. A
+plain device sync is not enough: the watch only collects a new copy when a
+message is waiting for it, which is what the Connect app's "Send to Device"
+button queues.
+
+`--push` does that for you, for every workout the run wrote:
+
+```bash
+workout update --apply --push
+```
+
+```text
+Wrote Workout B (111111111)
+
+Queued 1 send(s) to Forerunner 945.
+Sync your watch to pick up the new targets.
+```
+
+It requires `--apply` - without it nothing has been written, so there is
+nothing to send - and refuses with exit code 3 if used alone.
+
+By default every registered device gets a message. Restrict that with
+`device_ids` under `settings.garmin` if you have more than one and only want
+some of them to receive workouts.
+
+Under the hood this POSTs a JSON array to
+`/device-service/devicemessage/messages`. The endpoint is undocumented; the
+payload was captured from Connect's own request, and `device_message()` in
+`garmin/payloads.py` reproduces it. Note the body **must** be an array - a bare
+object returns HTTP 500.
 
 ### Getting started from Garmin
 
@@ -182,6 +216,7 @@ settings:
     token_store: ~/.garminconnect   # where OAuth tokens are cached
     activity_search_limit: 25       # recent activities scanned for a match
     dump_dir: .                     # where --dump and `fetch` write JSON
+    device_ids: []                  # devices --push sends to; empty means all
 
   weight_steps:        # kg added when a range is topped out, by load type
     barbell: 2.5
@@ -466,6 +501,7 @@ Fields relied on:
 | Exercise set | `weight` | Load used, in grams |
 | Exercise set | `exercises[0].name` | Which exercise the set belongs to |
 | Exercise set | `exercises[0].category` | Fallback when the name differs or is null |
+| Device message | `messageUrl`, `messageType`, `metaDataId` | Queueing a workout for the watch |
 
 Sets are modelled as a `RepeatGroupDTO` with `numberOfIterations` wrapping one
 executable step plus a rest step, so a workout holds one step per exercise, not

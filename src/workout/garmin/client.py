@@ -20,6 +20,7 @@ __all__ = ["GarminSession", "GarminConnectTooManyRequestsError", "connect", "STR
 STRENGTH = "strength_training"
 
 WORKOUTS_URL = "/workout-service/workouts"
+DEVICE_MESSAGES_URL = "/device-service/devicemessage/messages"
 
 
 class GarminSession:
@@ -57,12 +58,32 @@ class GarminSession:
             params["sportTypeKey"] = sport_type
         return self._api.connectapi(WORKOUTS_URL, params=params) or []
 
+    def devices(self) -> list[dict[str, Any]]:
+        """Registered devices, for addressing a send-to-device message."""
+        return self._api.get_devices() or []
+
+    def pending_messages(self) -> list[dict[str, Any]]:
+        """Messages queued for your devices but not yet collected."""
+        payload = self._api.connectapi(DEVICE_MESSAGES_URL) or {}
+        return payload.get("messages") or []
+
     # --- writes ---
 
     def save_workout(self, workout_id: str, payload: dict[str, Any]) -> Any:
-        """Replace a workout definition. This is the only write we perform."""
+        """Replace a workout definition."""
         url = f"/workout-service/workout/{workout_id}"
         return self._api.client.put("connectapi", url, json=payload, api=True)
+
+    def send_to_device(self, messages: list[dict[str, Any]]) -> Any:
+        """Queue device messages, the way Connect's "Send to Device" does.
+
+        Editing a workout does not reach the watch on its own; a message has to
+        be queued for the device to collect on its next sync. The body is a
+        JSON array -- a bare object is rejected.
+        """
+        return self._api.client.post(
+            "connectapi", DEVICE_MESSAGES_URL, json=messages, api=True
+        )
 
 
 def connect(settings: GarminSettings, prompt: bool = True) -> GarminSession:
