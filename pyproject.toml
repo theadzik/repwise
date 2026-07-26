@@ -23,8 +23,11 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "commitizen==4.16.5",
+    "mypy==2.3.0",
     "pre-commit==4.6.1",
     "pytest==9.1.1",
+    "ruff==0.16.0",
+    "types-PyYAML==6.0.12.20260724",
 ]
 
 [project.scripts]
@@ -52,6 +55,52 @@ changelog_start_rev = "0.1.0"
 # Pre-1.0: a breaking change bumps the minor, not the major. Drop this line
 # when releasing 1.0.0, after which "!" means a major bump.
 major_version_zero = true
+
+# Linting and formatting. The pre-commit hook and a bare `ruff check` read this
+# same section, so they cannot disagree.
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "I",       # import sorting
+    "UP",      # pyupgrade: syntax available on the minimum Python
+    "B",       # bugbear: likely bugs
+    "C4",      # comprehension rewrites
+    "SIM",     # simplifications
+    "RET",     # return-statement hygiene
+    "PIE",     # small correctness idioms
+    "Q",       # quote consistency
+    "RSE",     # raise cleanliness
+    "SLF",     # private member access
+    "BLE",     # blind except - the existing noqa comments name this rule
+    "PL",      # pylint subset
+    "RUF",     # ruff's own
+]
+ignore = [
+    # This is a CLI whose job is printing, and its errors carry the detail a
+    # user needs, so neither "no print" nor "no message in the raise" applies.
+    # T201 and EM/TRY are left unselected for the same reason.
+    #
+    # Rewriting os.path to pathlib (PTH) and rejecting relative imports (TID252)
+    # would both fight deliberate choices, so they stay unselected too.
+    "PLR2004",  # magic values: tests compare against literal reps and weights
+    "PLC0415",  # imports inside functions are deliberate here
+    "RUF022",   # __all__ is ordered by meaning, not alphabetically
+]
+
+[tool.mypy]
+files = ["src", "tests"]
+python_version = "3.11"
+
+# garminconnect ships no type information. garmin/client.py is the only module
+# that imports it, which is what keeping the adapter in one place buys.
+[[tool.mypy.overrides]]
+module = "garminconnect.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
