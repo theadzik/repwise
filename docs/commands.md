@@ -1,10 +1,20 @@
 # Commands
 
-Full reference. Every command accepts the global `--config` option:
+Full reference. Every command accepts `--config` and `--verbose`, either
+before or after the command name:
 
 ```bash
 workout --config /path/to/other.yaml update
+workout update --verbose
 ```
+
+| Option | Effect |
+| --- | --- |
+| `--config PATH` | Read this file instead of `workouts.yaml` |
+| `-v`, `--verbose` | Also show debug output, prefixed with its level and source |
+
+Results go to stdout, so they pipe and redirect; warnings and errors go to
+stderr, so they stay visible when they do.
 
 - [update](#update) - advance targets from the last session
 - [list](#list) - see your Garmin workouts

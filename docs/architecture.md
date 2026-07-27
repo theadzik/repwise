@@ -18,6 +18,7 @@ src/workout/
     importer.py            Garmin workout -> config YAML
     checker.py             compare config against Garmin
     cli.py                 argument parsing and output
+    log.py                 which stream a message lands on, and its level
     garmin/
         client.py          authentication and the Garmin session
         payloads.py        Garmin's JSON <-> our types
@@ -30,6 +31,7 @@ tests/
     test_importer.py       import and YAML rendering
     test_checker.py        drift detection
     test_cli.py            argument parsing and help
+    test_log.py            verbosity, and stdout vs stderr
 ```
 
 ## Dependencies
@@ -78,6 +80,11 @@ Three boundaries carry the weight:
 
 Everything the application talks to Garmin through is `GarminSession` in
 `garmin/client.py`, so the `garminconnect` dependency stays in one place.
+
+`log.py` sits outside those arrows. Modules log through the standard library
+and never import it; only `main()` calls `configure()`, which decides what a
+level means: INFO is the report and goes to stdout, WARNING and above are
+problems and go to stderr, DEBUG is hidden until `--verbose`.
 
 ## Data flow
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from typing import Any
@@ -22,6 +23,7 @@ from .garmin.client import (
 )
 from .garmin.payloads import performed_sets
 from .importer import describe_workout, render_config
+from .log import configure
 from .models import Config, ExerciseSpec, Workout
 from .planner import (
     ActivityNotFound,
@@ -39,6 +41,16 @@ EXIT_NOTHING_USABLE = 1
 EXIT_RATE_LIMITED = 2
 EXIT_CONFIG = 3
 
+logger = logging.getLogger(__name__)
+
+#: How `check` shows a finding: the marker that survives a plain run, and the
+#: level it is logged at, so severity outlives a redirect of stdout too.
+SEVERITY = {
+    "error": ("!!", logging.ERROR),
+    "warning": (" !", logging.WARNING),
+    "note": ("  ", logging.INFO),
+}
+
 
 def describe(spec: ExerciseSpec, target: Target) -> str:
     """Render a target the way the exercise is actually measured."""
@@ -49,20 +61,22 @@ def describe(spec: ExerciseSpec, target: Target) -> str:
     return f"{target.reps} x {target.weight:g} kg"
 
 
-def print_change(change: Change, force_flag: str | None = None) -> None:
+def report_change(change: Change, force_flag: str | None = None) -> None:
     flag = force_flag or ("*" if change.moved else " ")
-    print(
+    logger.info(
         f"{flag} {change.spec.name:<40}"
         f" {describe(change.spec, change.old):>13}"
         f"  ->  {describe(change.spec, change.new):<13} ({change.reason})"
     )
 
 
-def print_plan(plan: Plan, force_flag: str | None = None) -> None:
+def report_plan(plan: Plan, force_flag: str | None = None) -> None:
     for change in plan.changes:
-        print_change(change, force_flag)
+        report_change(change, force_flag)
     for warning in plan.warnings:
-        print(f"  ! {warning}")
+        # The marker survives the move to logging: it still sets a warning
+        # apart when the level itself is not shown.
+        logger.warning(f"  ! {warning}")
 
 
 def dump(payloads: dict[str, Any], directory: str, suffix: str) -> None:
@@ -70,8 +84,7 @@ def dump(payloads: dict[str, Any], directory: str, suffix: str) -> None:
         path = os.path.join(directory, f"dump-{label}-{suffix}.json")
         with open(path, "w") as fh:
             json.dump(payload, fh, indent=2)
-        print(f"Wrote {path}")
-    print()
+        logger.debug(f"Wrote {path}")
 
 
 def pick_activity(
@@ -103,13 +116,16 @@ def push_to_watch(session: GarminSession, workouts: list[Workout]) -> None:
     for workout in workouts:
         session.push_workout(workout.garmin_workout_id)
 
-    print(f"\nQueued {len(workouts)} send(s) to your last-used device.")
-    print("Sync your watch to pick up the new targets.")
+    logger.info("")
+    logger.info(f"Queued {len(workouts)} send(s) to your last-used device.")
+    logger.info("Sync your watch to pick up the new targets.")
 
 
 def command_update(args: argparse.Namespace, config: Config) -> int:
     if args.push and not args.apply:
-        print("--push only makes sense with --apply: there is nothing to send yet.")
+        logger.error(
+            "--push only makes sense with --apply: there is nothing to send yet."
+        )
         return EXIT_CONFIG
 
     session = connect(config.garmin)
@@ -119,8 +135,9 @@ def command_update(args: argparse.Namespace, config: Config) -> int:
     activity_name = activity.get("activityName") or ""
     workout = find_workout(config, activity_name)
 
-    print(f"Activity: {activity_name} ({activity_id})")
-    print(f"Updating: {workout.key} -> workout {workout.garmin_workout_id}\n")
+    logger.info(f"Activity: {activity_name} ({activity_id})")
+    logger.info(f"Updating: {workout.key} -> workout {workout.garmin_workout_id}")
+    logger.info("")
 
     sets_payload = session.exercise_sets(activity_id)
     payload = session.workout(workout.garmin_workout_id)
@@ -134,11 +151,11 @@ def command_update(args: argparse.Namespace, config: Config) -> int:
 
     performed = performed_sets(sets_payload)
     if not any(performed):
-        print("No working sets found in that activity; nothing to do.")
+        logger.warning("No working sets found in that activity; nothing to do.")
         return EXIT_NOTHING_USABLE
 
     plan = plan_workout(workout, payload, performed)
-    print_plan(plan)
+    report_plan(plan)
 
     plans = [plan]
 
@@ -150,11 +167,13 @@ def command_update(args: argparse.Namespace, config: Config) -> int:
     updated = sum(len(p.moved) for p in plans)
 
     if not args.apply:
-        print(f"\nDry run: {updated} step(s) would change. Re-run with --apply.")
+        logger.info("")
+        logger.info(f"Dry run: {updated} step(s) would change. Re-run with --apply.")
         return EXIT_OK
 
     if not updated:
-        print("\nNothing to write.")
+        logger.info("")
+        logger.info("Nothing to write.")
         return EXIT_OK
 
     written: list[Workout] = []
@@ -162,10 +181,13 @@ def command_update(args: argparse.Namespace, config: Config) -> int:
         if not each.moved:
             continue
         session.save_workout(each.workout.garmin_workout_id, each.payload)
-        print(f"Wrote {each.workout.key} (workout {each.workout.garmin_workout_id})")
+        logger.info(
+            f"Wrote {each.workout.key} (workout {each.workout.garmin_workout_id})"
+        )
         written.append(each.workout)
 
-    print(f"\nWrote {updated} updated step(s) to Garmin.")
+    logger.info("")
+    logger.info(f"Wrote {updated} updated step(s) to Garmin.")
 
     if args.push:
         push_to_watch(session, written)
@@ -194,8 +216,9 @@ def sync_other_workouts(
         if not plan.moved:
             continue
 
-        print(f"\nAlso in {other.key} (workout {other.garmin_workout_id}):")
-        print_plan(plan, force_flag="*")
+        logger.info("")
+        logger.info(f"Also in {other.key} (workout {other.garmin_workout_id}):")
+        report_plan(plan, force_flag="*")
         plans.append(plan)
 
     return plans
@@ -210,14 +233,14 @@ def command_fetch(args: argparse.Namespace, config: Config) -> int:
         try:
             payload = session.workout(workout_id)
         except Exception as exc:  # noqa: BLE001 - report and carry on
-            print(f"FAILED {workout_id}: {exc}")
+            logger.error(f"FAILED {workout_id}: {exc}")
             failed = True
             continue
 
         path = os.path.join(config.garmin.dump_dir, f"workout-{workout_id}.json")
         with open(path, "w") as fh:
             json.dump(payload, fh, indent=2)
-        print(f"Saved {payload.get('workoutName', '(unnamed)')} -> {path}")
+        logger.info(f"Saved {payload.get('workoutName', '(unnamed)')} -> {path}")
 
     return EXIT_NOTHING_USABLE if failed else EXIT_OK
 
@@ -228,11 +251,11 @@ def command_list(args: argparse.Namespace, config: Config) -> int:
     workouts = session.list_workouts(sport_type=sport)
 
     if not workouts:
-        print("No workouts found.")
+        logger.warning("No workouts found.")
         return EXIT_NOTHING_USABLE
 
     known = {w.garmin_workout_id for w in config}
-    print(f"{'ID':<12} {'UPDATED':<11} {'':<3}NAME")
+    logger.info(f"{'ID':<12} {'UPDATED':<11} {'':<3}NAME")
     for entry in workouts:
         workout_id = str(entry.get("workoutId"))
         updated = (entry.get("updateDate") or "")[:10]
@@ -241,9 +264,10 @@ def command_list(args: argparse.Namespace, config: Config) -> int:
         if args.all:
             kind = (entry.get("sportType") or {}).get("sportTypeKey", "?")
             name = f"{name}  [{kind}]"
-        print(f"{workout_id:<12} {updated:<11} {mark:<3}{name}")
+        logger.info(f"{workout_id:<12} {updated:<11} {mark:<3}{name}")
 
-    print(f"\n{len(workouts)} workout(s); * already in your config")
+    logger.info("")
+    logger.info(f"{len(workouts)} workout(s); * already in your config")
     return EXIT_OK
 
 
@@ -277,19 +301,23 @@ def command_import(args: argparse.Namespace, config: Config) -> int:
     text = render_config(imported)
 
     if not args.output:
+        # Config content, not a report: written straight out so that it stays
+        # redirectable and never picks up a log prefix.
         print(text)
         return EXIT_OK
 
     if os.path.exists(args.output) and not args.force:
-        print(f"{args.output} already exists. Pass --force to overwrite it.")
+        logger.error(f"{args.output} already exists. Pass --force to overwrite it.")
         return EXIT_CONFIG
 
     with open(args.output, "w") as fh:
         fh.write(text)
 
     exercises = sum(len(w.exercises) for w in imported)
-    print(f"Wrote {len(imported)} workout(s), {exercises} exercises -> {args.output}")
-    print("Check the TODO comments before using it.")
+    logger.info(
+        f"Wrote {len(imported)} workout(s), {exercises} exercises -> {args.output}"
+    )
+    logger.info("Check the TODO comments before using it.")
     return EXIT_OK
 
 
@@ -302,25 +330,44 @@ def command_check(args: argparse.Namespace, config: Config) -> int:
             payload = session.workout(workout.garmin_workout_id)
         except Exception as exc:  # noqa: BLE001 - report and carry on
             detail = f"could not fetch workout {workout.garmin_workout_id}: {exc}"
-            print(f"{workout.key}: {detail}")
+            logger.error(f"{workout.key}: {detail}")
             # A workout that cannot be read is itself an error-level finding,
             # so an unreachable workout still fails the command.
             findings.append(Finding(workout.key, detail, "error"))
             continue
 
         found = check_workout(workout, payload)
-        print(f"{workout.key} ({workout.garmin_workout_id})")
+        logger.info(f"{workout.key} ({workout.garmin_workout_id})")
         if not found:
-            print("  ok")
+            logger.info("  ok")
         for finding in found:
-            marker = {"error": "!!", "warning": " !", "note": "  "}[finding.severity]
-            print(f"  {marker} {finding.detail}")
-        print()
+            marker, level = SEVERITY[finding.severity]
+            logger.log(level, f"  {marker} {finding.detail}")
+        logger.info("")
         findings.extend(found)
 
     serious = [f for f in findings if f.severity != "note"]
-    print(f"{len(serious)} issue(s) across {len(config.workouts)} workout(s)")
+    logger.info(f"{len(serious)} issue(s) across {len(config.workouts)} workout(s)")
     return EXIT_NOTHING_USABLE if serious else EXIT_OK
+
+
+def add_verbose(
+    parser: argparse.ArgumentParser, default: Any = argparse.SUPPRESS
+) -> None:
+    """Accept -v on this parser, so it reads either side of the command.
+
+    argparse copies a subcommand's defaults back over the top-level namespace
+    once the subcommand is parsed. Only the top level therefore defaults the
+    flag; a subcommand suppresses its own default rather than writing False
+    over a -v that was given before the command.
+    """
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=default,
+        help="show debug output as well",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -349,6 +396,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config", default=DEFAULT_CONFIG, help="path to workouts.yaml"
     )
+    add_verbose(parser, default=False)
     sub = parser.add_subparsers(dest="command", required=True, metavar="command")
 
     update = sub.add_parser(
@@ -373,6 +421,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="queue the updated workouts for your watch (requires --apply)",
     )
+    add_verbose(update)
     update.set_defaults(func=command_update)
 
     fetch = sub.add_parser(
@@ -387,6 +436,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="ID",
         help="workout ids; defaults to every workout in the config",
     )
+    add_verbose(fetch)
     fetch.set_defaults(func=command_fetch)
 
     listing = sub.add_parser(
@@ -399,6 +449,7 @@ def build_parser() -> argparse.ArgumentParser:
     listing.add_argument(
         "--all", action="store_true", help="include non-strength workouts"
     )
+    add_verbose(listing)
     listing.set_defaults(func=command_list)
 
     importer = sub.add_parser(
@@ -418,6 +469,7 @@ def build_parser() -> argparse.ArgumentParser:
     importer.add_argument(
         "--force", action="store_true", help="overwrite an existing output file"
     )
+    add_verbose(importer)
     importer.set_defaults(func=command_import)
 
     check = sub.add_parser(
@@ -427,6 +479,7 @@ def build_parser() -> argparse.ArgumentParser:
         "disagree: wrong exercise names, differing set counts, and exercises "
         "present in one but not the other. Read-only.",
     )
+    add_verbose(check)
     check.set_defaults(func=command_check)
 
     return parser
@@ -434,21 +487,22 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    configure(args.verbose)
 
     try:
         config = load_config(args.config)
     except (ConfigError, OSError) as exc:
-        print(f"Configuration error: {exc}")
+        logger.error(f"Configuration error: {exc}")
         return EXIT_CONFIG
 
     try:
         return args.func(args, config)
     except GarminConnectTooManyRequestsError as exc:
-        print(f"Rate limited by Garmin: {exc}")
-        print("Your IP is temporarily blocked. Wait a while and re-run.")
+        logger.error(f"Rate limited by Garmin: {exc}")
+        logger.error("Your IP is temporarily blocked. Wait a while and re-run.")
         return EXIT_RATE_LIMITED
     except ActivityNotFound as exc:
-        print(exc)
+        logger.error(str(exc))
         return EXIT_NOTHING_USABLE
 
 

@@ -6,6 +6,7 @@ The rest of the application goes through `GarminSession` rather than touching
 
 from __future__ import annotations
 
+import logging
 import os
 from getpass import getpass
 from typing import Any
@@ -15,6 +16,8 @@ from garminconnect import Garmin, GarminConnectTooManyRequestsError
 from ..models import GarminSettings
 
 __all__ = ["GarminSession", "GarminConnectTooManyRequestsError", "connect", "STRENGTH"]
+
+logger = logging.getLogger(__name__)
 
 #: Garmin's sportTypeKey for strength training, the only kind this tool handles.
 STRENGTH = "strength_training"
@@ -110,10 +113,10 @@ def connect(settings: GarminSettings, prompt: bool = True) -> GarminSession:
         try:
             api = Garmin()
             api.login(store)
-            print("Resumed cached session.")
+            logger.debug("Resumed cached session.")
             return GarminSession(api, settings)
         except Exception as exc:  # noqa: BLE001 - any failure means "log in again"
-            print(f"Cached session unusable ({exc}); logging in again.")
+            logger.warning(f"Cached session unusable ({exc}); logging in again.")
 
     if not prompt:
         raise RuntimeError(f"No usable Garmin session in {store}")
@@ -124,5 +127,5 @@ def connect(settings: GarminSettings, prompt: bool = True) -> GarminSession:
     api = Garmin(email, password, prompt_mfa=lambda: input("MFA code: ").strip())
     # Passing the token store makes login() persist the tokens itself.
     api.login(store)
-    print(f"Logged in. Tokens cached in {store}")
+    logger.info(f"Logged in. Tokens cached in {store}")
     return GarminSession(api, settings)

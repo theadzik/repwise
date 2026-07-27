@@ -75,7 +75,8 @@ keeping an exercise in sync when it appears in more than one workout.
 | `workout check` | Report where your config and Garmin disagree |
 | `workout fetch` | Download raw workout JSON |
 
-Full flags and output for each are in [Commands](docs/commands.md).
+Any command takes `-v` to show debug output as well. Full flags and output for
+each are in [Commands](docs/commands.md).
 
 ## Your routine
 
