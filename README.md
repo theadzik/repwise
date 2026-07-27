@@ -44,8 +44,9 @@ The full walkthrough is in [Getting started](docs/getting-started.md).
 
 ## What it does
 
-After each session it compares what you performed against the target stored in
-Garmin and picks the next one:
+It compares what you performed against the target stored in Garmin and picks
+the next one. Every workout in your config is advanced from its own latest
+session, so training A and then B and running once brings both up to date:
 
 1. Start at the bottom of the rep range.
 2. Add a rep to every set each session.
@@ -68,7 +69,7 @@ keeping an exercise in sync when it appears in more than one workout.
 
 | Command | What it does |
 | --- | --- |
-| `workout update` | Advance targets from your last session. Dry run by default |
+| `workout update` | Advance targets from the latest session of each workout. Dry run by default |
 | `workout update --apply --push` | Write the new targets and send them to your watch |
 | `workout list` | Show your Garmin workouts and their ids |
 | `workout import` | Build a `workouts.yaml` from your Garmin workouts |

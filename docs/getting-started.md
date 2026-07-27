@@ -83,9 +83,9 @@ Train, and let the watch sync. Then:
 workout update
 ```
 
-This reads your most recent matching activity, compares what you actually
-lifted against the targets currently stored in Garmin, and prints what it would
-change:
+This reads the most recent matching activity for each workout in your config,
+compares what you actually lifted against the targets currently stored in
+Garmin, and prints what it would change:
 
 ```text
 Activity: Workout B (1234567890)
