@@ -107,14 +107,17 @@ An `update` run in order:
 
 1. Load and validate `workouts.yaml`.
 2. Authenticate, reusing cached tokens if present.
-3. Find the latest activity whose name starts with one of the
-   `activity_prefixes`, or use `--activity`.
-4. Map it to a workout, and fetch both the activity's exercise sets and the
-   Garmin workout definition.
-5. For each step in the workout, match it to an exercise and compute the next
-   target.
+3. For every workout, find the latest activity whose name starts with one of
+   its `activity_prefixes`. With `--activity`, take just that one instead.
+4. Order those sessions oldest first, so replaying them matches what running
+   the tool after each would have done.
+5. For each in turn, fetch the activity's exercise sets and the Garmin workout
+   definition, match every step to an exercise, and compute the next target.
 6. Propagate any target that moved into other workouts sharing that exercise.
 7. Print the plan. With `--apply`, PUT the mutated workouts back.
+
+A workout definition is fetched at most once per run and mutated in place, so
+its own session and a sync from a later one both survive a single write.
 
 ## Exercise matching
 

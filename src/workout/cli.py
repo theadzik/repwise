@@ -87,23 +87,77 @@ def dump(payloads: dict[str, Any], directory: str, suffix: str) -> None:
         logger.debug(f"Wrote {path}")
 
 
-def pick_activity(
+class Payloads:
+    """Every workout definition this run touches, fetched at most once.
+
+    A workout can be planned from its own session and then have a target
+    synced into it from a later one, and both mutate the payload in place. Two
+    separately fetched copies would mean the second write silently undid the
+    first, so everything shares one dict per workout.
+    """
+
+    def __init__(self, session: GarminSession) -> None:
+        self._session = session
+        self._fetched: dict[str, dict[str, Any]] = {}
+
+    def __getitem__(self, workout_id: str) -> dict[str, Any]:
+        if workout_id not in self._fetched:
+            self._fetched[workout_id] = self._session.workout(workout_id)
+        return self._fetched[workout_id]
+
+
+def pick_sessions(
     session: GarminSession, config: Config, activity_id: str | None
-) -> dict[str, Any]:
-    """The activity to learn from: the one asked for, or the latest match."""
+) -> list[tuple[Workout, dict[str, Any]]]:
+    """The sessions to learn from, oldest first.
+
+    With --activity, only the one named. Otherwise the latest activity for
+    every workout, so training A and then B and running once advances both
+    rather than only whichever came last.
+
+    Oldest first is what makes the result independent of how long you leave
+    between runs: the sessions are replayed in the order they happened, which
+    is exactly what running the tool after each of them would have done. It
+    also settles a shared exercise in favour of the most recent session, which
+    should have the last word on it.
+    """
     if activity_id:
-        return session.activity(activity_id)
+        activity = session.activity(activity_id)
+        return [(find_workout(config, activity.get("activityName") or ""), activity)]
 
-    prefixes = [p for w in config for p in w.activity_prefixes]
-    for activity in session.recent_activities():
-        name = (activity.get("activityName") or "").lower()
-        if any(name.startswith(prefix) for prefix in prefixes):
-            return activity
+    # Garmin returns activities newest first, so the first match for a workout
+    # is its latest session, and a lower position means more recent.
+    activities = session.recent_activities()
+    found: list[tuple[int, Workout, dict[str, Any]]] = []
+    for workout in config:
+        for position, activity in enumerate(activities):
+            name = (activity.get("activityName") or "").lower()
+            if any(name.startswith(prefix) for prefix in workout.activity_prefixes):
+                found.append((position, workout, activity))
+                break
 
-    raise ActivityNotFound(
-        f"No recent activity matching {prefixes}. "
-        "Pass --activity <id> to choose one explicitly."
-    )
+    if not found:
+        prefixes = [p for w in config for p in w.activity_prefixes]
+        raise ActivityNotFound(
+            f"No recent activity matching {prefixes}. "
+            "Pass --activity <id> to choose one explicitly."
+        )
+
+    found.sort(key=lambda each: each[0], reverse=True)
+    return [(workout, activity) for _, workout, activity in found]
+
+
+def changed_steps(plans: list[Plan]) -> set[tuple[str, str]]:
+    """Which steps moved, counted once however many plans moved them.
+
+    Two sessions can both decide a shared exercise, and the second decision is
+    a second Change on the same step rather than another step changing.
+    """
+    return {
+        (plan.workout.garmin_workout_id, change.spec.garmin_name)
+        for plan in plans
+        for change in plan.moved
+    }
 
 
 def push_to_watch(session: GarminSession, workouts: list[Workout]) -> None:
@@ -130,41 +184,49 @@ def command_update(args: argparse.Namespace, config: Config) -> int:
 
     session = connect(config.garmin)
 
-    activity = pick_activity(session, config, args.activity)
-    activity_id = str(activity["activityId"])
-    activity_name = activity.get("activityName") or ""
-    workout = find_workout(config, activity_name)
+    payloads = Payloads(session)
+    sessions = pick_sessions(session, config, args.activity)
 
-    logger.info(f"Activity: {activity_name} ({activity_id})")
-    logger.info(f"Updating: {workout.key} -> workout {workout.garmin_workout_id}")
-    logger.info("")
+    plans: list[Plan] = []
+    usable = False
 
-    sets_payload = session.exercise_sets(activity_id)
-    payload = session.workout(workout.garmin_workout_id)
+    for position, (workout, activity) in enumerate(sessions):
+        activity_id = str(activity["activityId"])
+        if position:
+            logger.info("")
+        logger.info(f"Activity: {activity.get('activityName') or ''} ({activity_id})")
+        logger.info(f"Updating: {workout.key} -> workout {workout.garmin_workout_id}")
+        logger.info("")
 
-    if args.dump:
-        dump(
-            {"sets": sets_payload, "workout": payload},
-            config.garmin.dump_dir,
-            activity_id,
-        )
+        sets_payload = session.exercise_sets(activity_id)
+        payload = payloads[workout.garmin_workout_id]
 
-    performed = performed_sets(sets_payload)
-    if not any(performed):
-        logger.warning("No working sets found in that activity; nothing to do.")
+        if args.dump:
+            dump(
+                {"sets": sets_payload, "workout": payload},
+                config.garmin.dump_dir,
+                activity_id,
+            )
+
+        performed = performed_sets(sets_payload)
+        if not any(performed):
+            logger.warning("No working sets found in that activity; nothing to do.")
+            continue
+        usable = True
+
+        plan = plan_workout(workout, payload, performed)
+        report_plan(plan)
+        plans.append(plan)
+
+        # Anything that moved must move everywhere that exercise appears.
+        targets = decided_targets(plan)
+        if targets:
+            plans.extend(sync_other_workouts(payloads, config, workout, targets))
+
+    if not usable:
         return EXIT_NOTHING_USABLE
 
-    plan = plan_workout(workout, payload, performed)
-    report_plan(plan)
-
-    plans = [plan]
-
-    # Anything that moved must move everywhere that exercise appears.
-    targets = decided_targets(plan)
-    if targets:
-        plans.extend(sync_other_workouts(session, config, workout, targets))
-
-    updated = sum(len(p.moved) for p in plans)
+    updated = len(changed_steps(plans))
 
     if not args.apply:
         logger.info("")
@@ -176,10 +238,15 @@ def command_update(args: argparse.Namespace, config: Config) -> int:
         logger.info("Nothing to write.")
         return EXIT_OK
 
+    # A workout can appear in more than one plan - its own, plus a sync from a
+    # later session - but every plan mutated the same payload, so one write
+    # carries all of them.
     written: list[Workout] = []
+    saved: set[str] = set()
     for each in plans:
-        if not each.moved:
+        if not each.moved or each.workout.garmin_workout_id in saved:
             continue
+        saved.add(each.workout.garmin_workout_id)
         session.save_workout(each.workout.garmin_workout_id, each.payload)
         logger.info(
             f"Wrote {each.workout.key} (workout {each.workout.garmin_workout_id})"
@@ -196,7 +263,7 @@ def command_update(args: argparse.Namespace, config: Config) -> int:
 
 
 def sync_other_workouts(
-    session: GarminSession,
+    payloads: Payloads,
     config: Config,
     source: Workout,
     targets: dict[str, Target],
@@ -211,7 +278,7 @@ def sync_other_workouts(
         if not any(normalise(s.garmin_name) in targets for s in other.exercises):
             continue
 
-        payload = session.workout(other.garmin_workout_id)
+        payload = payloads[other.garmin_workout_id]
         plan = plan_sync(other, payload, targets, source.key)
         if not plan.moved:
             continue

@@ -25,8 +25,8 @@ stderr, so they stay visible when they do.
 
 ## update
 
-The main command. Reads your latest logged session and advances the targets in
-the matching Garmin workout.
+The main command. Reads the latest logged session of every workout in your
+config and advances the targets in each.
 
 ```bash
 workout update                    # dry run, shows changes
@@ -41,20 +41,34 @@ workout update --activity 1234    # use a specific activity
 | *(none)* | Dry run. Prints the plan and writes nothing |
 | `--apply` | Write the new targets to Garmin Connect |
 | `--push` | Queue the written workouts for your devices. Requires `--apply` |
-| `--activity ID` | Use this activity instead of the most recent match |
+| `--activity ID` | Update from this one activity instead of scanning |
 | `--dump` | Also save the raw activity and workout JSON |
 
 **Dry run is the default.** Nothing is sent to Garmin without `--apply`.
 
-### Choosing the activity
+### Choosing the activities
 
-Without `--activity`, the most recent activity whose name starts with one of a
-workout's `activity_prefixes` is used, searching back
-`settings.garmin.activity_search_limit` activities. Prefixes are matched
-case-insensitively, so `["workout a", "trening a"]` catches either spelling.
+Without `--activity`, each workout gets its own most recent activity: the
+latest one whose name starts with any of that workout's `activity_prefixes`,
+searching back `settings.garmin.activity_search_limit` activities. Prefixes are
+matched case-insensitively, so `["workout a", "trening a"]` catches either
+spelling.
 
-Older sessions need `--activity` with the id, which `--dump` filenames and
-Garmin Connect URLs both contain.
+**Train A, then B, then run once and both advance.** You do not have to run the
+tool between sessions. A workout with no matching activity in that window is
+simply left out, and only a run that matches nothing at all is an error.
+
+Sessions are replayed oldest first, so the result is the same as having run the
+tool after each of them. That also settles [shared
+exercises](progression.md#shared-exercises): where two sessions both moved one,
+the more recent has the last word.
+
+Only the *latest* activity per workout is read. If you trained the same workout
+twice since the last run, the earlier one is skipped - replay it with
+`--activity` and its id, which `--dump` filenames and Garmin Connect URLs both
+contain. Do that before the later session's run, or apply them in order.
+Re-processing an activity is safe: the second pass reads its own applied target
+and reports "missed target ... repeat" rather than advancing again.
 
 ### Reading the output
 
@@ -64,13 +78,21 @@ Updating: Workout B -> workout 111111111
 
 * Barbell Deadlift          10 x 60 kg  ->  6 x 65 kg    (hit 10 on every set, +5 kg and reset to 6)
   Sit-up                       11 reps  ->  11 reps      (missed target (10/11 on worst set), repeat)
-  ! Standing Calf Raise: not found in the activity, skipped
+* Standing Calf Raise         12 x 0 kg  ->  12 x 20 kg  (add 1 rep (12 -> 13))
 
 Also in Workout A (workout 222222222):
 * Standing Calf Raise         12 x 0 kg  ->  12 x 20 kg  (synced from Workout B)
 
-Dry run: 3 step(s) would change. Re-run with --apply.
+Activity: Workout A (1234567891)
+Updating: Workout A -> workout 222222222
+
+* Barbell Back Squat         7 x 30 kg  ->  8 x 30 kg    (add 1 rep (7 -> 8))
+  ! Plank: not found in the activity, skipped
+
+Dry run: 4 step(s) would change. Re-run with --apply.
 ```
+
+One block per workout that had a session, oldest first.
 
 | Marker | Meaning |
 | --- | --- |

@@ -131,6 +131,10 @@ Also in Workout A (workout 222222222):
 The decision is copied verbatim rather than recomputed against the other
 workout's history, which is what keeps the copies identical.
 
+When one run covers several sessions, they are replayed oldest first, so if two
+of them moved the same shared exercise the more recent session's decision is
+the one that stands.
+
 Matching uses the same name-then-category rule as everywhere else, so
 `garmin_name` must agree between the two entries. A shared exercise must also
 have the same `rep_low`, `rep_high` and `rep_step` everywhere; the config is
