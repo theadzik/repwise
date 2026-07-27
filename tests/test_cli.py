@@ -104,12 +104,34 @@ def test_push_is_accepted_with_apply():
     assert args.apply and args.push
 
 
-def test_push_without_apply_is_refused(capsys):
+def test_push_without_apply_is_refused(caplog):
     """Nothing has been written yet, so there is nothing to send."""
+    import logging
+
     from workout.cli import EXIT_CONFIG, command_update
     from workout.models import Config
 
     args = build_parser().parse_args(["update", "--push"])
-    code = command_update(args, Config({}))
+    with caplog.at_level(logging.ERROR):
+        code = command_update(args, Config({}))
     assert code == EXIT_CONFIG
-    assert "only makes sense with --apply" in capsys.readouterr().out
+    assert "only makes sense with --apply" in caplog.text
+
+
+def test_verbose_is_off_by_default():
+    assert build_parser().parse_args(["update"]).verbose is False
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["-v", "update"],
+        ["--verbose", "update"],
+        ["update", "-v"],
+        ["update", "--verbose"],
+    ],
+    ids=["short-before", "long-before", "short-after", "long-after"],
+)
+def test_verbose_is_accepted_on_either_side_of_the_command(argv):
+    """A subcommand default must not overwrite a flag given before it."""
+    assert build_parser().parse_args(argv).verbose is True

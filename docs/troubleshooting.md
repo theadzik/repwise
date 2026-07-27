@@ -17,6 +17,13 @@ Delete that directory to force a fresh login.
 
 Credentials are never stored by this tool - only the tokens Garmin issues.
 
+Reusing a cached session is routine, so it is only reported under `--verbose`:
+
+```text
+$ workout list -v
+DEBUG   workout.garmin.client: Resumed cached session.
+```
+
 ## Common symptoms
 
 | Symptom | Cause and fix |
