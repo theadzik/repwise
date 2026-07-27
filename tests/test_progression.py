@@ -95,6 +95,12 @@ def test_overshoot_on_some_sets_does_not_accelerate():
 def test_overshoot_on_every_set_advances_by_what_was_done():
     target, why = next_target(SQUAT, Target(7, 20.0), [P(8, 20.0)] * 4)
     assert target == Target(9, 20.0), why
+    assert "beat target (8 on every set vs 7)" in why
+
+
+def test_matching_the_target_exactly_does_not_mention_beating_it():
+    _, why = next_target(SQUAT, Target(7, 20.0), [P(7, 20.0)] * 4)
+    assert "beat target" not in why
 
 
 def test_reaching_top_of_range_adds_weight_even_if_target_was_lower():
@@ -146,6 +152,29 @@ def test_full_sets_at_new_weight_progress_from_there():
 def test_new_weight_at_top_of_range_still_adds_load():
     target, why = next_target(FOUR_SET_SQUAT, Target(7, 20.0), [P(10, 22.5)] * 4)
     assert target == Target(6, 25.0), why
+
+
+def test_bottom_of_range_to_top_at_a_heavier_load_adds_load_again():
+    """Planned 6 x 20, did 10 x 22.5: the session's load is the new baseline."""
+    target, why = next_target(FOUR_SET_SQUAT, Target(6, 20.0), [P(10, 22.5)] * 4)
+    assert target == Target(6, 25.0), why
+    assert why == (
+        "hit 10 on every set at 22.5 kg (planned 20 kg), +2.5 kg and reset to 6"
+    )
+
+
+def test_top_of_range_at_a_heavier_load_adds_load_from_what_was_lifted():
+    """Planned 10 x 20, did 10 x 22.5: step up from 22.5, not from 20."""
+    target, why = next_target(FOUR_SET_SQUAT, Target(10, 20.0), [P(10, 22.5)] * 4)
+    assert target == Target(6, 25.0), why
+    assert why == (
+        "hit 10 on every set at 22.5 kg (planned 20 kg), +2.5 kg and reset to 6"
+    )
+
+
+def test_top_of_range_at_the_planned_load_does_not_mention_the_load():
+    _, why = next_target(FOUR_SET_SQUAT, Target(10, 20.0), [P(10, 20.0)] * 4)
+    assert why == "hit 10 on every set, +2.5 kg and reset to 6"
 
 
 def test_dropping_weight_rebases_downward():
