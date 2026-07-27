@@ -107,9 +107,13 @@ def next_target(
                 Target(spec.rep_high, weight),
                 "at top of range (bodyweight, add load or hold)",
             )
+        # The step goes on top of the load actually used, so a session at a
+        # different weight moves the prescription by more than one step. Name
+        # what was planned, otherwise the jump looks arbitrary.
+        lifted = f" at {weight:g} kg (planned {current.weight:g} kg)" if rebased else ""
         return (
             Target(spec.rep_low, weight + spec.weight_step),
-            f"hit {floor} on every set, +{spec.weight_step:g} kg "
+            f"hit {floor} on every set{lifted}, +{spec.weight_step:g} kg "
             f"and reset to {spec.rep_low}",
         )
 
@@ -118,7 +122,14 @@ def next_target(
     moved = f" at {weight:g} kg" if rebased else ""
     reps = min(floor + spec.rep_step, spec.rep_high)
     plural = "" if spec.rep_step == 1 else "s"
+
+    # The step is taken from what was performed, not from the stored target, so
+    # overshooting the target moves the prescription by more than one step. Say
+    # where the new baseline came from, otherwise the jump looks arbitrary.
+    beat = ""
+    if not rebased and floor > current.reps:
+        beat = f"beat target ({floor} on every set vs {current.reps}), "
     return (
         Target(reps, weight),
-        f"add {spec.rep_step} rep{plural} ({floor} -> {reps}){moved}",
+        f"{beat}add {spec.rep_step} rep{plural} ({floor} -> {reps}){moved}",
     )
