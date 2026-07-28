@@ -187,8 +187,8 @@ workout check
 ```
 
 Compares your config against the Garmin workouts and reports where they
-disagree: an exercise renamed in the Garmin app, a set count changed, an
-exercise present in one but not the other.
+disagree: an exercise renamed in the Garmin app, a set count or rest time
+changed, an exercise present in one but not the other.
 
 Worth running occasionally, because a wrong `garmin_name` does not fail loudly -
 matching falls back to `garmin_category`, so the run keeps working until the

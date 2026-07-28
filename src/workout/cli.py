@@ -446,10 +446,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="Advance Garmin strength workout targets using double progression.",
         epilog=(
             "examples:\n"
-            "  workout update            show what the last session earned\n"
+            "  workout update            show what your latest sessions earned\n"
             "  workout update --apply    write those targets back to Garmin\n"
             "  workout update --dump     save the raw Garmin JSON, change nothing\n"
             "  workout update --apply --push   also send them to your watch\n"
+            "  workout update --activity 1234  replay one session you skipped\n"
             "  workout fetch             download the workout definitions\n"
             "  workout list              show your Garmin workouts and ids\n"
             "  workout import -o f.yaml  build config from Garmin workouts\n"
@@ -468,20 +469,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     update = sub.add_parser(
         "update",
-        help="advance targets from the last session",
-        description="Read the most recent matching activity, work out the next "
-        "target for every exercise, and show the plan. Nothing is sent to "
-        "Garmin unless --apply is given. A target that moves is also synced "
-        "into any other workout containing that exercise. Editing a workout "
-        "does not reach the watch by itself, so --push queues it for the device "
-        "to collect on its next sync.",
+        help="advance targets from your latest sessions",
+        description="Take the most recent matching activity of every workout in "
+        "your config, work out the next target for each exercise, and show the "
+        "plan. Training A and then B and running once advances both: the "
+        "sessions are replayed oldest first, so the result is the same as "
+        "having run this after each of them. Nothing is sent to Garmin unless "
+        "--apply is given. A target that moves is also synced into any other "
+        "workout containing that exercise. Editing a workout does not reach the "
+        "watch by itself, so --push queues it for the device to collect on its "
+        "next sync.",
     )
     update.add_argument("--apply", action="store_true", help="write changes to Garmin")
     update.add_argument(
-        "--activity", metavar="ID", help="activity id to use instead of the latest"
+        "--activity",
+        metavar="ID",
+        help="update from this one activity instead of scanning for each "
+        "workout's latest",
     )
     update.add_argument(
-        "--dump", action="store_true", help="also save the raw Garmin JSON payloads"
+        "--dump",
+        action="store_true",
+        help="also save the raw Garmin JSON payloads to dump_dir",
     )
     update.add_argument(
         "--push",
@@ -494,8 +503,9 @@ def build_parser() -> argparse.ArgumentParser:
     fetch = sub.add_parser(
         "fetch",
         help="download workout definitions as JSON",
-        description="Save workout definitions as JSON, for inspecting Garmin's "
-        "payloads or checking connectivity.",
+        description="Save workout definitions as JSON into "
+        "settings.garmin.dump_dir, for inspecting Garmin's payloads or checking "
+        "connectivity.",
     )
     fetch.add_argument(
         "workout_ids",
@@ -521,14 +531,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     importer = sub.add_parser(
         "import",
-        help="generate config from a Garmin workout",
+        help="generate config from your Garmin workouts",
         description="Read workouts built in Garmin Connect and print them as "
         "workouts.yaml content. Garmin stores a single target rather than a rep "
         "range and records no load type, so those are inferred and marked TODO. "
         "Writes to stdout unless -o is given; your config is never modified.",
     )
     picker = importer.add_mutually_exclusive_group()
-    picker.add_argument("--name", help="only workouts whose name contains this")
+    picker.add_argument(
+        "--name", help="only workouts whose name contains this, ignoring case"
+    )
     picker.add_argument("--id", metavar="ID", help="only this workout id")
     importer.add_argument(
         "-o", "--output", metavar="PATH", help="write to this file instead of stdout"
@@ -543,8 +555,9 @@ def build_parser() -> argparse.ArgumentParser:
         "check",
         help="compare your config against Garmin",
         description="Report where workouts.yaml and the Garmin workouts "
-        "disagree: wrong exercise names, differing set counts, and exercises "
-        "present in one but not the other. Read-only.",
+        "disagree: wrong exercise names, differing set counts and rest times, "
+        "and exercises present in one but not the other. Read-only, and exits "
+        "non-zero if anything worse than a note is found.",
     )
     add_verbose(check)
     check.set_defaults(func=command_check)
