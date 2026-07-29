@@ -29,6 +29,17 @@ GRAMS_PER_KG = 1000.0
 #: Written onto a step that has a weight but no unit of its own.
 KILOGRAM_UNIT = {"unitId": 8, "unitKey": "kilogram", "factor": GRAMS_PER_KG}
 
+#: Garmin's per-step notes field. Connect labels it "Notes" and the watch
+#: surfaces it as WorkoutStepInfo.notes; in the JSON it is `description`, one
+#: per ExecutableStepDTO, null until something writes it.
+NOTE_FIELD = "description"
+
+#: The shape ExerciseSpec.note renders. Used to tell a note this tool wrote
+#: from a cue the user typed, so that only the former is ever overwritten.
+GENERATED_NOTE = re.compile(
+    r"^\d+-\d+ (?:reps|s)(?: by \d+)? \| (?:bodyweight|\+[\d.]+ kg)$"
+)
+
 
 def normalise(name: str) -> str:
     """Reduce a name to letters and digits for loose matching."""
@@ -140,6 +151,16 @@ def step_target(step: dict[str, Any], time_based: bool = False) -> Target | None
     raw = step.get("weightValue")
     kg = 0.0 if raw is None else float(raw) * step_weight_factor(step) / GRAMS_PER_KG
     return Target(int(value), round(kg, 3))
+
+
+def step_note(step: dict[str, Any]) -> str:
+    """The step's notes field. Absent, null and empty all read as no note."""
+    return step.get(NOTE_FIELD) or ""
+
+
+def apply_note(step: dict[str, Any], text: str) -> None:
+    """Write the notes field of a workout step, in place."""
+    step[NOTE_FIELD] = text
 
 
 def apply_target(step: dict[str, Any], target: Target) -> None:

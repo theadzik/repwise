@@ -1,10 +1,12 @@
 """Matching workout steps to exercises, and planning the updates."""
 
+from dataclasses import replace
+
 import pytest
 from conftest import spec
 from test_payloads import active, rep_step, workout
 
-from workout.garmin.payloads import performed_sets, step_target
+from workout.garmin.payloads import performed_sets, step_note, step_target
 from workout.models import Config, Workout
 from workout.planner import (
     ActivityNotFound,
@@ -154,6 +156,73 @@ def test_plan_does_not_write_back_a_load_below_the_range():
     assert not plan.moved, "the 4 kg was not earned"
     steps = payload["workoutSegments"][0]["workoutSteps"]
     assert step_target(next(iter(steps))) == Target(13, 3.0), "still 13 x 3 kg"
+
+
+# --- notes ----------------------------------------------------------------
+
+
+def test_plan_writes_the_programming_into_the_step_note():
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0))
+    performed = performed_sets(
+        {"exerciseSets": [active("BARBELL_BACK_SQUAT", "SQUAT", 7, 20000.0)] * 3}
+    )
+    plan = plan_workout(a_workout(), payload, performed)
+
+    step = next(iter(payload["workoutSegments"][0]["workoutSteps"]))
+    assert step_note(step) == "6-10 reps | +2.5 kg"
+    assert plan.notes == ["Barbell Back Squat"]
+
+
+def test_note_is_written_even_when_the_exercise_was_not_performed():
+    """The note describes the programming, not the session, so a skipped
+    exercise still gets one."""
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0))
+    plan = plan_workout(a_workout(), payload, ({}, {}))
+
+    assert plan.changes == [], "nothing was logged, so no target moved"
+    assert plan.notes == ["Barbell Back Squat"]
+    assert plan.writable, "a note alone is worth writing"
+
+
+def test_an_up_to_date_note_is_left_alone():
+    """Idempotent: a second run must not re-save the workout for nothing."""
+    step = rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0)
+    step["description"] = SQUAT.note
+    plan = plan_workout(a_workout(), workout(step), ({}, {}))
+
+    assert plan.notes == []
+    assert not plan.writable
+
+
+def test_a_stale_generated_note_is_replaced():
+    """Editing workouts.yaml is the whole reason this has to be rewritable."""
+    widened = replace(LATERAL, rep_high=20)
+    step = rep_step("DUMBBELL_LATERAL_RAISE", "LATERAL_RAISE", 13, 3.0)
+    step["description"] = LATERAL.note  # "12-15 reps | +1 kg", before widening
+    plan = plan_workout(a_workout(exercises=[widened]), workout(step), ({}, {}))
+
+    assert step_note(step) == "12-20 reps | +1 kg"
+    assert plan.notes == ["Dumbbell Lateral Raise"]
+
+
+def test_a_hand_written_note_is_never_overwritten():
+    """Losing a coaching cue you typed into Connect would be silent, so the
+    tool reports it and keeps its hands off."""
+    step = rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0)
+    step["description"] = "knees out, brace before the descent"
+    plan = plan_workout(a_workout(), workout(step), ({}, {}))
+
+    assert step_note(step) == "knees out, brace before the descent"
+    assert plan.notes == []
+    assert any("has its own note" in w for w in plan.warnings)
+
+
+def test_notes_reach_a_workout_that_only_receives_a_sync():
+    payload = workout(rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 12, 0.0))
+    targets = {"weightedstandingcalfraise": Target(12, 20.0)}
+
+    plan = plan_sync(a_workout("Workout B", "2", [CALF]), payload, targets, "Workout A")
+    assert plan.notes == ["Weighted Standing Calf Raise"]
 
 
 # --- syncing shared exercises ---------------------------------------------

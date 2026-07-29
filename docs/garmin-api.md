@@ -44,6 +44,7 @@ weight onto such a step has to set the unit explicitly.
 | Workout step | `endCondition.conditionTypeKey` | `reps` normally, `time` for timed holds |
 | Workout step | `endConditionValue` | Current and new rep or second target |
 | Workout step | `weightValue`, `weightUnit` | Current and new load |
+| Workout step | `description` | The step's notes, see below |
 | Exercise set | `setType == "ACTIVE"` | Skipping rest sets |
 | Exercise set | `repetitionCount` | Reps performed |
 | Exercise set | `duration` | Seconds held, for timed exercises |
@@ -51,6 +52,32 @@ weight onto such a step has to set the unit explicitly.
 | Exercise set | `exercises[0].name` | Which exercise the set belongs to |
 | Exercise set | `exercises[0].category` | Fallback when the name differs or is null |
 | Device message | `messageUrl`, `messageType`, `metaDataId` | Queueing a workout for the watch |
+
+## Notes are called `description`
+
+The per-step notes field - what Garmin Connect labels **Notes** on a step, and
+what the watch reads as `WorkoutStepInfo.notes` - is `description` in the JSON.
+There is no field named `notes`. One sits on every `ExecutableStepDTO`,
+including rest steps, and there is a second, unrelated `description` at the top
+level of the workout, which is the workout's own note rather than a step's.
+
+It is `null` until something writes it, and `""` once Connect has opened and
+cleared it, so absent, null and empty all have to read as "no note".
+
+Verified by round-trip against a real account rather than by inference: writing
+a value, saving with `update_workout`, and fetching the workout back returns it
+unchanged.
+
+```text
+workoutSegments[].workoutSteps[]        <- RepeatGroupDTO
+  └── workoutSteps[]                    <- ExecutableStepDTO
+        description: "6-10 reps | +5 kg"
+```
+
+Because it is a single free-text field with no structure, writing to it means
+overwriting whatever was there. `GENERATED_NOTE` in `payloads.py` matches the
+shape this tool renders, which is what lets it tell its own note from one you
+typed and leave the latter alone.
 
 ## Sets are repeat groups
 

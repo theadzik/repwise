@@ -65,6 +65,10 @@ Three things it handles that a spreadsheet would not:
   3 kg pair was gone, come up short of the range, and your target stays where it
   was rather than following you onto a weight that was too heavy.
 
+Each exercise also gets a one-line note on its Garmin step, such as
+`6-10 reps | +5 kg`, so the watch shows what you are working towards and not
+just today's target. Notes you wrote yourself are left alone.
+
 It also covers timed holds like planks, exercises the watch counts per side, and
 keeping an exercise in sync when it appears in more than one workout.
 [Progression](docs/progression.md) explains every decision it can make.

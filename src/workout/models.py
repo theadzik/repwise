@@ -38,6 +38,20 @@ class ExerciseSpec:
     def time_based(self) -> bool:
         return self.unit == "seconds"
 
+    @property
+    def note(self) -> str:
+        """How this exercise is programmed, for the step's notes field.
+
+        The target already tells you what to do today; this says what you are
+        working towards and what happens when you get there. Kept to one short
+        line, because it is read on a watch mid-set.
+        """
+        span = f"{self.rep_low}-{self.rep_high} {'s' if self.time_based else 'reps'}"
+        if self.rep_step != 1:
+            span += f" by {self.rep_step}"
+        load = "bodyweight" if self.bodyweight else f"+{self.weight_step:g} kg"
+        return f"{span} | {load}"
+
 
 @dataclass(frozen=True)
 class Workout:

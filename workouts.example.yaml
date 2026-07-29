@@ -27,6 +27,10 @@
 #   unit            reps (default) or seconds for timed holds
 #   video           reference link (documentation only)
 #
+# The range and the weight step are also summarised into each Garmin step's
+# notes field -- "6-10 reps | +5 kg" -- so the watch shows what you are working
+# towards. Editing them here is enough to refresh it on the next run.
+#
 # To find your own values:
 #   1. Build the workouts in Garmin Connect.
 #   2. Take each garmin_workout_id from its Connect URL, e.g.
