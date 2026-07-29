@@ -86,11 +86,12 @@ data and returns plain data, which is the point of keeping it pure.
 | --- | --- |
 | The routine | `workouts.yaml`. Nothing else needs touching |
 | What a new user starts from | `workouts.example.yaml`, which the tests validate |
-| A progression rule | `next_target()` in `progression.py`, plus `test_progression.py` |
+| A progression rule | `next_target()` in `domain/progression.py`, plus `test_progression.py` |
 | Garmin changed its schema | `garmin/payloads.py` only |
-| A new setting | `workouts.yaml` under `settings`, the field on `GarminSettings` in `models.py`, and reading it in `config.py`. Nothing should be hardcoded outside the config |
+| A new setting | `workouts.yaml` under `settings`, the field on `GarminSettings` in `domain/models.py`, and reading it in `config.py`. Nothing should be hardcoded outside the config |
 | A new load type | `settings.weight_steps`, otherwise loading rejects any exercise using it. A single exercise can instead set its own `weight_step` |
-| A new command | A subparser in `cli.py` plus a function taking `(args, config)` |
+| A new command | A module in `app/` exposing `run_<name>()`, a subparser in `cli/parser.py`, and an entry in `HANDLERS` in `cli/__init__.py` |
+| How an exercise is recognised | `domain/matching.py`, which the planner and the checker share |
 | A new Garmin call | A method on `GarminSession` in `garmin/client.py`, so the `garminconnect` dependency stays in one place |
 
 ## Commit messages

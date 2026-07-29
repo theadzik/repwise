@@ -1,13 +1,20 @@
 """Choosing which sessions to update, and updating more than one at a time."""
 
-import argparse
+import logging
 
 import pytest
 from conftest import spec
 from test_payloads import active, rep_step
 from test_payloads import workout as steps
 
-from workout.cli import EXIT_OK, Payloads, changed_steps, command_update, pick_sessions
+from workout.app.errors import EXIT_CONFIG, EXIT_OK
+from workout.app.update import (
+    Payloads,
+    UpdateOptions,
+    changed_steps,
+    pick_sessions,
+    run_update,
+)
 from workout.domain.models import Config, Workout
 from workout.planner import ActivityNotFound
 
@@ -79,8 +86,7 @@ def config_ab(a_exercises=(SQUAT, CALF), b_exercises=(BENCH, CALF)):
 
 
 def args(**overrides):
-    base = {"apply": False, "activity": None, "dump": False, "push": False}
-    return argparse.Namespace(**{**base, **overrides})
+    return UpdateOptions(**overrides)
 
 
 @pytest.fixture
@@ -204,49 +210,59 @@ def test_changed_steps_counts_a_twice_moved_step_once():
 # --- updating both workouts in one run ------------------------------------
 
 
-def run(account, monkeypatch, config=None, **overrides):
-    monkeypatch.setattr("workout.cli.connect", lambda settings: account)
-    return command_update(args(**overrides), config or config_ab())
+def run(account, config=None, **overrides):
+    """The use case takes its session as an argument, so nothing is patched."""
+    return run_update(account, config or config_ab(), args(**overrides))
 
 
-def test_both_workouts_are_written_in_a_single_run(account, monkeypatch):
-    code = run(account, monkeypatch, apply=True)
+def test_both_workouts_are_written_in_a_single_run(account):
+    code = run(account, apply=True)
     assert code == EXIT_OK
     assert sorted(wid for wid, _ in account.saved) == ["111", "222"]
 
 
-def test_each_workout_is_written_once(account, monkeypatch):
+def test_each_workout_is_written_once(account):
     """A workout is planned from its own session and synced from the other.
 
     Both mutate the same payload, so one write carries all of it.
     """
-    run(account, monkeypatch, apply=True)
+    run(account, apply=True)
     saved = [workout_id for workout_id, _ in account.saved]
     assert len(saved) == len(set(saved))
 
 
-def test_a_workout_definition_is_fetched_once_per_run(account, monkeypatch):
+def test_a_workout_definition_is_fetched_once_per_run(account):
     """Re-fetching would discard changes an earlier session already applied."""
-    run(account, monkeypatch, apply=True)
+    run(account, apply=True)
     assert sorted(account.fetched) == ["111", "222"]
 
 
-def test_a_shared_exercise_ends_up_at_the_most_recent_decision(account, monkeypatch):
+def test_a_shared_exercise_ends_up_at_the_most_recent_decision(account):
     """The calf raise is in both workouts and must not drift apart.
 
     Workout B is the older session and moves it 15 -> 16. Workout A is the
     newer one, beats that with 17s, and takes it to 18 - which is what both
     workouts must end up storing.
     """
-    run(account, monkeypatch, apply=True)
+    run(account, apply=True)
     assert calf_targets(account.saved) == {"111": 18.0, "222": 18.0}
 
 
-def test_a_dry_run_writes_nothing(account, monkeypatch):
-    assert run(account, monkeypatch) == EXIT_OK
+def test_a_dry_run_writes_nothing(account):
+    assert run(account) == EXIT_OK
     assert account.saved == []
 
 
-def test_nothing_is_pushed_without_apply(account, monkeypatch):
-    run(account, monkeypatch)
+def test_nothing_is_pushed_without_apply(account):
+    run(account)
     assert account.pushed == []
+
+
+def test_push_without_apply_is_refused(account, caplog):
+    """Nothing has been written yet, so there is nothing to send."""
+    with caplog.at_level(logging.ERROR):
+        code = run(account, push=True)
+
+    assert code == EXIT_CONFIG
+    assert "only makes sense with --apply" in caplog.text
+    assert account.fetched == [], "refused before touching Garmin"
