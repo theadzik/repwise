@@ -63,6 +63,20 @@ def test_config_is_a_global_option():
     assert args.config == "other.yaml"
 
 
+def test_config_defaults_to_being_searched_for():
+    """No path is frozen into the parser; config.py decides where to look."""
+    assert build_parser().parse_args(["update"]).config is None
+
+
+def test_version_reports_the_packaged_version(capsys):
+    """The number commitizen bumps, so a bug report can carry it."""
+    from workout import __version__
+
+    out = help_text(["--version"], capsys)
+
+    assert out.strip() == f"workout {__version__}"
+
+
 # --- the Garmin-loading commands ------------------------------------------
 
 

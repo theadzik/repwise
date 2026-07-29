@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
+from .. import __version__
+
 
 def add_verbose(
     parser: argparse.ArgumentParser, default: Any = argparse.SUPPRESS
@@ -54,9 +56,19 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    # No default: where the config lives depends on how the tool was
-    # installed, so config.py works it out rather than the parser freezing one
-    # answer into the help text.
+    # The single source of the number is [project].version in pyproject.toml,
+    # which `cz bump` writes through to __init__.py. Worth exposing: the first
+    # thing to establish about a report of odd behaviour is which version
+    # produced it.
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="show the version and exit",
+    )
+    # No default for --config: where the config lives depends on how the tool
+    # was installed, so config.py works it out rather than the parser freezing
+    # one answer into the help text.
     parser.add_argument(
         "--config",
         metavar="PATH",
