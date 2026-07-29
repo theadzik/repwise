@@ -53,13 +53,17 @@ session, so training A and then B and running once brings both up to date:
 3. Once every set reaches the top of the range, add weight and reset to the
    bottom.
 4. If you missed the target, repeat it unchanged.
+5. A load only counts once you can carry it for the bottom of the range.
 
-Two things it handles that a spreadsheet would not:
+Three things it handles that a spreadsheet would not:
 
 - **It judges progress by your weakest set.** Extra reps on the easy sets do not
   pull the target somewhere you cannot repeat.
 - **It follows the weight you actually used.** Bump the load mid-session and the
   new load is banked, not discarded.
+- **It won't keep a load you didn't earn.** Take the 4 kg dumbbells because the
+  3 kg pair was gone, come up short of the range, and your target stays where it
+  was rather than following you onto a weight that was too heavy.
 
 It also covers timed holds like planks, exercises the watch counts per side, and
 keeping an exercise in sync when it appears in more than one workout.

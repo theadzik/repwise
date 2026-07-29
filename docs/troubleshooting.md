@@ -90,6 +90,8 @@ Warnings never fail a run silently - a skipped exercise is always reported.
 - The first matching activity within `activity_search_limit` is used; older
   sessions need `--activity`.
 - A deload rebases the stored target downward, so a bad day at a lighter weight
-  moves the target with it.
+  moves the target with it - unless it falls below `rep_low`, in which case the
+  load is [not adopted at all](progression.md#a-load-has-to-be-earned).
 - A too-large `weight_step` shows up as a plateau rather than an error: the run
-  keeps repeating the same target. Lower the step by hand when that happens.
+  keeps repeating the same target, reporting either "missed target" or "below
+  the ... range". Lower the step or widen the range by hand when that happens.

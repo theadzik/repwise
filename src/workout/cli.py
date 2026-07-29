@@ -474,11 +474,14 @@ def build_parser() -> argparse.ArgumentParser:
         "your config, work out the next target for each exercise, and show the "
         "plan. Training A and then B and running once advances both: the "
         "sessions are replayed oldest first, so the result is the same as "
-        "having run this after each of them. Nothing is sent to Garmin unless "
-        "--apply is given. A target that moves is also synced into any other "
-        "workout containing that exercise. Editing a workout does not reach the "
-        "watch by itself, so --push queues it for the device to collect on its "
-        "next sync.",
+        "having run this after each of them. Targets follow the weight you "
+        "actually lifted, but only while it stays inside the exercise's rep "
+        "range: come up short of rep_low on a weight you were not prescribed "
+        "and the old target is kept. Nothing is sent to Garmin unless --apply "
+        "is given. A target that moves is also synced into any other workout "
+        "containing that exercise. Editing a workout does not reach the watch "
+        "by itself, so --push queues it for the device to collect on its next "
+        "sync.",
     )
     update.add_argument("--apply", action="store_true", help="write changes to Garmin")
     update.add_argument(

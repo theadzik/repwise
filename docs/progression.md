@@ -3,9 +3,10 @@
 How the next target is decided, in full. If a run changed something you did not
 expect, the answer is here.
 
-- [The four rules](#the-four-rules)
+- [The five rules](#the-five-rules)
 - [Progress is judged by the weakest set](#progress-is-judged-by-the-weakest-set)
 - [Working weight](#working-weight)
+- [A load has to be earned](#a-load-has-to-be-earned)
 - [Decision order](#decision-order)
 - [Worked examples](#worked-examples)
 - [Timed holds](#timed-holds)
@@ -13,7 +14,7 @@ expect, the answer is here.
 - [Shared exercises](#shared-exercises)
 - [No state file](#no-state-file)
 
-## The four rules
+## The five rules
 
 Double progression: reps go up first, weight second.
 
@@ -21,6 +22,9 @@ Double progression: reps go up first, weight second.
 2. Each workout, add a rep to every set: `7-7-7`, then `8-8-8`.
 3. Once every set reaches the upper end, add weight and reset to the lower end.
 4. If you didn't match the previous result, repeat it unchanged.
+5. A load is only adopted once it can be carried for `rep_low`. Lift something
+   other than what was prescribed and fall short of the range and the previous
+   target stands.
 
 ## Progress is judged by the weakest set
 
@@ -49,6 +53,33 @@ Everything then rebases onto that load, even if it differs from what the Garmin
 workout still has stored. Bump the weight mid-session and the new weight is
 banked rather than discarded.
 
+## A load has to be earned
+
+Rebasing has one limit: **a load is only adopted if the weakest set at it still
+reached `rep_low`.** Fall short of the range and the previous target stands,
+weight and reps both.
+
+Without that, any weight you happened to lift became the new prescription. A
+lateral raise programmed 12-15 at 3 kg, done as 3x8 at 4 kg because the 3 kg
+pair was taken, would come back as `9 x 4 kg` - a target below the range you
+programmed, off the back of a jump you had not earned. What you get instead is:
+
+```text
+  Dumbbell Lateral Raise      13 x 3 kg  ->  13 x 3 kg   (only 8 at 4 kg, below the 12-15 range, keep 13 x 3 kg)
+```
+
+This is checked before the set count, so a heavier load that was only managed
+for some of its sets is not banked either.
+
+It applies in both directions - a deload rebases downward only while it still
+lands in the range - but only when the load changed. At an unchanged load a
+short session is already rule 4's "missed target, repeat".
+
+Persistent rejections mean `weight_step` is too big for the range: at 3 kg a
+1 kg dumbbell step is a 33% jump, which a 12-15 range cannot absorb. Widen the
+range or micro-load. Isolation work usually wants a wider range than a barbell
+compound for exactly this reason.
+
 ## Decision order
 
 Given the exercise's config, the target currently stored in Garmin, and the sets
@@ -57,15 +88,17 @@ actually performed:
 | # | Condition | Result |
 | --- | --- | --- |
 | 1 | No sets logged | Unchanged |
-| 2 | Fewer than `sets` at the working weight | Bank the weight, consolidate reps |
-| 3 | Same weight, floor below target | Repeat unchanged (rule 4) |
-| 4 | Floor at or above `rep_high` | `rep_low` at weight + step (rule 3) |
-| 5 | Otherwise | `floor + rep_step` at the working weight (rule 2) |
+| 2 | Weight changed, floor below `rep_low` | Unchanged (rule 5) |
+| 3 | Fewer than `sets` at the working weight | Bank the weight, consolidate reps |
+| 4 | Same weight, floor below target | Repeat unchanged (rule 4) |
+| 5 | Floor at or above `rep_high` | `rep_low` at weight + step (rule 3) |
+| 6 | Otherwise | `floor + rep_step` at the working weight (rule 2) |
 
-Bodyweight exercises never reach case 4's weight increase; they target
+Bodyweight exercises never reach case 5's weight increase; they target
 `rep_high` and hold.
 
-Case 5 caps at `rep_high`, so an off-step target cannot overshoot the range.
+Case 6 caps at `rep_high`, so an off-step target cannot overshoot the range.
+Together with case 2, a target can never leave the programmed range.
 
 ## Worked examples
 
@@ -81,9 +114,12 @@ A squat, range 6-10, 4 sets, 2.5 kg step, stored target 7 x 20 kg:
 | 10 @ 20, then 8,8,8 @ 22.5 | 8 x 22.5 | Only 3 of 4 sets at 22.5, consolidate |
 | 8,8,8,8 @ 22.5 | 9 x 22.5 | Rebased onto the heavier load |
 | 8,8,8,8 @ 15 | 9 x 15 | Deload respected, not punished |
+| 4,4,4,4 @ 25 | 7 x 20 | Below the range at 25, so 25 is not kept |
 
-That last row is worth knowing: a deload rebases the stored target downward, so
-a bad day at a lighter weight moves the target with it.
+The last two rows are the pair worth knowing. A deload rebases the stored target
+downward, so a bad day at a lighter weight moves the target with it - but only
+while the reps stay in the range. Once they drop below `rep_low`, the load is
+discarded instead and the stored target is left alone.
 
 ## Timed holds
 
