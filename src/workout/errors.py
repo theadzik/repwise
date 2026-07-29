@@ -72,3 +72,10 @@ class RateLimited(GarminError):
 
     exit_code = ExitCode.RATE_LIMITED
     advice = "Your IP is temporarily blocked. Wait a while and re-run."
+
+
+class NoTerminal(GarminError):
+    """A first login is needed, and there is nowhere to type the password."""
+
+    exit_code = ExitCode.CONFIG
+    advice = "Run it once by hand to cache the tokens, then this will not ask."

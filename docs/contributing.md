@@ -77,8 +77,8 @@ responses rather than live calls, and there is no fixture that needs an account.
 shipped example fails the suite. It cannot validate anyone's real
 `workouts.yaml`, since that file is gitignored and absent from a fresh checkout.
 
-Adding a rule to `progression.py` needs no Garmin access at all - it takes plain
-data and returns plain data, which is the point of keeping it pure.
+Adding a rule to `domain/progression.py` needs no Garmin access at all - it
+takes plain data and returns plain data, which is the point of keeping it pure.
 
 ## Where to make a change
 
@@ -111,8 +111,11 @@ list, and how a release is cut, is in [releasing](releasing.md).
 
 - **Configuration lives in `workouts.yaml`.** If you find yourself adding a
   constant that a user might want to change, it belongs there instead.
-- **Keep the domain pure.** `progression.py` and `models.py` must not import
-  Garmin types, `yaml`, or anything that does I/O.
+- **Keep the domain pure.** Nothing in `domain/` may import Garmin types,
+  `yaml`, or anything that does I/O.
+- **A use case is handed what it needs.** Modules in `app/` take a session, a
+  config and their options as arguments; only `cli/` constructs those, which
+  is what lets a command be tested without a network or a parser.
 - **Warn, do not silently skip.** An exercise that cannot be matched is
   reported. Silent skips are how a wrong `garmin_name` hides for months.
 - **Writes need `--apply`.** Anything new that changes remote state should
