@@ -1,13 +1,10 @@
 """Choosing which sessions to update, and updating more than one at a time."""
 
-import logging
-
 import pytest
 from conftest import spec
 from test_payloads import active, rep_step
 from test_payloads import workout as steps
 
-from workout.app.errors import EXIT_CONFIG, EXIT_OK
 from workout.app.update import (
     Payloads,
     UpdateOptions,
@@ -16,7 +13,7 @@ from workout.app.update import (
     run_update,
 )
 from workout.domain.models import Config, Workout
-from workout.planner import ActivityNotFound
+from workout.errors import ActivityNotFound, ExitCode, UsageError
 
 SQUAT = spec(sets=3, weight_step=2.5)
 CALF = spec(
@@ -217,7 +214,7 @@ def run(account, config=None, **overrides):
 
 def test_both_workouts_are_written_in_a_single_run(account):
     code = run(account, apply=True)
-    assert code == EXIT_OK
+    assert code == ExitCode.OK
     assert sorted(wid for wid, _ in account.saved) == ["111", "222"]
 
 
@@ -249,7 +246,7 @@ def test_a_shared_exercise_ends_up_at_the_most_recent_decision(account):
 
 
 def test_a_dry_run_writes_nothing(account):
-    assert run(account) == EXIT_OK
+    assert run(account) == ExitCode.OK
     assert account.saved == []
 
 
@@ -258,11 +255,15 @@ def test_nothing_is_pushed_without_apply(account):
     assert account.pushed == []
 
 
-def test_push_without_apply_is_refused(account, caplog):
-    """Nothing has been written yet, so there is nothing to send."""
-    with caplog.at_level(logging.ERROR):
-        code = run(account, push=True)
+def test_push_without_apply_is_refused():
+    """Nothing has been written yet, so there is nothing to send.
 
-    assert code == EXIT_CONFIG
-    assert "only makes sense with --apply" in caplog.text
-    assert account.fetched == [], "refused before touching Garmin"
+    Refused as the options are built, so the run never reaches Garmin.
+    """
+    with pytest.raises(UsageError, match="only makes sense with --apply"):
+        UpdateOptions(push=True)
+
+
+def test_a_refused_flag_combination_exits_three():
+    """The exit code travels with the exception, not with the caller."""
+    assert UsageError().exit_code == ExitCode.CONFIG

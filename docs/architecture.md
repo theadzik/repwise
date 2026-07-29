@@ -22,7 +22,6 @@ src/workout/
         importing.py       Garmin workouts -> config text
         checking.py        config against Garmin
         report.py          how a change, a plan and a finding are printed
-        errors.py          what the process exits with
     cli/
         parser.py          what the command line accepts, and its help
         __init__.py        main(): parse, connect, dispatch, map failures
@@ -30,6 +29,7 @@ src/workout/
     planner.py             match steps to exercises, decide the changes
     importer.py            Garmin workout -> config YAML
     checker.py             compare config against Garmin
+    errors.py              why a run failed, and what it exits with
     log.py                 which stream a message lands on, and its level
     garmin/
         client.py          authentication and the Garmin session
@@ -119,6 +119,12 @@ Everything the application talks to Garmin through is `GarminSession` in
 and never import it; only `main()` calls `configure()`, which decides what a
 level means: INFO is the report and goes to stdout, WARNING and above are
 problems and go to stderr, DEBUG is hidden until `--verbose`.
+
+`errors.py` sits outside them for the same reason. A module raises without
+knowing who catches: every failure this tool can describe is a `WorkoutError`
+carrying the status it should exit with, `main()` has one handler for all of
+them, and anything else reaching the top is a bug here - for which a traceback
+is the most useful thing to print.
 
 That is also why the report helpers are in `app/report.py` rather than in
 `cli/`. A use case prints as it goes, so that a multi-session run reports each

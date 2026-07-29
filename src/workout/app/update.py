@@ -17,17 +17,16 @@ from typing import Any
 from ..domain.matching import normalise
 from ..domain.models import Config, Workout
 from ..domain.progression import Target
+from ..errors import ActivityNotFound, ExitCode, UsageError
 from ..garmin.client import GarminSession
 from ..garmin.payloads import performed_sets
 from ..planner import (
-    ActivityNotFound,
     Plan,
     decided_targets,
     find_workout,
     plan_sync,
     plan_workout,
 )
-from .errors import EXIT_CONFIG, EXIT_NOTHING_USABLE, EXIT_OK
 from .report import report_plan
 
 logger = logging.getLogger(__name__)
@@ -41,6 +40,14 @@ class UpdateOptions:
     activity: str | None = None
     dump: bool = False
     push: bool = False
+
+    def __post_init__(self) -> None:
+        # Refused here rather than in the command, so that a combination which
+        # cannot be honoured is rejected before anything talks to Garmin.
+        if self.push and not self.apply:
+            raise UsageError(
+                "--push only makes sense with --apply: there is nothing to send yet."
+            )
 
 
 class Payloads:
@@ -177,13 +184,9 @@ def push_to_watch(session: GarminSession, workouts: list[Workout]) -> None:
     logger.info("Sync your watch to pick up the new targets.")
 
 
-def run_update(session: GarminSession, config: Config, options: UpdateOptions) -> int:
-    if options.push and not options.apply:
-        logger.error(
-            "--push only makes sense with --apply: there is nothing to send yet."
-        )
-        return EXIT_CONFIG
-
+def run_update(
+    session: GarminSession, config: Config, options: UpdateOptions
+) -> ExitCode:
     payloads = Payloads(session)
     sessions = pick_sessions(session, config, options.activity)
 
@@ -224,7 +227,7 @@ def run_update(session: GarminSession, config: Config, options: UpdateOptions) -
             plans.extend(sync_other_workouts(payloads, config, workout, targets))
 
     if not usable:
-        return EXIT_NOTHING_USABLE
+        return ExitCode.NOTHING_USABLE
 
     updated = len(changed_steps(plans))
     noted = len(noted_steps(plans))
@@ -235,12 +238,12 @@ def run_update(session: GarminSession, config: Config, options: UpdateOptions) -
         logger.info(
             f"Dry run: {updated} step(s) would change{notes}. Re-run with --apply."
         )
-        return EXIT_OK
+        return ExitCode.OK
 
     if not updated and not noted:
         logger.info("")
         logger.info("Nothing to write.")
-        return EXIT_OK
+        return ExitCode.OK
 
     written = _write(session, plans)
 
@@ -253,7 +256,7 @@ def run_update(session: GarminSession, config: Config, options: UpdateOptions) -
     if options.push:
         push_to_watch(session, written)
 
-    return EXIT_OK
+    return ExitCode.OK
 
 
 def _write(session: GarminSession, plans: list[Plan]) -> list[Workout]:

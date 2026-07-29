@@ -7,10 +7,9 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from ..errors import ActivityNotFound, ExitCode, UsageError
 from ..garmin.client import STRENGTH, GarminSession
 from ..importer import describe_workout, render_config
-from ..planner import ActivityNotFound
-from .errors import EXIT_CONFIG, EXIT_OK
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +44,7 @@ def select(session: GarminSession, options: ImportOptions) -> list[dict[str, Any
     return workouts
 
 
-def run_import(session: GarminSession, options: ImportOptions) -> int:
+def run_import(session: GarminSession, options: ImportOptions) -> ExitCode:
     summaries = select(session, options)
 
     imported = [
@@ -57,11 +56,12 @@ def run_import(session: GarminSession, options: ImportOptions) -> int:
         # Config content, not a report: written straight out so that it stays
         # redirectable and never picks up a log prefix.
         print(text)
-        return EXIT_OK
+        return ExitCode.OK
 
     if os.path.exists(options.output) and not options.force:
-        logger.error(f"{options.output} already exists. Pass --force to overwrite it.")
-        return EXIT_CONFIG
+        raise UsageError(
+            f"{options.output} already exists. Pass --force to overwrite it."
+        )
 
     with open(options.output, "w") as fh:
         fh.write(text)
@@ -71,4 +71,4 @@ def run_import(session: GarminSession, options: ImportOptions) -> int:
         f"Wrote {len(imported)} workout(s), {exercises} exercises -> {options.output}"
     )
     logger.info("Check the TODO comments before using it.")
-    return EXIT_OK
+    return ExitCode.OK

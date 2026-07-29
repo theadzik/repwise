@@ -5,18 +5,20 @@ from __future__ import annotations
 import logging
 
 from ..domain.models import Config
+from ..errors import ExitCode
 from ..garmin.client import STRENGTH, GarminSession
-from .errors import EXIT_NOTHING_USABLE, EXIT_OK
 
 logger = logging.getLogger(__name__)
 
 
-def run_list(session: GarminSession, config: Config, every_sport: bool = False) -> int:
+def run_list(
+    session: GarminSession, config: Config, every_sport: bool = False
+) -> ExitCode:
     workouts = session.list_workouts(sport_type=None if every_sport else STRENGTH)
 
     if not workouts:
         logger.warning("No workouts found.")
-        return EXIT_NOTHING_USABLE
+        return ExitCode.NOTHING_USABLE
 
     known = {w.garmin_workout_id for w in config}
     logger.info(f"{'ID':<12} {'UPDATED':<11} {'':<3}NAME")
@@ -32,4 +34,4 @@ def run_list(session: GarminSession, config: Config, every_sport: bool = False) 
 
     logger.info("")
     logger.info(f"{len(workouts)} workout(s); * already in your config")
-    return EXIT_OK
+    return ExitCode.OK

@@ -1,21 +1,27 @@
 """Authenticated access to Garmin Connect.
 
 The rest of the application goes through `GarminSession` rather than touching
-`garminconnect` directly, so the dependency stays in one place.
+`garminconnect` directly, so the dependency stays in one place - and so do its
+exceptions. Every call is wrapped, so what leaves this module is a
+`GarminError`, which is what lets `fetch` and `check` carry on past one failed
+workout without catching everything that could possibly go wrong.
 """
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
+from collections.abc import Callable
 from getpass import getpass
-from typing import Any
+from typing import Any, ParamSpec, TypeVar
 
 from garminconnect import Garmin, GarminConnectTooManyRequestsError
 
 from ..domain.models import GarminSettings
+from ..errors import GarminError, RateLimited
 
-__all__ = ["GarminSession", "GarminConnectTooManyRequestsError", "connect", "STRENGTH"]
+__all__ = ["GarminSession", "connect", "STRENGTH"]
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +29,37 @@ logger = logging.getLogger(__name__)
 STRENGTH = "strength_training"
 
 WORKOUTS_URL = "/workout-service/workouts"
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def _reporting(what: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """Turn whatever garminconnect raises into this tool's own failure type.
+
+    The library raises its own exception classes, plus anything `requests` and
+    the JSON parser can produce. Naming them all at every call site would
+    spread knowledge of the library well past this module, so they are
+    translated here instead, at the one boundary that already knows about it.
+    """
+
+    def decorate(method: Callable[P, R]) -> Callable[P, R]:
+        @functools.wraps(method)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            try:
+                return method(*args, **kwargs)
+            except GarminConnectTooManyRequestsError as exc:
+                raise RateLimited(f"Rate limited by Garmin: {exc}") from exc
+            except GarminError:
+                raise
+            except Exception as exc:
+                # Blind on purpose, and the only blind catch left: translating
+                # is the job, and the original is kept as the cause.
+                raise GarminError(f"Could not {what}: {exc}") from exc
+
+        return wrapper
+
+    return decorate
 
 
 class GarminSession:
@@ -34,19 +71,24 @@ class GarminSession:
 
     # --- reads ---
 
+    @_reporting("list your recent activities")
     def recent_activities(self, limit: int | None = None) -> list[dict[str, Any]]:
         limit = limit or self._settings.activity_search_limit
         return self._api.get_activities(0, limit) or []
 
+    @_reporting("fetch that activity")
     def activity(self, activity_id: str) -> dict[str, Any]:
         return self._api.get_activity(activity_id)
 
+    @_reporting("fetch the activity's exercise sets")
     def exercise_sets(self, activity_id: str) -> dict[str, Any]:
         return self._api.get_activity_exercise_sets(activity_id)
 
+    @_reporting("fetch the workout")
     def workout(self, workout_id: str) -> dict[str, Any]:
         return self._api.get_workout_by_id(workout_id)
 
+    @_reporting("list your workouts")
     def list_workouts(
         self, sport_type: str | None = STRENGTH, page_size: int = 200
     ) -> list[dict[str, Any]]:
@@ -70,6 +112,7 @@ class GarminSession:
                 return found
             start += page_size
 
+    @_reporting("read the device message queue")
     def pending_messages(self) -> list[dict[str, Any]]:
         """Messages queued for your devices but not yet collected.
 
@@ -81,10 +124,12 @@ class GarminSession:
 
     # --- writes ---
 
+    @_reporting("save the workout")
     def save_workout(self, workout_id: str, payload: dict[str, Any]) -> Any:
         """Replace a workout definition, keeping its id and any schedules."""
         return self._api.update_workout(workout_id, payload)
 
+    @_reporting("queue the workout for your device")
     def push_workout(self, workout_id: str) -> Any:
         """Queue a workout for the last-used device to collect on its next sync.
 
@@ -119,13 +164,23 @@ def connect(settings: GarminSettings, prompt: bool = True) -> GarminSession:
             logger.warning(f"Cached session unusable ({exc}); logging in again.")
 
     if not prompt:
-        raise RuntimeError(f"No usable Garmin session in {store}")
+        raise GarminError(f"No usable Garmin session in {store}")
 
     email = input("Garmin email: ").strip()
     password = getpass("Garmin password (hidden): ")
 
     api = Garmin(email, password, prompt_mfa=lambda: input("MFA code: ").strip())
     # Passing the token store makes login() persist the tokens itself.
-    api.login(store)
+    _login(api, store)
     logger.info(f"Logged in. Tokens cached in {store}")
     return GarminSession(api, settings)
+
+
+@_reporting("log in to Garmin")
+def _login(api: Garmin, store: str) -> None:
+    """A fresh login, which is the request Garmin rate-limits hardest.
+
+    Wrapped like every other call: a wrong password or a blocked IP is a
+    message the user should read, not a traceback out of a library.
+    """
+    api.login(store)

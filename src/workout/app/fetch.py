@@ -7,21 +7,22 @@ import logging
 import os
 
 from ..domain.models import Config
+from ..errors import ExitCode, GarminError
 from ..garmin.client import GarminSession
-from .errors import EXIT_NOTHING_USABLE, EXIT_OK
 
 logger = logging.getLogger(__name__)
 
 
 def run_fetch(
     session: GarminSession, config: Config, workout_ids: list[str] | None = None
-) -> int:
+) -> ExitCode:
     ids = workout_ids or [w.garmin_workout_id for w in config]
     failed = False
     for workout_id in ids:
         try:
             payload = session.workout(workout_id)
-        except Exception as exc:  # noqa: BLE001 - report and carry on
+        except GarminError as exc:
+            # One unreachable workout should not cost the user the others.
             logger.error(f"FAILED {workout_id}: {exc}")
             failed = True
             continue
@@ -31,4 +32,4 @@ def run_fetch(
             json.dump(payload, fh, indent=2)
         logger.info(f"Saved {payload.get('workoutName', '(unnamed)')} -> {path}")
 
-    return EXIT_NOTHING_USABLE if failed else EXIT_OK
+    return ExitCode.NOTHING_USABLE if failed else ExitCode.OK
