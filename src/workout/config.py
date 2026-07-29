@@ -100,10 +100,40 @@ def resolve_config(explicit: str | None = None) -> str:
     raise ConfigError(f"No {CONFIG_NAME} found. Looked in:\n{where}\n{hint}")
 
 
-def _build_exercise(raw: dict, steps: dict[str, float], where: str) -> ExerciseSpec:
+class Problems:
+    """Everything wrong with the file, so that one run reports all of it.
+
+    Validation used to stop at the first problem, which meant fixing a typo,
+    running again, and finding the next one. Checks therefore record what they
+    find and carry on; `raise_any` at the end decides whether the file loads.
+    """
+
+    def __init__(self) -> None:
+        self.found: list[str] = []
+
+    def add(self, detail: str) -> None:
+        self.found.append(detail)
+
+    def __bool__(self) -> bool:
+        return bool(self.found)
+
+    def raise_any(self) -> None:
+        if not self.found:
+            return
+        if len(self.found) == 1:
+            raise ConfigError(self.found[0])
+        listed = "\n".join(f"  - {detail}" for detail in self.found)
+        raise ConfigError(f"{len(self.found)} problems:\n{listed}")
+
+
+def _build_exercise(
+    raw: dict, steps: dict[str, float], where: str, problems: Problems
+) -> ExerciseSpec | None:
     missing = [key for key in _REQUIRED if raw.get(key) is None]
     if missing:
-        raise ConfigError(f"{where}: exercise is missing {', '.join(missing)}")
+        # Nothing else about this exercise can be judged without them.
+        problems.add(f"{where}: exercise is missing {', '.join(missing)}")
+        return None
 
     load = raw["load"]
     # An exercise may set its own step, e.g. the deadlift moves in bigger jumps
@@ -111,7 +141,7 @@ def _build_exercise(raw: dict, steps: dict[str, float], where: str) -> ExerciseS
     declared_step = raw.get("weight_step")
     if declared_step is None:
         if load != BODYWEIGHT and load not in steps:
-            raise ConfigError(
+            problems.add(
                 f"{where}: exercise {raw['name']!r} has load {load!r}, "
                 f"which has no entry in settings.weight_steps"
             )
@@ -119,19 +149,22 @@ def _build_exercise(raw: dict, steps: dict[str, float], where: str) -> ExerciseS
     else:
         weight_step = float(declared_step)
         if weight_step <= 0 and load != BODYWEIGHT:
-            raise ConfigError(
+            problems.add(
                 f"{where}: {raw['name']!r} has a weight_step of {weight_step:g}, "
                 f"which would never progress"
             )
 
     if raw["rep_low"] >= raw["rep_high"]:
-        raise ConfigError(f"{where}: {raw['name']!r} has rep_low >= rep_high")
+        problems.add(f"{where}: {raw['name']!r} has rep_low >= rep_high")
 
     # Not `or 1`: that would silently turn an explicit 0 into 1.
     declared = raw.get("rep_step")
     rep_step = 1 if declared is None else int(declared)
     if rep_step < 1:
-        raise ConfigError(f"{where}: {raw['name']!r} has rep_step below 1")
+        problems.add(f"{where}: {raw['name']!r} has rep_step below 1")
+        # Kept usable so the rest of the file is still checked. The load
+        # fails on the recorded problem either way.
+        rep_step = 1
 
     return ExerciseSpec(
         name=raw["name"],
@@ -150,25 +183,40 @@ def _build_exercise(raw: dict, steps: dict[str, float], where: str) -> ExerciseS
     )
 
 
-def _build_workout(entry: dict, steps: dict[str, float], path: str) -> Workout:
+def _build_workout(
+    entry: dict, steps: dict[str, float], path: str, problems: Problems
+) -> Workout | None:
     key = entry.get("key")
     if not key:
-        raise ConfigError(f"{path}: a workout is missing its 'key'")
-    if not entry.get("garmin_workout_id"):
-        raise ConfigError(f"{path}: {key} is missing 'garmin_workout_id'")
+        # Without a key there is nothing to label its exercises with, so
+        # there is no useful way to report anything else about this one.
+        problems.add(f"{path}: a workout is missing its 'key'")
+        return None
+
+    workout_id = entry.get("garmin_workout_id")
+    if not workout_id:
+        problems.add(f"{path}: {key} is missing 'garmin_workout_id'")
+
+    # Checked even when the id is missing, so that one omission at the top of
+    # a workout does not hide every problem inside it.
+    exercises = []
+    for raw in entry.get("exercises") or []:
+        spec = _build_exercise(raw, steps, f"{path}:{key}", problems)
+        if spec is not None:
+            exercises.append(spec)
+
+    if not workout_id:
+        return None
 
     return Workout(
         key=key,
-        garmin_workout_id=str(entry["garmin_workout_id"]),
+        garmin_workout_id=str(workout_id),
         activity_prefixes=[p.lower() for p in entry.get("activity_prefixes") or []],
-        exercises=[
-            _build_exercise(raw, steps, f"{path}:{key}")
-            for raw in entry.get("exercises") or []
-        ],
+        exercises=exercises,
     )
 
 
-def _check_shared(config: Config, path: str) -> None:
+def _check_shared(config: Config, path: str, problems: Problems) -> None:
     """A shared exercise must be programmed identically everywhere.
 
     Otherwise a target synced out of one workout could land outside another
@@ -183,7 +231,7 @@ def _check_shared(config: Config, path: str) -> None:
         ]
         ranges = {(s.rep_low, s.rep_high, s.rep_step) for s in specs}
         if len(ranges) > 1:
-            raise ConfigError(
+            problems.add(
                 f"{path}: {garmin_name} appears in several workouts with "
                 f"different rep ranges {sorted(ranges)}; a synced target could "
                 f"fall outside one of them"
@@ -213,6 +261,8 @@ def load_config(path: str | None = None) -> Config:
 
     if not isinstance(data, dict) or "workouts" not in data:
         raise ConfigError(f"{path}: expected a mapping with a 'workouts' key")
+    if not isinstance(data["workouts"], list):
+        raise ConfigError(f"{path}: 'workouts' should be a list of workouts")
 
     settings = data.get("settings") or {}
     steps = settings.get("weight_steps") or {}
@@ -228,16 +278,24 @@ def load_config(path: str | None = None) -> Config:
         dump_dir=os.path.expanduser(garmin_raw.get("dump_dir") or defaults.dump_dir),
     )
 
+    problems = Problems()
     workouts: dict[str, Workout] = {}
     for entry in data["workouts"]:
-        workout = _build_workout(entry, steps, path)
+        workout = _build_workout(entry, steps, path, problems)
+        if workout is None:
+            continue
         if workout.key in workouts:
-            raise ConfigError(f"{path}: duplicate workout key {workout.key!r}")
+            problems.add(f"{path}: duplicate workout key {workout.key!r}")
+            continue
         workouts[workout.key] = workout
 
-    if not workouts:
-        raise ConfigError(f"{path}: no workouts defined")
+    # Only worth saying when the file really is empty; when every workout in it
+    # failed, the reason each one failed is the more useful thing to report.
+    if not workouts and not problems:
+        problems.add(f"{path}: no workouts defined")
 
     config = Config(workouts=workouts, garmin=garmin)
-    _check_shared(config, path)
+    _check_shared(config, path, problems)
+
+    problems.raise_any()
     return config

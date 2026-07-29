@@ -148,6 +148,16 @@ than half-applied. You get an error naming the file and workout for:
 - a [shared exercise](progression.md#shared-exercises) programmed with
   different rep ranges in different workouts
 
+Every problem in the file is reported at once, rather than one per run:
+
+```text
+3 problems:
+  - workouts.yaml:Workout A: 'Barbell Back Squat' has rep_low >= rep_high
+  - workouts.yaml:Workout A: exercise is missing sets
+  - workouts.yaml:Workout B: exercise 'Plank' has load 'kettlebell', which
+    has no entry in settings.weight_steps
+```
+
 ## Finding your exercise identifiers
 
 `garmin_name` and `garmin_category` must match what Garmin stores. Rather than
