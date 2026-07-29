@@ -15,11 +15,21 @@ src/workout/
         models.py          domain objects, no behaviour
         progression.py     the rules. No I/O, no Garmin types
         matching.py        which exercise a name or category refers to
+    app/                   one module per command, plus the report they print
+        update.py          advance targets from the sessions trained
+        fetch.py           download definitions as JSON
+        listing.py         show the account's workouts
+        importing.py       Garmin workouts -> config text
+        checking.py        config against Garmin
+        report.py          how a change, a plan and a finding are printed
+        errors.py          what the process exits with
+    cli/
+        parser.py          what the command line accepts, and its help
+        __init__.py        main(): parse, connect, dispatch, map failures
     config.py              workouts.yaml -> models, with validation
     planner.py             match steps to exercises, decide the changes
     importer.py            Garmin workout -> config YAML
     checker.py             compare config against Garmin
-    cli.py                 argument parsing and output
     log.py                 which stream a message lands on, and its level
     garmin/
         client.py          authentication and the Garmin session
@@ -31,22 +41,34 @@ tests/
     test_config.py         loading and validation
     test_payloads.py       schema mapping, using trimmed real payloads
     test_planner.py        matching and planning
+    test_update.py         session choice, and multi-workout runs
     test_importer.py       import and YAML rendering
     test_checker.py        drift detection
     test_cli.py            argument parsing and help
     test_log.py            verbosity, and stdout vs stderr
 ```
 
+`planner.py`, `importer.py` and `checker.py` decide things and return them;
+`app/` is what performs a command with those decisions. The split is what lets
+`update` be exercised against a fake session in `test_update.py` without an
+argument parser anywhere in sight.
+
 ## Dependencies
 
 Every arrow points inward: nothing in `progression.py` or `models.py` imports
-the CLI, the planner, or Garmin.
+the CLI, the planner, or Garmin, and nothing in `app/` imports `cli/`.
 
 ```mermaid
 flowchart TD
-    cli["cli.py"]
+    subgraph presentation["cli/ - argparse lives here and nowhere else"]
+        cli["__init__.py<br/>parser.py"]
+    end
 
-    subgraph app["application"]
+    subgraph application["app/ - one module per command"]
+        commands["update.py, fetch.py<br/>listing.py, importing.py<br/>checking.py"]
+    end
+
+    subgraph services["deciding, without performing"]
         planner["planner.py"]
         importer["importer.py"]
         checker["checker.py"]
@@ -63,8 +85,10 @@ flowchart TD
         matching["matching.py"]
     end
 
-    cli --> planner & importer & checker & config
-    cli --> garmin
+    cli --> commands
+    cli --> config & garmin
+    commands --> planner & importer & checker
+    commands --> garmin & matching
     planner & importer & checker --> garmin
     planner & garmin --> progression
     planner & checker & config --> models
@@ -72,8 +96,12 @@ flowchart TD
     progression --> models
 ```
 
-Three boundaries carry the weight:
+Four boundaries carry the weight:
 
+- **`cli/` is the only place that constructs anything.** It loads the config,
+  opens the Garmin session and turns an argparse namespace into the options a
+  use case declares. A `run_*` function is handed what it needs, so the same
+  call a command makes is the one a test makes.
 - **`domain/` knows nothing about Garmin or YAML.** `progression.py` takes a
   spec, a current target, and a list of performed sets; `matching.py` takes
   names and categories. That is what makes the rules testable without a
@@ -91,6 +119,11 @@ Everything the application talks to Garmin through is `GarminSession` in
 and never import it; only `main()` calls `configure()`, which decides what a
 level means: INFO is the report and goes to stdout, WARNING and above are
 problems and go to stderr, DEBUG is hidden until `--verbose`.
+
+That is also why the report helpers are in `app/report.py` rather than in
+`cli/`. A use case prints as it goes, so that a multi-session run reports each
+session while the next one is still being fetched; what it emits is a log
+record, and where that record lands is `main()`'s business alone.
 
 ## Data flow
 
