@@ -5,17 +5,16 @@ The payloads below are trimmed copies of real Garmin responses.
 
 from conftest import spec
 
+from workout.domain.progression import Target
 from workout.garmin.payloads import (
     GENERATED_NOTE,
     apply_note,
     apply_target,
     iter_workout_steps,
-    normalise,
     performed_sets,
     step_note,
     step_target,
 )
-from workout.progression import Target
 
 KILOGRAM = {"unitId": 8, "unitKey": "kilogram", "factor": 1000.0}
 
@@ -63,10 +62,6 @@ def test_iter_descends_into_repeat_groups():
     steps = list(iter_workout_steps(payload))
     assert len(steps) == 2
     assert steps[0]["exerciseName"] == "BARBELL_BACK_SQUAT"
-
-
-def test_normalise_bridges_the_two_naming_styles():
-    assert normalise("BARBELL_BACK_SQUAT") == normalise("Barbell Back Squat")
 
 
 # --- reading targets ------------------------------------------------------

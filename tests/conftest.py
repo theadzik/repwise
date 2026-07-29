@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from workout.models import ExerciseSpec
-from workout.progression import PerformedSet
+from workout.domain.models import ExerciseSpec
+from workout.domain.progression import PerformedSet
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: The shipped example. A user's own workouts.yaml is gitignored, so this

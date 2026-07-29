@@ -8,7 +8,7 @@ from test_payloads import active, rep_step
 from test_payloads import workout as steps
 
 from workout.cli import EXIT_OK, Payloads, changed_steps, command_update, pick_sessions
-from workout.models import Config, Workout
+from workout.domain.models import Config, Workout
 from workout.planner import ActivityNotFound
 
 SQUAT = spec(sets=3, weight_step=2.5)
@@ -187,8 +187,8 @@ def test_a_workout_is_fetched_once_however_often_it_is_asked_for(account):
 
 def test_changed_steps_counts_a_twice_moved_step_once():
     """Two sessions deciding one shared exercise is one step changing."""
+    from workout.domain.progression import Target
     from workout.planner import Change, Plan
-    from workout.progression import Target
 
     workout = Workout("Workout A", "111", ["workout a"], [CALF])
     first = Plan(

@@ -13,7 +13,7 @@ from typing import Any
 
 from garminconnect import Garmin, GarminConnectTooManyRequestsError
 
-from ..models import GarminSettings
+from ..domain.models import GarminSettings
 
 __all__ = ["GarminSession", "GarminConnectTooManyRequestsError", "connect", "STRENGTH"]
 

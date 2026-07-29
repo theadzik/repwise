@@ -5,7 +5,7 @@ from test_importer import payload, repeat
 from test_payloads import rep_step
 
 from workout.checker import check_workout
-from workout.models import Workout
+from workout.domain.models import Workout
 
 SQUAT_GROUP = repeat(
     rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0), sets=4, rest=120.0

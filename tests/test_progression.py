@@ -2,8 +2,8 @@
 
 from conftest import held, spec
 
-from workout.progression import PerformedSet as P
-from workout.progression import Target, next_target, working_weight
+from workout.domain.progression import PerformedSet as P
+from workout.domain.progression import Target, next_target, working_weight
 
 SQUAT = spec()
 LUNGE = spec(

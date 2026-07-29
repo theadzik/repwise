@@ -109,7 +109,7 @@ def test_push_without_apply_is_refused(caplog):
     import logging
 
     from workout.cli import EXIT_CONFIG, command_update
-    from workout.models import Config
+    from workout.domain.models import Config
 
     args = build_parser().parse_args(["update", "--push"])
     with caplog.at_level(logging.ERROR):

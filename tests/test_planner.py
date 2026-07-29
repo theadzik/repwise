@@ -6,8 +6,9 @@ import pytest
 from conftest import spec
 from test_payloads import active, rep_step, workout
 
+from workout.domain.models import Config, Workout
+from workout.domain.progression import Target
 from workout.garmin.payloads import performed_sets, step_note, step_target
-from workout.models import Config, Workout
 from workout.planner import (
     ActivityNotFound,
     decided_targets,
@@ -16,7 +17,6 @@ from workout.planner import (
     plan_sync,
     plan_workout,
 )
-from workout.progression import Target
 
 SQUAT = spec(sets=3, weight_step=2.5)
 CURLS = spec(
@@ -76,13 +76,18 @@ def test_find_workout_rejects_an_unknown_name():
 def test_category_index_skips_ambiguous_categories():
     """Two exercises sharing a category cannot be told apart by it."""
     other = spec(name="Front Squat", garmin_name="FRONT_SQUAT", garmin_category="SQUAT")
-    _, by_category = index_specs([SQUAT, other])
-    assert "squat" not in by_category
+    assert index_specs([SQUAT, other]).by_category("SQUAT") is None
 
 
 def test_category_index_keeps_unique_categories():
-    _, by_category = index_specs([SQUAT, CURLS])
-    assert by_category["curl"] is CURLS
+    assert index_specs([SQUAT, CURLS]).by_category("CURL") is CURLS
+
+
+def test_the_friendly_name_is_an_alias_for_the_garmin_one():
+    """A step named either way finds the same spec."""
+    index = index_specs([SQUAT])
+    assert index.by_name("BARBELL_BACK_SQUAT") is SQUAT
+    assert index.by_name("Barbell Back Squat") is SQUAT
 
 
 # --- planning -------------------------------------------------------------

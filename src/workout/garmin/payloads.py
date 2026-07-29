@@ -10,7 +10,8 @@ Two things about Garmin's payloads are easy to get wrong:
   says, normally kilograms.
 * Names differ between payloads. Garmin auto-detects the exercise while you
   lift, so what it logs need not match what the workout programs, and can be
-  null. The category survives both, so it is kept as a fallback.
+  null. The category survives both, so it is kept as a fallback. Deciding
+  which exercise a name refers to is `domain/matching.py`, not this module.
 """
 
 from __future__ import annotations
@@ -21,7 +22,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from ..progression import PerformedSet, Target
+from ..domain.matching import normalise
+from ..domain.progression import PerformedSet, Target
 
 #: Garmin's base unit for strength loads.
 GRAMS_PER_KG = 1000.0
@@ -39,11 +41,6 @@ NOTE_FIELD = "description"
 GENERATED_NOTE = re.compile(
     r"^\d+-\d+ (?:reps|s)(?: by \d+)? \| (?:bodyweight|\+[\d.]+ kg)$"
 )
-
-
-def normalise(name: str) -> str:
-    """Reduce a name to letters and digits for loose matching."""
-    return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
 # --- workout definitions ---------------------------------------------------
