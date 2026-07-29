@@ -1,3 +1,14 @@
+## 0.3.0 (2026-07-29)
+
+### Feat
+
+- add rep range and weight step to exercise notes
+
+### Fix
+
+- don't accept higher load if below low_rep
+- update messages and help
+
 ## 0.2.0 (2026-07-27)
 
 ### Feat
