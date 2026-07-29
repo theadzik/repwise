@@ -17,7 +17,7 @@ from typing import Any
 from ..domain.matching import normalise
 from ..domain.models import Config, Workout
 from ..domain.progression import Target
-from ..errors import ActivityNotFound, ExitCode, UsageError
+from ..errors import ActivityNotFound, ExitCode, GarminError, UsageError
 from ..garmin.client import GarminSession
 from ..garmin.payloads import performed_sets
 from ..planner import (
@@ -182,6 +182,25 @@ def push_to_watch(session: GarminSession, workouts: list[Workout]) -> None:
     logger.info("")
     logger.info(f"Queued {len(workouts)} send(s) to your last-used device.")
     logger.info("Sync your watch to pick up the new targets.")
+    _report_queue(session)
+
+
+def _report_queue(session: GarminSession) -> None:
+    """Read the queue back, which is the only way to confirm a push landed.
+
+    Behind --verbose because it costs a request and a successful push says so
+    already; it earns its place when a push seems not to have arrived, which
+    is exactly when the queue is the thing to look at. Failing to read it back
+    is not a reason to fail a push that already succeeded.
+    """
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+    try:
+        pending = session.pending_messages()
+    except GarminError as exc:
+        logger.debug(f"Could not read the device queue back: {exc}")
+        return
+    logger.debug(f"{len(pending)} message(s) now waiting for your device(s).")
 
 
 def run_update(

@@ -168,6 +168,16 @@ Sync your watch to pick up the new targets.
 It requires `--apply` - without it nothing has been written, so there is
 nothing to send - and refuses with exit code 3 if used alone.
 
+If a push seems not to have arrived, `-v` reads the queue back afterwards,
+which is the only way to confirm something is actually waiting for the device:
+
+```text
+2 message(s) now waiting for your device(s).
+```
+
+The queue drains when the watch syncs, so a count of zero after a sync is the
+expected result rather than a sign the push failed.
+
 The message goes to **the device you last used**, which is the right one if you
 train with a single watch. Sending to a specific device, or to several, is not
 currently exposed; see [Garmin's API](garmin-api.md#device-messages) for what
