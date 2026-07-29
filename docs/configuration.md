@@ -7,12 +7,29 @@ Start from [workouts.example.yaml](../workouts.example.yaml), which is a
 complete working A/B split annotated field by field, or generate one with
 [`workout import`](commands.md#import).
 
+- [Where the file lives](#where-the-file-lives)
 - [Settings](#settings)
 - [Workout fields](#workout-fields)
 - [Exercise fields](#exercise-fields)
 - [Load and weight steps](#load-and-weight-steps)
 - [Validation](#validation)
 - [Finding your exercise identifiers](#finding-your-exercise-identifiers)
+
+## Where the file lives
+
+`--config PATH` names it outright. Otherwise the first of these that exists is
+used:
+
+| Order | Location | For |
+| --- | --- | --- |
+| 1 | `$WORKOUT_CONFIG` | Keeping it somewhere of your own, or switching routines |
+| 2 | `./workouts.yaml` | Running in the directory that holds your routine |
+| 3 | `$XDG_CONFIG_HOME/workout/workouts.yaml`, i.e. `~/.config/workout/workouts.yaml` | An installed copy, run from anywhere |
+| 4 | The checkout this package is running from | Working on the tool itself |
+
+The checkout is last so that a clone never shadows a config of your own, and
+is skipped entirely when the package is installed rather than run from source.
+When none of them exists, the error lists the paths it tried.
 
 ## Settings
 

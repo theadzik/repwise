@@ -5,7 +5,8 @@ import re
 import pytest
 from conftest import EXAMPLE_CONFIG, FIXTURE
 
-from workout.config import ConfigError, load_config
+from workout import config as config_module
+from workout.config import ConfigError, load_config, resolve_config
 
 SHARED = """
 settings:
@@ -181,21 +182,99 @@ def test_lunge_steps_by_two():
     assert (lunge.rep_high - lunge.rep_low) % lunge.rep_step == 0
 
 
-def test_missing_default_config_points_at_the_example(tmp_path, monkeypatch):
-    """A fresh checkout has only the example, so say how to get started."""
-    import workout.config as config_module
-
-    missing = str(tmp_path / "workouts.yaml")
-    example = tmp_path / "workouts.example.yaml"
-    example.write_text(FIXTURE)
-    monkeypatch.setattr(config_module, "DEFAULT_CONFIG", missing)
-    monkeypatch.setattr(config_module, "EXAMPLE_CONFIG", str(example))
-
-    hint = re.escape("cp workouts.example.yaml workouts.yaml")
-    with pytest.raises(ConfigError, match=hint):
-        load_config(missing)
-
-
 def test_missing_named_config_is_reported_plainly(tmp_path):
     with pytest.raises(ConfigError, match="does not exist"):
         load_config(str(tmp_path / "nope.yaml"))
+
+
+# --- finding the config ---------------------------------------------------
+
+
+@pytest.fixture
+def nowhere(tmp_path, monkeypatch):
+    """An empty world: no env var, no config in any searched location."""
+    monkeypatch.delenv("WORKOUT_CONFIG", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.setattr(config_module, "_CHECKOUT_ROOT", str(tmp_path / "checkout"))
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+def test_the_working_directory_is_searched_first(nowhere):
+    """Running in a directory holding a routine should just use it."""
+    (nowhere / "workouts.yaml").write_text(FIXTURE)
+    assert resolve_config() == str(nowhere / "workouts.yaml")
+
+
+def test_the_env_var_wins_over_the_working_directory(nowhere, monkeypatch):
+    (nowhere / "workouts.yaml").write_text(FIXTURE)
+    named = nowhere / "elsewhere.yaml"
+    named.write_text(FIXTURE)
+    monkeypatch.setenv("WORKOUT_CONFIG", str(named))
+
+    assert resolve_config() == str(named)
+
+
+def test_the_xdg_directory_is_searched_when_the_cwd_has_nothing(nowhere):
+    """The place a config belongs once the tool is installed for real."""
+    xdg = nowhere / "xdg" / "workout"
+    xdg.mkdir(parents=True)
+    (xdg / "workouts.yaml").write_text(FIXTURE)
+
+    assert resolve_config() == str(xdg / "workouts.yaml")
+
+
+def test_an_explicit_path_skips_the_search_entirely(nowhere):
+    assert resolve_config("/somewhere/else.yaml") == "/somewhere/else.yaml"
+
+
+def a_checkout(root):
+    """A directory that looks like a clone: a config, beside the example."""
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "workouts.example.yaml").write_text(FIXTURE)
+    (root / "workouts.yaml").write_text(FIXTURE)
+    return root
+
+
+def test_the_checkout_is_searched_last(nowhere):
+    """So that `python -m workout` works from anywhere inside a clone."""
+    checkout = a_checkout(nowhere / "checkout")
+    assert resolve_config() == str(checkout / "workouts.yaml")
+
+
+def test_a_config_in_the_working_directory_beats_the_checkout(nowhere):
+    """A clone of this repo must not shadow the config the user is standing in."""
+    a_checkout(nowhere / "checkout")
+    (nowhere / "workouts.yaml").write_text(FIXTURE)
+
+    assert resolve_config() == str(nowhere / "workouts.yaml")
+
+
+def test_an_installed_copy_offers_no_path_inside_site_packages(nowhere):
+    """The old code computed one from __file__ and reported only that.
+
+    Installed, that arithmetic lands in a lib directory holding nothing of
+    ours, so it is not somewhere to suggest putting a config.
+    """
+    with pytest.raises(ConfigError) as caught:
+        resolve_config()
+
+    message = str(caught.value)
+    assert "Looked in:" in message
+    assert str(nowhere / "workouts.yaml") in message, "names the obvious place"
+    assert "xdg" in message, "and the one it belongs in once installed"
+    assert "checkout" not in message, "but not a directory that is not a checkout"
+
+
+def test_nothing_found_suggests_the_example_when_there_is_one(nowhere):
+    """A fresh checkout has only the example, so say how to get started."""
+    (nowhere / "workouts.example.yaml").write_text(FIXTURE)
+
+    with pytest.raises(ConfigError, match=re.escape("cp ")):
+        resolve_config()
+
+
+def test_nothing_found_suggests_import_when_there_is_no_example(nowhere):
+    """An installed copy ships no example, so point at the command instead."""
+    with pytest.raises(ConfigError, match="workout import -o"):
+        resolve_config()
