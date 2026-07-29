@@ -46,6 +46,7 @@ tests/
     test_importer.py       import and YAML rendering
     test_checker.py        drift detection
     test_cli.py            argument parsing and help
+    test_main.py           dispatch, exit codes, and which stream
     test_log.py            verbosity, and stdout vs stderr
 ```
 
