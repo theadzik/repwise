@@ -10,8 +10,6 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-from ..config import DEFAULT_CONFIG
-
 
 def add_verbose(
     parser: argparse.ArgumentParser, default: Any = argparse.SUPPRESS
@@ -56,8 +54,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    # No default: where the config lives depends on how the tool was
+    # installed, so config.py works it out rather than the parser freezing one
+    # answer into the help text.
     parser.add_argument(
-        "--config", default=DEFAULT_CONFIG, help="path to workouts.yaml"
+        "--config",
+        metavar="PATH",
+        help="path to workouts.yaml; by default $WORKOUT_CONFIG, then "
+        "./workouts.yaml, then ~/.config/workout/workouts.yaml",
     )
     add_verbose(parser, default=False)
     sub = parser.add_subparsers(dest="command", required=True, metavar="command")

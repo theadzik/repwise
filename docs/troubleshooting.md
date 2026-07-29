@@ -33,7 +33,7 @@ DEBUG   workout.garmin.client: Resumed cached session.
 | Cloudflare challenge | Only affects browser automation. This tool goes through `garminconnect`, built on `curl_cffi`, which is not subject to it |
 | Every exercise looks like bodyweight | The weight is reading as zero. Check a `--dump` against [Garmin's API](garmin-api.md#weight-units) |
 | `--push` refused with exit 3 | `--push` needs `--apply`; without it nothing has been written, so there is nothing to send |
-| `workouts.yaml does not exist yet` | Copy the example: `cp workouts.example.yaml workouts.yaml` |
+| `No workouts.yaml found` | The message lists every path tried. Put one there, copy the example, or pass `--config PATH`. See [where the file lives](configuration.md#where-the-file-lives) |
 
 `garth` is deprecated and unmaintained after Garmin's March 2026 auth change.
 `garminconnect` >= 0.3.5 rebuilt its login on `curl_cffi` and is the supported

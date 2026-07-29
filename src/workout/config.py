@@ -1,8 +1,11 @@
-"""Load and validate workouts.yaml.
+"""Find, load and validate workouts.yaml.
 
 All configuration lives in that file: the routine itself, the Garmin workout
 ids, the weight increments, and the Garmin client settings. Nothing is
 hardcoded elsewhere.
+
+Where that file is depends on how the tool was installed, so it is searched
+for rather than computed from this module's location - see `search_path()`.
 """
 
 from __future__ import annotations
@@ -14,14 +17,87 @@ import yaml
 from .domain.models import BODYWEIGHT, Config, ExerciseSpec, GarminSettings, Workout
 from .errors import ConfigError
 
-__all__ = ["load_config", "ConfigError", "DEFAULT_CONFIG", "EXAMPLE_CONFIG"]
+__all__ = ["load_config", "resolve_config", "search_path", "ConfigError"]
 
-#: Repository root, two levels above this package.
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DEFAULT_CONFIG = os.path.join(_ROOT, "workouts.yaml")
-EXAMPLE_CONFIG = os.path.join(_ROOT, "workouts.example.yaml")
+CONFIG_NAME = "workouts.yaml"
+EXAMPLE_NAME = "workouts.example.yaml"
+
+#: Three directories above this module: src/workout/config.py -> the
+#: repository root, when this is a checkout. Installed into site-packages the
+#: same arithmetic points at a lib directory that holds nothing of ours, which
+#: is what `_checkout_config` checks before believing it.
+_CHECKOUT_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
 
 _REQUIRED = ("name", "garmin_name", "rep_low", "rep_high", "sets", "load")
+
+
+def _xdg_config_home() -> str:
+    return os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+
+
+def _checkout_config() -> str | None:
+    """Where a checkout keeps its config, if this is running from one.
+
+    The shipped example sits beside it and is in version control, so its
+    presence is what tells a clone from a site-packages directory that merely
+    happens to be three levels up.
+    """
+    if not os.path.exists(os.path.join(_CHECKOUT_ROOT, EXAMPLE_NAME)):
+        return None
+    return os.path.join(_CHECKOUT_ROOT, CONFIG_NAME)
+
+
+def search_path() -> list[str]:
+    """Where to look for workouts.yaml, most specific first.
+
+    In order: what `$WORKOUT_CONFIG` names, the working directory, the XDG
+    config directory, and finally the checkout this module lives in - which is
+    what makes `python -m workout` work from anywhere inside a clone. The
+    checkout comes last so that it never shadows a config of the user's own,
+    and is left out entirely when this is not a checkout, so that an installed
+    copy does not offer a path inside site-packages as somewhere to look.
+    """
+    candidates = []
+    named = os.environ.get("WORKOUT_CONFIG")
+    if named:
+        candidates.append(os.path.expanduser(named))
+    candidates.append(os.path.join(os.getcwd(), CONFIG_NAME))
+    candidates.append(os.path.join(_xdg_config_home(), "workout", CONFIG_NAME))
+    checkout = _checkout_config()
+    if checkout:
+        candidates.append(checkout)
+    return candidates
+
+
+def _example_beside(path: str) -> str | None:
+    """The shipped example, if there is one next to where the config would go."""
+    example = os.path.join(os.path.dirname(path) or ".", EXAMPLE_NAME)
+    return example if os.path.exists(example) else None
+
+
+def resolve_config(explicit: str | None = None) -> str:
+    """The config file to read: what was asked for, or the first one found."""
+    if explicit:
+        return explicit
+
+    searched = search_path()
+    for candidate in searched:
+        if os.path.exists(candidate):
+            return candidate
+
+    # Nothing anywhere. Saying where it looked is the difference between a
+    # user creating the file in the right place and guessing.
+    where = "\n".join(f"    {candidate}" for candidate in searched)
+    example = _example_beside(searched[0])
+    hint = (
+        f"Copy the example and edit it:\n    cp {example} {searched[0]}"
+        if example
+        else "Create one, or build a starting point from your Garmin account:\n"
+        f"    workout import -o {searched[0]}"
+    )
+    raise ConfigError(f"No {CONFIG_NAME} found. Looked in:\n{where}\n{hint}")
 
 
 def _build_exercise(raw: dict, steps: dict[str, float], where: str) -> ExerciseSpec:
@@ -114,17 +190,15 @@ def _check_shared(config: Config, path: str) -> None:
             )
 
 
-def load_config(path: str = DEFAULT_CONFIG) -> Config:
-    """Read workouts.yaml, validating as we go."""
+def load_config(path: str | None = None) -> Config:
+    """Read workouts.yaml, validating as we go.
+
+    With no path, the file is searched for: see `resolve_config`.
+    """
+    path = resolve_config(path)
     if not os.path.exists(path):
-        # workouts.yaml is deliberately not in version control, so a fresh
-        # checkout has only the example.
-        if path == DEFAULT_CONFIG and os.path.exists(EXAMPLE_CONFIG):
-            raise ConfigError(
-                f"{path} does not exist yet. Copy the example and edit it:\n"
-                f"    cp {os.path.basename(EXAMPLE_CONFIG)} "
-                f"{os.path.basename(path)}"
-            )
+        # Only reachable for a path that was asked for by name, since a
+        # resolved one exists by construction.
         raise ConfigError(f"{path} does not exist")
 
     # A file that cannot be read or parsed is a configuration problem like any
