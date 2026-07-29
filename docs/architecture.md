@@ -11,9 +11,11 @@
 workouts.yaml              all configuration: routine, Garmin ids, settings
 workouts.example.yaml      the shipped example, validated by the tests
 src/workout/
-    models.py              domain objects, no behaviour
+    domain/
+        models.py          domain objects, no behaviour
+        progression.py     the rules. No I/O, no Garmin types
+        matching.py        which exercise a name or category refers to
     config.py              workouts.yaml -> models, with validation
-    progression.py         the rules. No I/O, no Garmin types
     planner.py             match steps to exercises, decide the changes
     importer.py            Garmin workout -> config YAML
     checker.py             compare config against Garmin
@@ -25,6 +27,7 @@ src/workout/
 tests/
     conftest.py            shared builders and fixtures
     test_progression.py    the rules
+    test_matching.py       name and category lookup
     test_config.py         loading and validation
     test_payloads.py       schema mapping, using trimmed real payloads
     test_planner.py        matching and planning
@@ -54,9 +57,10 @@ flowchart TD
         garmin["client.py<br/>payloads.py"]
     end
 
-    subgraph domain["domain - no I/O, no Garmin types"]
+    subgraph domain["domain/ - no I/O, no Garmin types"]
         progression["progression.py"]
         models["models.py"]
+        matching["matching.py"]
     end
 
     cli --> planner & importer & checker & config
@@ -64,14 +68,16 @@ flowchart TD
     planner & importer & checker --> garmin
     planner & garmin --> progression
     planner & checker & config --> models
+    planner & checker & garmin --> matching
     progression --> models
 ```
 
 Three boundaries carry the weight:
 
-- **`progression.py` knows nothing about Garmin or YAML.** It takes a spec, a
-  current target, and a list of performed sets. That is what makes the rules
-  testable without a network.
+- **`domain/` knows nothing about Garmin or YAML.** `progression.py` takes a
+  spec, a current target, and a list of performed sets; `matching.py` takes
+  names and categories. That is what makes the rules testable without a
+  network.
 - **`garmin/payloads.py` is the only module that knows Garmin's schema.** If
   Garmin changes their JSON, everything to fix is in that one file.
 - **Only `planner.py` mutates a workout payload, and it performs no I/O.** A
@@ -121,6 +127,12 @@ its own session and a sync from a later one both survive a single write.
 
 ## Exercise matching
 
+`domain/matching.py` owns this, and is the only place it is implemented: the
+planner matches specs to workout steps and the checker matches them to
+exercise blocks, both through the same `ExerciseIndex`. Deciding which
+exercise a name refers to is this tool's rule, not Garmin's schema, which is
+why it sits in the domain rather than in the adapter.
+
 Names are normalised to letters and digits only, so `BARBELL_BACK_SQUAT` and
 `Barbell Back Squat` collapse to the same key.
 
@@ -130,6 +142,10 @@ Lookup order for a workout step:
 2. `name`, normalised
 3. `garmin_category`, but only when exactly one exercise in the workout claims
    that category - otherwise it could not say which one a set belongs to
+
+`check` deliberately stops at step 1 and asks which exercises claim the
+category separately, because a silent fallback is the drift it exists to
+report.
 
 The same order applies when looking up what was performed, which matters because
 Garmin auto-detects exercises while you lift and the name it logs need not match

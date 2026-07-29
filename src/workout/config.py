@@ -11,7 +11,7 @@ import os
 
 import yaml
 
-from .models import BODYWEIGHT, Config, ExerciseSpec, GarminSettings, Workout
+from .domain.models import BODYWEIGHT, Config, ExerciseSpec, GarminSettings, Workout
 
 #: Repository root, two levels above this package.
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

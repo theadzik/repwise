@@ -8,23 +8,22 @@ can inspect a plan and discard it -- which is what a dry run does.
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
+from .domain.matching import ExerciseIndex, normalise
+from .domain.models import Config, ExerciseSpec, Workout
+from .domain.progression import PerformedSet, Target, next_target
 from .garmin.payloads import (
     GENERATED_NOTE,
     apply_note,
     apply_target,
     iter_workout_steps,
-    normalise,
     step_category,
     step_exercise_name,
     step_note,
     step_target,
 )
-from .models import Config, ExerciseSpec, Workout
-from .progression import PerformedSet, Target, next_target
 
 Performed = tuple[dict[str, list[PerformedSet]], dict[str, list[PerformedSet]]]
 
@@ -78,39 +77,29 @@ def find_workout(config: Config, activity_name: str) -> Workout:
     raise ActivityNotFound(f"Cannot tell which workout '{activity_name}' belongs to.")
 
 
-def index_specs(
-    exercises: list[ExerciseSpec],
-) -> tuple[dict[str, ExerciseSpec], dict[str, ExerciseSpec]]:
-    """Index specs by name and by category.
+def index_specs(exercises: list[ExerciseSpec]) -> ExerciseIndex[ExerciseSpec]:
+    """Index a workout's exercises for lookup from a payload.
 
-    A category is only usable when exactly one exercise in the workout claims
-    it, otherwise it could not say which one a set belongs to.
+    `garmin_name` is what Garmin calls the movement, so it is authoritative;
+    the friendly `name` is an alias, which is what lets a step named either way
+    find its spec.
     """
-    by_name: dict[str, ExerciseSpec] = {}
+    index: ExerciseIndex[ExerciseSpec] = ExerciseIndex()
     for spec in exercises:
-        by_name.setdefault(normalise(spec.name), spec)
-        by_name[normalise(spec.garmin_name)] = spec  # authoritative, so overwrite
-
-    claimed: dict[str, list[ExerciseSpec]] = defaultdict(list)
-    for spec in exercises:
-        if spec.garmin_category:
-            claimed[normalise(spec.garmin_category)].append(spec)
-    by_category = {key: specs[0] for key, specs in claimed.items() if len(specs) == 1}
-
-    return by_name, by_category
+        index.add(
+            spec,
+            name=spec.garmin_name,
+            aliases=(spec.name,),
+            category=spec.garmin_category,
+        )
+    return index
 
 
 def _match(
-    step: dict[str, Any],
-    by_name: dict[str, ExerciseSpec],
-    by_category: dict[str, ExerciseSpec],
+    step: dict[str, Any], specs: ExerciseIndex[ExerciseSpec]
 ) -> ExerciseSpec | None:
     """Find the spec for a workout step: name first, then category."""
-    spec = by_name.get(normalise(step_exercise_name(step) or ""))
-    if spec is not None:
-        return spec
-    category = step_category(step)
-    return by_category.get(normalise(category)) if category else None
+    return specs.find(step_exercise_name(step), step_category(step))
 
 
 def _logged_for(
@@ -160,7 +149,7 @@ def plan_workout(
     workout: Workout, payload: dict[str, Any], performed: Performed
 ) -> Plan:
     """Work out the new target for every step of the workout just performed."""
-    by_name, by_category = index_specs(workout.exercises)
+    specs = index_specs(workout.exercises)
 
     changes: list[Change] = []
     warnings: list[str] = []
@@ -171,7 +160,7 @@ def plan_workout(
         if not label:
             continue
 
-        spec = _match(step, by_name, by_category)
+        spec = _match(step, specs)
         if spec is None:
             warnings.append(f"{label}: not in workouts.yaml, skipped")
             continue
@@ -216,14 +205,14 @@ def plan_sync(
     both -- and a target earned in one session should hold everywhere it
     appears, otherwise the copies drift apart.
     """
-    by_name, by_category = index_specs(workout.exercises)
+    specs = index_specs(workout.exercises)
 
     changes: list[Change] = []
     warnings: list[str] = []
     notes: list[str] = []
 
     for step in iter_workout_steps(payload):
-        spec = _match(step, by_name, by_category)
+        spec = _match(step, specs)
         if spec is None:
             continue
 

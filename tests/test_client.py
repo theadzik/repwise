@@ -1,7 +1,7 @@
 """The Garmin session wrapper, against a stub API."""
 
+from workout.domain.models import GarminSettings
 from workout.garmin.client import STRENGTH, GarminSession
-from workout.models import GarminSettings
 
 
 class StubApi:

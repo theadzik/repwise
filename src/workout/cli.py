@@ -15,6 +15,9 @@ from typing import Any
 
 from .checker import Finding, check_workout
 from .config import DEFAULT_CONFIG, ConfigError, load_config
+from .domain.matching import normalise
+from .domain.models import Config, ExerciseSpec, Workout
+from .domain.progression import Target
 from .garmin.client import (
     STRENGTH,
     GarminConnectTooManyRequestsError,
@@ -24,7 +27,6 @@ from .garmin.client import (
 from .garmin.payloads import performed_sets
 from .importer import describe_workout, render_config
 from .log import configure
-from .models import Config, ExerciseSpec, Workout
 from .planner import (
     ActivityNotFound,
     Change,
@@ -34,7 +36,6 @@ from .planner import (
     plan_sync,
     plan_workout,
 )
-from .progression import Target
 
 EXIT_OK = 0
 EXIT_NOTHING_USABLE = 1
@@ -291,8 +292,6 @@ def sync_other_workouts(
     targets: dict[str, Target],
 ) -> list[Plan]:
     """Propagate decided targets into every other workout that shares them."""
-    from .garmin.payloads import normalise  # local: only needed for the lookup
-
     plans: list[Plan] = []
     for other in config:
         if other.key == source.key:

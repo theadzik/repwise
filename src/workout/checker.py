@@ -12,14 +12,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .domain.matching import ExerciseIndex
+from .domain.models import Workout
 from .garmin.payloads import (
     ExerciseBlock,
     iter_exercise_blocks,
-    normalise,
     step_category,
     step_exercise_name,
 )
-from .models import Workout
 
 
 @dataclass(frozen=True)
@@ -42,19 +42,22 @@ def check_workout(workout: Workout, payload: dict) -> list[Finding]:
         findings.append(Finding(workout.key, detail, severity))
 
     blocks = list(iter_exercise_blocks(payload))
-    by_name = {normalise(step_exercise_name(b.step) or ""): b for b in blocks}
-    by_category: dict[str, list[ExerciseBlock]] = {}
+    index: ExerciseIndex[ExerciseBlock] = ExerciseIndex()
     for entry in blocks:
-        category = step_category(entry.step)
-        if category:
-            by_category.setdefault(normalise(category), []).append(entry)
+        index.add(
+            entry,
+            name=step_exercise_name(entry.step),
+            category=step_category(entry.step),
+        )
 
     seen = set()
     for spec in workout.exercises:
-        block = by_name.get(normalise(spec.garmin_name))
+        # Only the name here, not the full lookup: falling back to the category
+        # silently is exactly the drift this command exists to report.
+        block = index.by_name(spec.garmin_name)
 
         if block is None:
-            candidates = by_category.get(normalise(spec.garmin_category or ""), [])
+            candidates = index.claiming(spec.garmin_category)
             if len(candidates) == 1:
                 block = candidates[0]
                 actual = step_exercise_name(block.step)
