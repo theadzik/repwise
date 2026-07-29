@@ -27,6 +27,17 @@ PLANK = spec(
     unit="seconds",
 )
 FOUR_SET_SQUAT = spec(sets=4, weight_step=2.5)
+#: A narrow range on top of a load whose smallest step is a third of the
+#: working weight, which is where an unearned jump lands furthest out of range.
+LATERAL_RAISE = spec(
+    name="Dumbbell Lateral Raise",
+    garmin_name="DUMBBELL_LATERAL_RAISE",
+    garmin_category="LATERAL_RAISE",
+    rep_low=12,
+    rep_high=15,
+    load="dumbbell",
+    weight_step=1.0,
+)
 
 
 # --- the four rules -------------------------------------------------------
@@ -181,6 +192,63 @@ def test_dropping_weight_rebases_downward():
     """A deload is respected rather than treated as a failed session."""
     target, why = next_target(FOUR_SET_SQUAT, Target(9, 20.0), [P(8, 15.0)] * 4)
     assert target == Target(9, 15.0), why
+
+
+# --- a load below the range is not adopted --------------------------------
+
+
+def test_heavier_load_below_range_keeps_the_previous_target():
+    """The 3 kg pair was taken, so 4 kg x 8 - short of a 12-15 range."""
+    target, why = next_target(LATERAL_RAISE, Target(13, 3.0), [P(8, 4.0)] * 3)
+    assert target == Target(13, 3.0), why
+    assert why == "only 8 at 4 kg, below the 12-15 range, keep 13 x 3 kg"
+
+
+def test_heavier_load_at_the_bottom_of_the_range_is_adopted():
+    """One rep more and the load is earned, so it becomes the new baseline."""
+    target, why = next_target(LATERAL_RAISE, Target(13, 3.0), [P(12, 4.0)] * 3)
+    assert target == Target(13, 4.0), why
+
+
+def test_below_range_is_judged_by_the_weakest_set():
+    """Two sets in range do not carry a third that fell out of it."""
+    target, _ = next_target(
+        LATERAL_RAISE, Target(13, 3.0), [P(13, 4.0), P(12, 4.0), P(9, 4.0)]
+    )
+    assert target == Target(13, 3.0)
+
+
+def test_partial_sets_below_range_do_not_bank_the_weight():
+    """Short of both the set count and the range: the load is still unearned."""
+    target, why = next_target(LATERAL_RAISE, Target(13, 3.0), [P(8, 4.0)] * 2)
+    assert target == Target(13, 3.0), why
+    assert "below the 12-15 range" in why, "not the consolidate message"
+
+
+def test_partial_sets_within_range_are_still_banked():
+    """Rule 5 does not swallow the consolidate case when the reps are fine."""
+    target, why = next_target(LATERAL_RAISE, Target(13, 3.0), [P(12, 4.0)] * 2)
+    assert target == Target(12, 4.0), why
+    assert "2/3 sets" in why
+
+
+def test_dropping_below_the_range_is_not_adopted_either():
+    """A deload only rebases while it still lands inside the range."""
+    target, why = next_target(LATERAL_RAISE, Target(13, 3.0), [P(8, 2.0)] * 3)
+    assert target == Target(13, 3.0), why
+
+
+def test_same_load_below_the_range_still_reads_as_a_missed_target():
+    """Rule 4 owns the unchanged-load case, so its wording is unaffected."""
+    target, why = next_target(LATERAL_RAISE, Target(13, 3.0), [P(8, 3.0)] * 3)
+    assert target == Target(13, 3.0)
+    assert "missed target (8/13 on worst set), repeat" in why
+
+
+def test_heavier_load_can_still_top_out_the_range():
+    """Rule 5 gates rule 3 rather than replacing it."""
+    target, why = next_target(LATERAL_RAISE, Target(13, 3.0), [P(15, 4.0)] * 3)
+    assert target == Target(12, 5.0), why
 
 
 # --- timed holds ----------------------------------------------------------

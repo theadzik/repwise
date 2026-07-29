@@ -11,6 +11,9 @@ The rules, as written in README.md:
 3. Once all sets reach the upper end, increase the weight and reset to the
    lower end.
 4. If you didn't match the previous result, stay at the same weight and reps.
+5. A load is only adopted once it can be carried for the bottom of the range.
+   Lift something other than what was prescribed and come up short of rep_low
+   and the load was too heavy to keep, so the previous target stands.
 
 No state file is needed: the target currently stored in the Garmin workout is
 the "previous result" to match, and the logged activity says what was actually
@@ -62,44 +65,18 @@ def working_weight(performed: list[PerformedSet]) -> float:
     return max(counts, key=lambda weight: (counts[weight], weight))
 
 
-def next_target(
+def _advance(
     spec: ExerciseSpec,
     current: Target,
-    performed: list[PerformedSet],
+    weight: float,
+    floor: int,
+    rebased: bool,
 ) -> tuple[Target, str]:
-    """Decide the next prescription for one exercise.
+    """Move a session that counted: rule 3 at the top of the range, else rule 2.
 
-    Returns the new target plus a short human-readable reason.
+    Split out from `next_target` so that the guards deciding *whether* a
+    session moves the target stay readable apart from how far it moves.
     """
-    if not performed:
-        return current, "no sets logged, target unchanged"
-
-    # Judge everything at the load actually used, which may not be the load the
-    # workout still has stored.
-    weight = working_weight(performed)
-    at_weight = [entry.reps for entry in performed if entry.weight == weight]
-    rebased = weight != current.weight
-
-    # Progress from the weakest set, not from the stored target. The next
-    # target has to be achievable on every set, so extra reps on the easy sets
-    # earn nothing while the floor stays put -- but beating the target on all
-    # of them does count.
-    floor = min(at_weight)
-
-    # Too few sets at that load to judge progression, so bank the load and
-    # repeat. Rule 4 still applies when the load itself did not change.
-    if len(at_weight) < spec.sets:
-        reps = floor if rebased else current.reps
-        return (
-            Target(reps, weight),
-            f"only {len(at_weight)}/{spec.sets} sets at {weight:g} kg, consolidate",
-        )
-
-    # Rule 4: every prescribed set must meet the target to count as a match.
-    # Only meaningful while the load is unchanged.
-    if not rebased and floor < current.reps:
-        return current, f"missed target ({floor}/{current.reps} on worst set), repeat"
-
     # Rule 3: topped out the range, so add load and reset to the bottom.
     if floor >= spec.rep_high:
         if spec.bodyweight:
@@ -133,3 +110,58 @@ def next_target(
         Target(reps, weight),
         f"{beat}add {spec.rep_step} rep{plural} ({floor} -> {reps}){moved}",
     )
+
+
+def next_target(
+    spec: ExerciseSpec,
+    current: Target,
+    performed: list[PerformedSet],
+) -> tuple[Target, str]:
+    """Decide the next prescription for one exercise.
+
+    Returns the new target plus a short human-readable reason.
+    """
+    if not performed:
+        return current, "no sets logged, target unchanged"
+
+    # Judge everything at the load actually used, which may not be the load the
+    # workout still has stored.
+    weight = working_weight(performed)
+    at_weight = [entry.reps for entry in performed if entry.weight == weight]
+    rebased = weight != current.weight
+
+    # Progress from the weakest set, not from the stored target. The next
+    # target has to be achievable on every set, so extra reps on the easy sets
+    # earn nothing while the floor stays put -- but beating the target on all
+    # of them does count.
+    floor = min(at_weight)
+
+    # Rule 5: a load is only worth keeping once it can be carried for at least
+    # the bottom of the range. Falling short of rep_low means the jump was too
+    # big -- the 3 kg dumbbells were taken, so you grabbed the 4 kg ones --
+    # and rebasing onto it would prescribe a rep count outside the programmed
+    # range. Only rebased loads are judged here; at an unchanged load rule 4
+    # already covers it, since a stored target never sits below rep_low.
+    if rebased and floor < spec.rep_low:
+        return (
+            current,
+            f"only {floor} at {weight:g} kg, below the "
+            f"{spec.rep_low}-{spec.rep_high} range, keep "
+            f"{current.reps} x {current.weight:g} kg",
+        )
+
+    # Too few sets at that load to judge progression, so bank the load and
+    # repeat. Rule 4 still applies when the load itself did not change.
+    if len(at_weight) < spec.sets:
+        reps = floor if rebased else current.reps
+        return (
+            Target(reps, weight),
+            f"only {len(at_weight)}/{spec.sets} sets at {weight:g} kg, consolidate",
+        )
+
+    # Rule 4: every prescribed set must meet the target to count as a match.
+    # Only meaningful while the load is unchanged.
+    if not rebased and floor < current.reps:
+        return current, f"missed target ({floor}/{current.reps} on worst set), repeat"
+
+    return _advance(spec, current, weight, floor, rebased)

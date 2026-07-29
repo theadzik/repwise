@@ -27,6 +27,16 @@ CURLS = spec(
     load="dumbbell",
     weight_step=1.0,
 )
+LATERAL = spec(
+    name="Dumbbell Lateral Raise",
+    garmin_name="DUMBBELL_LATERAL_RAISE",
+    garmin_category="LATERAL_RAISE",
+    rep_low=12,
+    rep_high=15,
+    sets=3,
+    load="dumbbell",
+    weight_step=1.0,
+)
 CALF = spec(
     name="Weighted Standing Calf Raise",
     garmin_name="WEIGHTED_STANDING_CALF_RAISE",
@@ -126,6 +136,24 @@ def test_plan_leaves_an_unchanged_step_alone():
     )
     plan = plan_workout(a_workout(), payload, performed)
     assert plan.changes and not plan.moved, "missed target, so nothing moves"
+
+
+def test_plan_does_not_write_back_a_load_below_the_range():
+    """A heavier session short of rep_low must leave the payload untouched."""
+    payload = workout(rep_step("DUMBBELL_LATERAL_RAISE", "LATERAL_RAISE", 13, 3.0))
+    performed = performed_sets(
+        {
+            "exerciseSets": [
+                active("DUMBBELL_LATERAL_RAISE", "LATERAL_RAISE", 8, 4000.0)
+            ]
+            * 3
+        }
+    )
+    plan = plan_workout(a_workout(exercises=[LATERAL]), payload, performed)
+
+    assert not plan.moved, "the 4 kg was not earned"
+    steps = payload["workoutSegments"][0]["workoutSteps"]
+    assert step_target(next(iter(steps))) == Target(13, 3.0), "still 13 x 3 kg"
 
 
 # --- syncing shared exercises ---------------------------------------------
