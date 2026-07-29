@@ -12,6 +12,7 @@ workout update --verbose
 | --- | --- |
 | `--config PATH` | Read this file instead of searching for `workouts.yaml`. See [where the file lives](configuration.md#where-the-file-lives) |
 | `-v`, `--verbose` | Also show debug output, prefixed with its level and source |
+| `--version` | Print the version and exit. Worth quoting in a bug report |
 
 Results go to stdout, so they pipe and redirect; warnings and errors go to
 stderr, so they stay visible when they do.
