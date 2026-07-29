@@ -1,5 +1,7 @@
 """Choosing which sessions to update, and updating more than one at a time."""
 
+import logging
+
 import pytest
 from builders import active, rep_step, spec
 from builders import workout as steps
@@ -12,7 +14,7 @@ from workout.app.update import (
     run_update,
 )
 from workout.domain.models import Config, Workout
-from workout.errors import ActivityNotFound, ExitCode, UsageError
+from workout.errors import ActivityNotFound, ExitCode, GarminError, UsageError
 
 SQUAT = spec(sets=3, weight_step=2.5)
 CALF = spec(
@@ -43,6 +45,8 @@ class FakeSession:
         self.fetched: list[str] = []
         self.saved: list[tuple[str, dict]] = []
         self.pushed: list[str] = []
+        self.queue_reads = 0
+        self.queue_failure: Exception | None = None
 
     def recent_activities(self, limit=None):
         return self.activities
@@ -62,6 +66,12 @@ class FakeSession:
 
     def push_workout(self, workout_id):
         self.pushed.append(workout_id)
+
+    def pending_messages(self):
+        self.queue_reads += 1
+        if self.queue_failure:
+            raise self.queue_failure
+        return [{"messageId": i} for i, _ in enumerate(self.pushed)]
 
 
 def an_activity(activity_id, name):
@@ -266,3 +276,40 @@ def test_push_without_apply_is_refused():
 def test_a_refused_flag_combination_exits_three():
     """The exit code travels with the exception, not with the caller."""
     assert UsageError().exit_code == ExitCode.CONFIG
+
+
+# --- confirming a push landed ---------------------------------------------
+
+
+def test_pushing_queues_every_written_workout(account):
+    run(account, apply=True, push=True)
+    assert sorted(account.pushed) == ["111", "222"]
+
+
+def test_the_queue_is_read_back_under_verbose(account, caplog):
+    """The only way to confirm a push was queued, so -v should show it."""
+    with caplog.at_level(logging.DEBUG, logger="workout.app.update"):
+        run(account, apply=True, push=True)
+
+    assert account.queue_reads == 1
+    assert "2 message(s) now waiting" in caplog.text
+
+
+def test_the_queue_is_not_read_on_a_normal_run(account, caplog):
+    """It costs a request, and a successful push already says so."""
+    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+        run(account, apply=True, push=True)
+
+    assert account.queue_reads == 0
+
+
+def test_a_push_that_worked_is_not_failed_by_an_unreadable_queue(account, caplog):
+    """Reading the queue back is a confirmation, not part of the push."""
+    account.queue_failure = GarminError("Could not read the device message queue")
+
+    with caplog.at_level(logging.DEBUG, logger="workout.app.update"):
+        code = run(account, apply=True, push=True)
+
+    assert code == ExitCode.OK
+    assert sorted(account.pushed) == ["111", "222"]
+    assert "Could not read the device queue back" in caplog.text

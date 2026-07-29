@@ -162,7 +162,9 @@ pointing at it stay valid.
 The GET returns `numOfMessages` and a `messages` list, and is the way to confirm
 something was queued. The queue drains when the watch syncs. garminconnect has
 no getter for it, so `GarminSession.pending_messages()` makes that call by hand,
-taking the URL from the library rather than repeating it.
+taking the URL from the library rather than repeating it. `update --apply
+--push -v` reads it back after queueing, so the confirmation is available
+without writing code.
 
 Things that do not work, for the record:
 
