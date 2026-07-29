@@ -1,6 +1,6 @@
 """The double progression rules."""
 
-from conftest import held, spec
+from builders import held, spec
 
 from workout.domain.progression import PerformedSet as P
 from workout.domain.progression import Target, next_target, working_weight

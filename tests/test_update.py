@@ -1,9 +1,8 @@
 """Choosing which sessions to update, and updating more than one at a time."""
 
 import pytest
-from conftest import spec
-from test_payloads import active, rep_step
-from test_payloads import workout as steps
+from builders import active, rep_step, spec
+from builders import workout as steps
 
 from workout.app.update import (
     Payloads,

@@ -5,7 +5,7 @@ exercise is programmed that gets written into the notes field of its Garmin
 step, so the watch can show what you are working towards mid-set.
 """
 
-from conftest import spec
+from builders import spec
 
 
 def test_note_states_the_range_and_the_weight_step():

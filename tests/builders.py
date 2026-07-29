@@ -1,0 +1,143 @@
+"""Test data: the payloads Garmin sends, and the config that describes them.
+
+One place for the builders, so that a test module needing a workout step does
+not import it from whichever other test module happened to define it first.
+The payloads here are trimmed copies of real Garmin responses.
+
+Fixtures live in conftest.py; everything here is a plain function or constant,
+imported by name.
+"""
+
+import os
+
+from workout.domain.models import ExerciseSpec
+from workout.domain.progression import PerformedSet
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#: The shipped example. A user's own workouts.yaml is gitignored, so this
+#: is the only config guaranteed to exist in a fresh checkout.
+EXAMPLE_CONFIG = os.path.join(REPO_ROOT, "workouts.example.yaml")
+
+#: Garmin's kilogram unit, as it appears on a workout step.
+KILOGRAM = {"unitId": 8, "unitKey": "kilogram", "factor": 1000.0}
+
+
+# --- the domain -----------------------------------------------------------
+
+
+def spec(**kwargs) -> ExerciseSpec:
+    """An ExerciseSpec with sensible defaults, overridable per test."""
+    base = {
+        "name": "Barbell Back Squat",
+        "garmin_name": "BARBELL_BACK_SQUAT",
+        "garmin_category": "SQUAT",
+        "rep_low": 6,
+        "rep_high": 10,
+        "sets": 3,
+        "load": "barbell",
+        "weight_step": 5.0,
+    }
+    return ExerciseSpec(**{**base, **kwargs})
+
+
+def held(*seconds: float) -> list[PerformedSet]:
+    """Timed sets as Garmin logs them: 1 rep, real figure in the duration."""
+    return [PerformedSet(1, 0.0, s).as_time() for s in seconds]
+
+
+# --- workout definitions --------------------------------------------------
+
+
+def rep_step(name, category, reps, weight, unit=KILOGRAM):
+    return {
+        "type": "ExecutableStepDTO",
+        "exerciseName": name,
+        "category": category,
+        "endCondition": {"conditionTypeKey": "reps"},
+        "endConditionValue": float(reps),
+        "weightValue": weight,
+        "weightUnit": unit,
+    }
+
+
+def rest_step(seconds=60.0):
+    return {
+        "type": "ExecutableStepDTO",
+        "stepType": {"stepTypeKey": "rest"},
+        "endCondition": {"conditionTypeKey": "lap.button"},
+        "endConditionValue": seconds,
+    }
+
+
+def workout(*steps):
+    return {"workoutSegments": [{"workoutSteps": list(steps)}]}
+
+
+def repeat(step, sets=3, rest=90.0):
+    """A step wrapped in the repeat group Garmin uses to express sets."""
+    return {
+        "type": "RepeatGroupDTO",
+        "numberOfIterations": sets,
+        "workoutSteps": [
+            step,
+            {
+                "stepType": {"stepTypeKey": "rest"},
+                "endCondition": {"conditionTypeKey": "time"},
+                "endConditionValue": rest,
+            },
+        ],
+    }
+
+
+def payload(*groups, name="Workout A", workout_id=987654321):
+    """A whole workout definition, as `get_workout_by_id` returns one."""
+    return {
+        "workoutId": workout_id,
+        "workoutName": name,
+        "workoutSegments": [{"workoutSteps": list(groups)}],
+    }
+
+
+# --- logged activities ----------------------------------------------------
+
+
+def active(name, category, reps, grams, duration=40.0):
+    return {
+        "setType": "ACTIVE",
+        "repetitionCount": reps,
+        "weight": grams,
+        "duration": duration,
+        "exercises": [{"name": name, "category": category}],
+    }
+
+
+# --- config text ----------------------------------------------------------
+
+FIXTURE = """
+settings:
+  weight_steps:
+    barbell: 5.0
+    dumbbell: 1.0
+
+workouts:
+  - key: Workout A
+    garmin_workout_id: "123"
+    activity_prefixes: ["Training A"]
+    exercises:
+      - name: Barbell Back Squat
+        garmin_name: BARBELL_BACK_SQUAT
+        garmin_category: SQUAT
+        rep_low: 6
+        rep_high: 10
+        sets: 4
+        rest: 120
+        load: barbell
+      - name: Plank
+        garmin_name: PLANK
+        garmin_category: PLANK
+        rep_low: 30
+        rep_high: 60
+        sets: 3
+        load: bodyweight
+        unit: seconds
+"""

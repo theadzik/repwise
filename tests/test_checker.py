@@ -1,8 +1,6 @@
 """Reporting drift between the config and Garmin."""
 
-from conftest import spec
-from test_importer import payload, repeat
-from test_payloads import rep_step
+from builders import payload, rep_step, repeat, spec
 
 from workout.checker import check_workout
 from workout.domain.models import Workout
