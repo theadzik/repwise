@@ -114,6 +114,69 @@ def test_zero_weight_step_is_rejected(write_config):
         load_config(write_config(bad))
 
 
+# --- reporting every problem at once --------------------------------------
+
+
+def test_several_problems_are_all_reported(write_config):
+    """Fixing one, re-running, and finding the next is the thing to avoid."""
+    bad = FIXTURE.replace("rep_low: 6", "rep_low: 12").replace(
+        "load: barbell", "load: kettlebell"
+    )
+
+    with pytest.raises(ConfigError) as caught:
+        load_config(write_config(bad))
+
+    message = str(caught.value)
+    assert "2 problems" in message
+    assert "rep_low >= rep_high" in message
+    assert "weight_steps" in message
+
+
+def test_problems_in_different_workouts_are_all_reported(write_config):
+    """One broken workout must not hide what is wrong with the next."""
+    bad = SHARED.format(low=12).replace("sets: 3\n        load: machine", "sets: 3")
+
+    with pytest.raises(ConfigError) as caught:
+        load_config(write_config(bad))
+
+    assert str(caught.value).count("Workout") >= 2
+
+
+def test_a_single_problem_is_reported_on_its_own(write_config):
+    """No list, no count: one problem should read as one sentence."""
+    bad = FIXTURE.replace("rep_low: 6", "rep_low: 12")
+
+    with pytest.raises(ConfigError) as caught:
+        load_config(write_config(bad))
+
+    assert "problems" not in str(caught.value)
+
+
+def test_a_workout_missing_its_id_still_reports_its_exercises(write_config):
+    """One omission at the top should not hide everything below it."""
+    bad = FIXTURE.replace('    garmin_workout_id: "123"\n', "").replace(
+        "rep_low: 6", "rep_low: 12"
+    )
+
+    with pytest.raises(ConfigError) as caught:
+        load_config(write_config(bad))
+
+    message = str(caught.value)
+    assert "garmin_workout_id" in message
+    assert "rep_low >= rep_high" in message
+
+
+def test_an_empty_file_says_so_rather_than_listing_nothing(write_config):
+    with pytest.raises(ConfigError, match="no workouts defined"):
+        load_config(write_config("workouts: []\n"))
+
+
+def test_workouts_must_be_a_list(write_config):
+    """A mapping there would otherwise fail deep inside the loop."""
+    with pytest.raises(ConfigError, match="should be a list"):
+        load_config(write_config("workouts:\n  Workout A:\n    key: A\n"))
+
+
 def test_exercise_weight_step_overrides_the_load_type(write_config):
     text = FIXTURE.replace(
         "        load: barbell\n",
