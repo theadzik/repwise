@@ -35,7 +35,8 @@ src/workout/
         client.py          authentication and the Garmin session
         payloads.py        Garmin's JSON <-> our types
 tests/
-    conftest.py            shared builders and fixtures
+    builders.py            the payloads and specs every test builds from
+    conftest.py            fixtures
     test_progression.py    the rules
     test_matching.py       name and category lookup
     test_config.py         loading and validation

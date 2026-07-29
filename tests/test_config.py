@@ -3,7 +3,7 @@
 import re
 
 import pytest
-from conftest import EXAMPLE_CONFIG, FIXTURE
+from builders import EXAMPLE_CONFIG, FIXTURE
 
 from workout import config as config_module
 from workout.config import ConfigError, load_config, resolve_config

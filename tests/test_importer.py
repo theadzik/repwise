@@ -1,6 +1,6 @@
 """Turning a Garmin workout into config."""
 
-from test_payloads import rep_step, rest_step
+from builders import payload, rep_step, repeat, rest_step
 
 from workout.config import load_config
 from workout.importer import (
@@ -9,30 +9,6 @@ from workout.importer import (
     humanise,
     render_config,
 )
-
-
-def repeat(step, sets=3, rest=90.0):
-    return {
-        "type": "RepeatGroupDTO",
-        "numberOfIterations": sets,
-        "workoutSteps": [
-            step,
-            {
-                "stepType": {"stepTypeKey": "rest"},
-                "endCondition": {"conditionTypeKey": "time"},
-                "endConditionValue": rest,
-            },
-        ],
-    }
-
-
-def payload(*groups, name="Workout A", workout_id=987654321):
-    return {
-        "workoutId": workout_id,
-        "workoutName": name,
-        "workoutSegments": [{"workoutSteps": list(groups)}],
-    }
-
 
 SQUAT = repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0), sets=4, rest=120.0)
 PLANK = {

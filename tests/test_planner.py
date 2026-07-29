@@ -3,8 +3,7 @@
 from dataclasses import replace
 
 import pytest
-from conftest import spec
-from test_payloads import active, rep_step, workout
+from builders import active, rep_step, spec, workout
 
 from workout.domain.models import Config, Workout
 from workout.domain.progression import Target

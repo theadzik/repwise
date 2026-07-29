@@ -1,9 +1,6 @@
-"""Mapping Garmin's JSON to and from this application's types.
+"""Mapping Garmin's JSON to and from this application's types."""
 
-The payloads below are trimmed copies of real Garmin responses.
-"""
-
-from conftest import spec
+from builders import active, rep_step, rest_step, spec, workout
 
 from workout.domain.progression import Target
 from workout.garmin.payloads import (
@@ -15,34 +12,6 @@ from workout.garmin.payloads import (
     step_note,
     step_target,
 )
-
-KILOGRAM = {"unitId": 8, "unitKey": "kilogram", "factor": 1000.0}
-
-
-def rep_step(name, category, reps, weight, unit=KILOGRAM):
-    return {
-        "type": "ExecutableStepDTO",
-        "exerciseName": name,
-        "category": category,
-        "endCondition": {"conditionTypeKey": "reps"},
-        "endConditionValue": float(reps),
-        "weightValue": weight,
-        "weightUnit": unit,
-    }
-
-
-def rest_step(seconds=60.0):
-    return {
-        "type": "ExecutableStepDTO",
-        "stepType": {"stepTypeKey": "rest"},
-        "endCondition": {"conditionTypeKey": "lap.button"},
-        "endConditionValue": seconds,
-    }
-
-
-def workout(*steps):
-    return {"workoutSegments": [{"workoutSteps": list(steps)}]}
-
 
 # --- walking the structure ------------------------------------------------
 
@@ -186,16 +155,6 @@ def test_a_hand_written_note_is_not_mistaken_for_a_generated_one():
 
 
 # --- reading performed sets -----------------------------------------------
-
-
-def active(name, category, reps, grams, duration=40.0):
-    return {
-        "setType": "ACTIVE",
-        "repetitionCount": reps,
-        "weight": grams,
-        "duration": duration,
-        "exercises": [{"name": name, "category": category}],
-    }
 
 
 def test_activity_weight_is_grams():
