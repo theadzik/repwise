@@ -3,11 +3,16 @@
 The payloads below are trimmed copies of real Garmin responses.
 """
 
+from conftest import spec
+
 from workout.garmin.payloads import (
+    GENERATED_NOTE,
+    apply_note,
     apply_target,
     iter_workout_steps,
     normalise,
     performed_sets,
+    step_note,
     step_target,
 )
 from workout.progression import Target
@@ -130,6 +135,59 @@ def test_apply_leaves_bodyweight_unloaded():
     apply_target(step, Target(48, 0.0))
     assert step["endConditionValue"] == 48.0
     assert "weightValue" not in step
+
+
+# --- notes ----------------------------------------------------------------
+#
+# Garmin calls this field `description` on the step; Connect labels it "Notes"
+# and the watch reads it as WorkoutStepInfo.notes. Verified by round-tripping
+# a value through update_workout against a real account.
+
+
+def test_note_is_absent_null_and_empty_alike():
+    assert step_note({}) == ""
+    assert step_note({"description": None}) == ""
+    assert step_note({"description": ""}) == ""
+
+
+def test_apply_note_writes_the_description_field():
+    step = rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0)
+    apply_note(step, "6-10 reps | +5 kg")
+    assert step["description"] == "6-10 reps | +5 kg"
+    assert step_note(step) == "6-10 reps | +5 kg"
+
+
+def test_note_does_not_disturb_the_target():
+    """Notes and targets live in different fields and must not interfere."""
+    step = rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0)
+    apply_note(step, "6-10 reps | +5 kg")
+    assert step_target(step) == Target(6, 30.0)
+
+
+def test_every_rendered_note_is_recognised_as_generated():
+    """Whatever ExerciseSpec.note produces must match the pattern that
+    decides a note is safe to overwrite, or the tool would refuse to update
+    its own notes."""
+    cases = [
+        spec(),  # barbell reps
+        spec(rep_step=2, rep_low=16, rep_high=24),  # per-side step
+        spec(load="bodyweight", weight_step=0.0),  # bodyweight
+        spec(load="bodyweight", weight_step=0.0, unit="seconds"),  # timed hold
+        spec(load="dumbbell", weight_step=1.0),  # fractional step
+        spec(load="cable", weight_step=2.5),
+    ]
+    for each in cases:
+        assert GENERATED_NOTE.match(each.note), each.note
+
+
+def test_a_hand_written_note_is_not_mistaken_for_a_generated_one():
+    for text in [
+        "elbows tucked",
+        "6-10 reps",  # truncated, missing the load half
+        "6-10 reps | +5 kg  elbows in",  # ours plus a hand-added cue
+        "keep 6-10 reps | +5 kg",
+    ]:
+        assert not GENERATED_NOTE.match(text), text
 
 
 # --- reading performed sets -----------------------------------------------

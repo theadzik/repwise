@@ -103,8 +103,46 @@ One block per workout that had a session, oldest first.
 Targets print in the unit the exercise is measured in - `6 x 65 kg` for loaded
 work, `11 reps` for bodyweight, `47 s` for timed holds.
 
+The closing line also counts notes when any were rewritten:
+
+```text
+Dry run: 8 step(s) would change, 17 note(s) would be refreshed. Re-run with --apply.
+```
+
+See [step notes](#step-notes). Which exercises they were is behind `-v`, since
+notes only move when you edit `workouts.yaml`.
+
 An "Also in ..." section appears when a target that moved also exists in another
 workout. See [shared exercises](progression.md#shared-exercises).
+
+### Step notes
+
+Every exercise step carries a one-line note saying how it is programmed, so the
+watch can show what you are working towards while the target only says what to
+do today:
+
+```text
+6-10 reps | +5 kg          a barbell lift stepping 2.5 kg at the top
+16-24 reps by 2 | +1 kg    a per-side exercise, both sides advancing together
+10-25 reps | bodyweight    nothing to add, so the range is the whole ladder
+30-60 s | bodyweight       a timed hold
+```
+
+These are refreshed from `workouts.yaml` on every run, so editing a rep range
+or a `weight_step` updates them. That is a reason to write a workout in its own
+right: a config edit moves no target, and without it the notes would go stale
+until your next session happened to earn something.
+
+**A note you wrote yourself is never overwritten.** If a step's notes hold
+anything that is not in the shape above - a coaching cue, say - the tool
+reports it and leaves it alone:
+
+```text
+  ! Barbell Back Squat: has its own note, left alone (wanted '6-10 reps | +5 kg')
+```
+
+Clear the field in Garmin Connect if you would rather have the generated note
+back.
 
 ### Sending to the watch
 

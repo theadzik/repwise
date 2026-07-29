@@ -9,15 +9,18 @@ can inspect a plan and discard it -- which is what a dry run does.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from .garmin.payloads import (
+    GENERATED_NOTE,
+    apply_note,
     apply_target,
     iter_workout_steps,
     normalise,
     step_category,
     step_exercise_name,
+    step_note,
     step_target,
 )
 from .models import Config, ExerciseSpec, Workout
@@ -48,10 +51,18 @@ class Plan:
     payload: dict[str, Any]
     changes: list[Change]
     warnings: list[str]
+    #: Exercises whose notes field was rewritten, which is its own reason to
+    #: save a workout: editing workouts.yaml moves no target on its own.
+    notes: list[str] = field(default_factory=list)
 
     @property
     def moved(self) -> list[Change]:
         return [change for change in self.changes if change.moved]
+
+    @property
+    def writable(self) -> bool:
+        """Whether this plan has anything worth sending to Garmin."""
+        return bool(self.moved or self.notes)
 
 
 class ActivityNotFound(LookupError):
@@ -120,6 +131,31 @@ def _logged_for(
     return []
 
 
+def _refresh_note(
+    step: dict[str, Any],
+    spec: ExerciseSpec,
+    notes: list[str],
+    warnings: list[str],
+) -> None:
+    """Keep the step's notes field showing how the exercise is programmed.
+
+    Only a blank note, or one this tool wrote before, is replaced. Anything
+    else is a cue the user typed into Garmin Connect, and overwriting it would
+    destroy it silently, so it is reported and left alone instead.
+    """
+    wanted = spec.note
+    current = step_note(step)
+    if current == wanted:
+        return
+    if current and not GENERATED_NOTE.match(current):
+        warnings.append(
+            f"{spec.name}: has its own note, left alone (wanted {wanted!r})"
+        )
+        return
+    apply_note(step, wanted)
+    notes.append(spec.name)
+
+
 def plan_workout(
     workout: Workout, payload: dict[str, Any], performed: Performed
 ) -> Plan:
@@ -128,6 +164,7 @@ def plan_workout(
 
     changes: list[Change] = []
     warnings: list[str] = []
+    notes: list[str] = []
 
     for step in iter_workout_steps(payload):
         label = step_exercise_name(step) or step_category(step)
@@ -138,6 +175,10 @@ def plan_workout(
         if spec is None:
             warnings.append(f"{label}: not in workouts.yaml, skipped")
             continue
+
+        # Before the target checks below: the note describes the programming,
+        # so it belongs on the step whether or not this session moved anything.
+        _refresh_note(step, spec, notes, warnings)
 
         current = step_target(step, spec.time_based)
         if current is None:
@@ -160,7 +201,7 @@ def plan_workout(
         if change.moved:
             apply_target(step, new)
 
-    return Plan(workout, payload, changes, warnings)
+    return Plan(workout, payload, changes, warnings, notes)
 
 
 def plan_sync(
@@ -179,11 +220,14 @@ def plan_sync(
 
     changes: list[Change] = []
     warnings: list[str] = []
+    notes: list[str] = []
 
     for step in iter_workout_steps(payload):
         spec = _match(step, by_name, by_category)
         if spec is None:
             continue
+
+        _refresh_note(step, spec, notes, warnings)
 
         new = targets.get(normalise(spec.garmin_name))
         if new is None:
@@ -204,7 +248,7 @@ def plan_sync(
         apply_target(step, new)
         changes.append(Change(spec, current, new, f"synced from {source}"))
 
-    return Plan(workout, payload, changes, warnings)
+    return Plan(workout, payload, changes, warnings, notes)
 
 
 def decided_targets(plan: Plan) -> dict[str, Target]:

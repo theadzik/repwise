@@ -98,6 +98,12 @@ than load. See [timed holds](progression.md#timed-holds).
 For exercises the watch counts per side, see [alternating
 exercises](progression.md#alternating-exercises).
 
+`rep_low`, `rep_high`, `rep_step` and `weight_step` do double duty: besides
+driving progression they are summarised into each Garmin step's notes field, so
+the watch shows the range you are working through. Editing any of them is
+enough to make the next run rewrite those notes. See [step
+notes](commands.md#step-notes).
+
 ## Load and weight steps
 
 `load` does real work: it selects the weight step from `settings.weight_steps`,

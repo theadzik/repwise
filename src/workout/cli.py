@@ -73,6 +73,10 @@ def report_change(change: Change, force_flag: str | None = None) -> None:
 def report_plan(plan: Plan, force_flag: str | None = None) -> None:
     for change in plan.changes:
         report_change(change, force_flag)
+    # Notes only move when workouts.yaml does, so they are a footnote to a
+    # normal run: the count goes in the summary, the detail behind -v.
+    for name in plan.notes:
+        logger.debug(f"  note {name:<38} -> {plan.workout.key}")
     for warning in plan.warnings:
         # The marker survives the move to logging: it still sets a warning
         # apart when the level itself is not shown.
@@ -160,6 +164,17 @@ def changed_steps(plans: list[Plan]) -> set[tuple[str, str]]:
     }
 
 
+def noted_steps(plans: list[Plan]) -> set[tuple[str, str]]:
+    """Which steps had their notes rewritten, counted once per step.
+
+    A shared exercise is refreshed in each workout it appears in, and those
+    are genuinely different steps, so they count separately.
+    """
+    return {
+        (plan.workout.garmin_workout_id, name) for plan in plans for name in plan.notes
+    }
+
+
 def push_to_watch(session: GarminSession, workouts: list[Workout]) -> None:
     """Queue each written workout for the watch to collect on its next sync.
 
@@ -227,13 +242,17 @@ def command_update(args: argparse.Namespace, config: Config) -> int:
         return EXIT_NOTHING_USABLE
 
     updated = len(changed_steps(plans))
+    noted = len(noted_steps(plans))
+    notes = f", {noted} note(s) would be refreshed" if noted else ""
 
     if not args.apply:
         logger.info("")
-        logger.info(f"Dry run: {updated} step(s) would change. Re-run with --apply.")
+        logger.info(
+            f"Dry run: {updated} step(s) would change{notes}. Re-run with --apply."
+        )
         return EXIT_OK
 
-    if not updated:
+    if not updated and not noted:
         logger.info("")
         logger.info("Nothing to write.")
         return EXIT_OK
@@ -244,7 +263,7 @@ def command_update(args: argparse.Namespace, config: Config) -> int:
     written: list[Workout] = []
     saved: set[str] = set()
     for each in plans:
-        if not each.moved or each.workout.garmin_workout_id in saved:
+        if not each.writable or each.workout.garmin_workout_id in saved:
             continue
         saved.add(each.workout.garmin_workout_id)
         session.save_workout(each.workout.garmin_workout_id, each.payload)
@@ -254,7 +273,10 @@ def command_update(args: argparse.Namespace, config: Config) -> int:
         written.append(each.workout)
 
     logger.info("")
-    logger.info(f"Wrote {updated} updated step(s) to Garmin.")
+    logger.info(
+        f"Wrote {updated} updated step(s) to Garmin."
+        + (f" Refreshed {noted} note(s)." if noted else "")
+    )
 
     if args.push:
         push_to_watch(session, written)
@@ -280,7 +302,7 @@ def sync_other_workouts(
 
         payload = payloads[other.garmin_workout_id]
         plan = plan_sync(other, payload, targets, source.key)
-        if not plan.moved:
+        if not plan.writable:
             continue
 
         logger.info("")
@@ -477,7 +499,9 @@ def build_parser() -> argparse.ArgumentParser:
         "having run this after each of them. Targets follow the weight you "
         "actually lifted, but only while it stays inside the exercise's rep "
         "range: come up short of rep_low on a weight you were not prescribed "
-        "and the old target is kept. Nothing is sent to Garmin unless --apply "
+        "and the old target is kept. Each step's notes field is kept showing "
+        "how its exercise is programmed, so editing workouts.yaml is on its own "
+        "a reason to write. Nothing is sent to Garmin unless --apply "
         "is given. A target that moves is also synced into any other workout "
         "containing that exercise. Editing a workout does not reach the watch "
         "by itself, so --push queues it for the device to collect on its next "
