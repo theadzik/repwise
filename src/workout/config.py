@@ -12,6 +12,9 @@ import os
 import yaml
 
 from .domain.models import BODYWEIGHT, Config, ExerciseSpec, GarminSettings, Workout
+from .errors import ConfigError
+
+__all__ = ["load_config", "ConfigError", "DEFAULT_CONFIG", "EXAMPLE_CONFIG"]
 
 #: Repository root, two levels above this package.
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -19,10 +22,6 @@ DEFAULT_CONFIG = os.path.join(_ROOT, "workouts.yaml")
 EXAMPLE_CONFIG = os.path.join(_ROOT, "workouts.example.yaml")
 
 _REQUIRED = ("name", "garmin_name", "rep_low", "rep_high", "sets", "load")
-
-
-class ConfigError(ValueError):
-    """workouts.yaml is malformed or self-contradictory."""
 
 
 def _build_exercise(raw: dict, steps: dict[str, float], where: str) -> ExerciseSpec:
@@ -128,8 +127,15 @@ def load_config(path: str = DEFAULT_CONFIG) -> Config:
             )
         raise ConfigError(f"{path} does not exist")
 
-    with open(path) as fh:
-        data = yaml.safe_load(fh)
+    # A file that cannot be read or parsed is a configuration problem like any
+    # other, so it leaves here as one rather than as a traceback from yaml.
+    try:
+        with open(path) as fh:
+            data = yaml.safe_load(fh)
+    except OSError as exc:
+        raise ConfigError(f"{path} could not be read: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"{path} is not valid YAML: {exc}") from exc
 
     if not isinstance(data, dict) or "workouts" not in data:
         raise ConfigError(f"{path}: expected a mapping with a 'workouts' key")

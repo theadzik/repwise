@@ -92,6 +92,7 @@ data and returns plain data, which is the point of keeping it pure.
 | A new load type | `settings.weight_steps`, otherwise loading rejects any exercise using it. A single exercise can instead set its own `weight_step` |
 | A new command | A module in `app/` exposing `run_<name>()`, a subparser in `cli/parser.py`, and an entry in `HANDLERS` in `cli/__init__.py` |
 | How an exercise is recognised | `domain/matching.py`, which the planner and the checker share |
+| A new failure the user should see | A class in `errors.py` carrying its `exit_code`. Raise it; `main()` already prints it and exits with it |
 | A new Garmin call | A method on `GarminSession` in `garmin/client.py`, so the `garminconnect` dependency stays in one place |
 
 ## Commit messages

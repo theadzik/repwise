@@ -1,6 +1,10 @@
 """The Garmin session wrapper, against a stub API."""
 
+import pytest
+from garminconnect import GarminConnectTooManyRequestsError
+
 from workout.domain.models import GarminSettings
+from workout.errors import ExitCode, GarminError, RateLimited
 from workout.garmin.client import STRENGTH, GarminSession
 
 
@@ -114,3 +118,59 @@ def test_pending_messages_takes_the_url_from_the_library():
 def test_pending_messages_handles_an_empty_queue():
     s, _ = writer({"numOfMessages": 0})
     assert s.pending_messages() == []
+
+
+# --- failures, translated at the boundary ---------------------------------
+
+
+class BrokenApi:
+    """Every call fails, with whatever the test asked for."""
+
+    def __init__(self, failure: Exception):
+        self.failure = failure
+
+    def __getattr__(self, _name):
+        def raise_it(*args, **kwargs):
+            raise self.failure
+
+        return raise_it
+
+
+def broken(failure: Exception) -> GarminSession:
+    return GarminSession(BrokenApi(failure), GarminSettings())
+
+
+def test_a_library_failure_becomes_a_garmin_error():
+    """Callers should not have to know what garminconnect can raise."""
+    session = broken(ValueError("no JSON could be decoded"))
+
+    with pytest.raises(GarminError, match="Could not fetch the workout"):
+        session.workout("111")
+
+
+def test_the_original_failure_is_kept_as_the_cause():
+    original = ValueError("no JSON could be decoded")
+    session = broken(original)
+
+    with pytest.raises(GarminError) as caught:
+        session.workout("111")
+
+    assert caught.value.__cause__ is original
+
+
+def test_rate_limiting_keeps_its_own_type_and_exit_code():
+    """It is the one failure worth telling apart: waiting is the only fix."""
+    session = broken(GarminConnectTooManyRequestsError("429"))
+
+    with pytest.raises(RateLimited) as caught:
+        session.recent_activities()
+
+    assert caught.value.exit_code == ExitCode.RATE_LIMITED
+    assert "Wait a while" in caught.value.advice
+
+
+def test_a_write_failure_is_translated_too():
+    session = broken(OSError("connection reset"))
+
+    with pytest.raises(GarminError, match="Could not save the workout"):
+        session.save_workout("111", {})

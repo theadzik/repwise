@@ -14,6 +14,7 @@ from typing import Any
 from .domain.matching import ExerciseIndex, normalise
 from .domain.models import Config, ExerciseSpec, Workout
 from .domain.progression import PerformedSet, Target, next_target
+from .errors import ActivityNotFound
 from .garmin.payloads import (
     GENERATED_NOTE,
     apply_note,
@@ -62,10 +63,6 @@ class Plan:
     def writable(self) -> bool:
         """Whether this plan has anything worth sending to Garmin."""
         return bool(self.moved or self.notes)
-
-
-class ActivityNotFound(LookupError):
-    """No activity matched any workout's prefixes."""
 
 
 def find_workout(config: Config, activity_name: str) -> Workout:
