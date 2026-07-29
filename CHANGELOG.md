@@ -1,3 +1,22 @@
+## 0.4.0 (2026-07-29)
+
+### Feat
+
+- confirm a push reached the device queue
+- add --version
+- report every configuration error at once
+
+### Fix
+
+- explain a login with no terminal to type into
+- find the config when installed as a package
+
+### Refactor
+
+- map every failure to an exit code through one hierarchy
+- split the CLI into parsing, use cases and dispatch
+- move exercise matching into the domain
+
 ## 0.3.0 (2026-07-29)
 
 ### Feat
