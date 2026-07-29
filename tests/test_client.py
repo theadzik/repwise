@@ -4,8 +4,8 @@ import pytest
 from garminconnect import GarminConnectTooManyRequestsError
 
 from workout.domain.models import GarminSettings
-from workout.errors import ExitCode, GarminError, RateLimited
-from workout.garmin.client import STRENGTH, GarminSession
+from workout.errors import ExitCode, GarminError, NoTerminal, RateLimited
+from workout.garmin.client import STRENGTH, GarminSession, connect
 
 
 class StubApi:
@@ -174,3 +174,27 @@ def test_a_write_failure_is_translated_too():
 
     with pytest.raises(GarminError, match="Could not save the workout"):
         session.save_workout("111", {})
+
+
+# --- logging in -----------------------------------------------------------
+
+
+def test_no_terminal_to_log_in_from_is_explained(tmp_path, monkeypatch):
+    """From cron, or with stdin redirected, input() raises EOFError."""
+
+    def no_stdin(_prompt):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", no_stdin)
+    settings = GarminSettings(token_store=str(tmp_path / "absent"))
+
+    with pytest.raises(NoTerminal, match="no terminal to log in from"):
+        connect(settings)
+
+
+def test_refusing_to_prompt_is_a_garmin_error(tmp_path):
+    """prompt=False is for callers that cannot answer a question."""
+    settings = GarminSettings(token_store=str(tmp_path / "absent"))
+
+    with pytest.raises(GarminError, match="No usable Garmin session"):
+        connect(settings, prompt=False)

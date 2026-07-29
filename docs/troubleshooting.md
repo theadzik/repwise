@@ -30,6 +30,7 @@ DEBUG   workout.garmin.client: Resumed cached session.
 | --- | --- |
 | `429` / rate limited | Too many login attempts from your IP. Wait it out; once tokens are cached the login endpoint is skipped entirely |
 | `401` after working before | Stale tokens. Delete the token store and log in again |
+| `no terminal to log in from` | A scheduled run found no cached session. Run it once by hand to cache the tokens |
 | Cloudflare challenge | Only affects browser automation. This tool goes through `garminconnect`, built on `curl_cffi`, which is not subject to it |
 | Every exercise looks like bodyweight | The weight is reading as zero. Check a `--dump` against [Garmin's API](garmin-api.md#weight-units) |
 | `--push` refused with exit 3 | `--push` needs `--apply`; without it nothing has been written, so there is nothing to send |

@@ -19,7 +19,7 @@ from typing import Any, ParamSpec, TypeVar
 from garminconnect import Garmin, GarminConnectTooManyRequestsError
 
 from ..domain.models import GarminSettings
-from ..errors import GarminError, RateLimited
+from ..errors import GarminError, NoTerminal, RateLimited
 
 __all__ = ["GarminSession", "connect", "STRENGTH"]
 
@@ -166,8 +166,16 @@ def connect(settings: GarminSettings, prompt: bool = True) -> GarminSession:
     if not prompt:
         raise GarminError(f"No usable Garmin session in {store}")
 
-    email = input("Garmin email: ").strip()
-    password = getpass("Garmin password (hidden): ")
+    # A first run needs a terminal. Without one - from cron, or with stdin
+    # redirected - input() raises EOFError, which is a situation to explain
+    # rather than a traceback to print.
+    try:
+        email = input("Garmin email: ").strip()
+        password = getpass("Garmin password (hidden): ")
+    except EOFError as exc:
+        raise NoTerminal(
+            f"No cached Garmin session in {store}, and no terminal to log in from."
+        ) from exc
 
     api = Garmin(email, password, prompt_mfa=lambda: input("MFA code: ").strip())
     # Passing the token store makes login() persist the tokens itself.
