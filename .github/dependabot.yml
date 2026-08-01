@@ -16,11 +16,12 @@ updates:
 
     open-pull-requests-limit: 5
 
-    # Wait for a release to survive a few days before proposing it. The window
-    # where a compromised release is live and not yet yanked is the one this
-    # closes; it does not delay security updates, which ignore cooldown.
+    # Wait for a release to survive a week before proposing it. The window where
+    # a compromised release is live and not yet yanked is the one this closes,
+    # and a week is what zizmor's dependabot-cooldown audit asks for; it does
+    # not delay security updates, which ignore cooldown.
     cooldown:
-      default-days: 3
+      default-days: 7
 
     # pip is one of the ecosystems where resolving a manifest can execute code
     # from the package being resolved. Pinned "==" dependencies need no such
@@ -57,7 +58,7 @@ updates:
       day: "monday"
 
     cooldown:
-      default-days: 3
+      default-days: 7
 
     labels:
       - "dependencies"
