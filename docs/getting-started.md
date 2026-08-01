@@ -122,7 +122,7 @@ own** - a plain sync is not enough. Sync your watch afterwards to pick them up.
 ```text
 Wrote Workout B (111111111)
 
-Queued 1 send(s) to Forerunner 945.
+Queued 1 send(s) to your last-used device.
 Sync your watch to pick up the new targets.
 ```
 
