@@ -1,6 +1,17 @@
 """Mapping Garmin's JSON to and from this application's types."""
 
-from builders import active, rep_step, rest_step, spec, timed_rest, workout
+from dataclasses import replace
+
+from builders import (
+    GARMIN_GROUP_KEYS,
+    GARMIN_STEP_KEYS,
+    active,
+    rep_step,
+    rest_step,
+    spec,
+    timed_rest,
+    workout,
+)
 
 from workout.domain.progression import Target
 from workout.garmin.payloads import (
@@ -9,7 +20,12 @@ from workout.garmin.payloads import (
     apply_rest,
     apply_target,
     iter_exercise_blocks,
+    new_group,
+    new_rest,
+    new_workout,
     performed_sets,
+    renumber,
+    set_exercise_steps,
     step_note,
     step_rest,
     step_target,
@@ -242,6 +258,159 @@ def test_a_hand_written_note_is_not_mistaken_for_a_generated_one():
         "keep 6-10 reps | +5 kg",
     ]:
         assert not GENERATED_NOTE.match(text), text
+
+
+# --- building a workout ---------------------------------------------------
+
+
+SQUAT = spec(sets=3, rest=120, weight_step=2.5)
+PLANK = spec(
+    name="Plank",
+    garmin_name="PLANK",
+    garmin_category="PLANK",
+    rep_low=30,
+    rep_high=60,
+    sets=2,
+    load="bodyweight",
+    weight_step=0.0,
+    unit="seconds",
+)
+
+
+def built(*specs, between=None):
+    """A whole workout built from specs, each starting at the bottom of its
+    range, laid out with the same gap between every exercise."""
+    payload = new_workout("Workout C")
+    groups = [new_group(s, Target(s.rep_low, s.start_weight)) for s in specs]
+    gaps = [new_rest(between) for _ in range(len(specs) - 1)]
+    set_exercise_steps(payload, groups, gaps)
+    return payload
+
+
+def orders(payload):
+    """Every stepOrder and childStepId, depth first, as Garmin would see them."""
+    found = []
+    for step in payload["workoutSegments"][0]["workoutSteps"]:
+        found.append((step["stepOrder"], step["childStepId"]))
+        for inner in step.get("workoutSteps") or []:
+            found.append((inner["stepOrder"], inner["childStepId"]))
+    return found
+
+
+def test_a_built_workout_reads_back_as_the_exercises_it_was_built_from():
+    """The two halves of this module have to agree, or nothing else can."""
+    payload = built(SQUAT, PLANK)
+    blocks = list(iter_exercise_blocks(payload))
+
+    assert [b.step["exerciseName"] for b in blocks] == ["BARBELL_BACK_SQUAT", "PLANK"]
+    assert [b.sets for b in blocks] == [3, 2]
+    assert [b.rest for b in blocks] == [120, None]
+    assert step_target(blocks[0].step) == Target(6, 0.0)
+    assert step_target(blocks[1].step, time_based=True) == Target(30, 0.0)
+
+
+def test_a_built_exercise_carries_its_note():
+    payload = built(SQUAT)
+    step = next(iter(iter_exercise_blocks(payload))).step
+    assert step_note(step) == SQUAT.note
+
+
+def test_a_start_weight_is_where_a_built_exercise_begins():
+    payload = built(replace(SQUAT, start_weight=40.0))
+    step = next(iter(iter_exercise_blocks(payload))).step
+    assert step_target(step) == Target(6, 40.0)
+
+
+def test_an_exercise_with_no_rest_configured_still_gets_a_rest_step():
+    """A lap-button rest, the way Connect builds one. A step that exists can be
+    given a duration later; one that does not have to be inserted."""
+    group = built(replace(SQUAT, rest=0))["workoutSegments"][0]["workoutSteps"][0]
+    _, rest = group["workoutSteps"]
+
+    assert rest["endCondition"]["conditionTypeKey"] == "lap.button"
+    assert rest["endConditionValue"] is None
+
+
+def test_nothing_follows_the_last_exercise():
+    """A workout ends when its last set does."""
+    steps = built(SQUAT, PLANK, between=60)["workoutSegments"][0]["workoutSteps"]
+
+    kinds = [s["stepType"]["stepTypeKey"] for s in steps]
+    assert kinds == ["repeat", "rest", "repeat"], "one gap, and only between"
+
+
+def test_the_gap_between_exercises_is_configurable():
+    steps = built(SQUAT, PLANK, between=45)["workoutSegments"][0]["workoutSteps"]
+    assert steps[1]["endConditionValue"] == 45.0
+    assert steps[1]["endCondition"]["conditionTypeKey"] == "time"
+
+
+def test_no_gap_configured_is_a_wait_for_the_lap_button():
+    steps = built(SQUAT, PLANK)["workoutSegments"][0]["workoutSteps"]
+    assert steps[1]["endCondition"]["conditionTypeKey"] == "lap.button"
+
+
+def test_numbering_is_flat_and_depth_first():
+    """Verified against a real account: this is what Garmin renumbers to, and
+    matching it is what stops every run finding a difference to write."""
+    assert orders(built(SQUAT, PLANK, between=60)) == [
+        (1, 1),  # squat group
+        (2, 1),  # the squat
+        (3, 1),  # its rest between sets
+        (4, None),  # the gap, outside any group
+        (5, 2),  # plank group
+        (6, 2),
+        (7, 2),
+    ]
+
+
+def test_renumbering_is_idempotent():
+    """A second run must find the payload exactly as it left it."""
+    payload = built(SQUAT, PLANK, between=60)
+    before = orders(payload)
+
+    renumber(payload)
+
+    assert orders(payload) == before
+
+
+def test_renumbering_reorders_by_rewriting_the_numbers():
+    """Garmin sorts by stepOrder, so moving an exercise is renumbering it."""
+    payload = built(SQUAT, PLANK, between=60)
+    steps = payload["workoutSegments"][0]["workoutSteps"]
+    payload["workoutSegments"][0]["workoutSteps"] = [steps[2], steps[1], steps[0]]
+
+    renumber(payload)
+
+    names = [b.step["exerciseName"] for b in iter_exercise_blocks(payload)]
+    assert names == ["PLANK", "BARBELL_BACK_SQUAT"]
+    assert orders(payload) == [
+        (1, 1),
+        (2, 1),
+        (3, 1),
+        (4, None),
+        (5, 2),
+        (6, 2),
+        (7, 2),
+    ]
+
+
+def test_a_built_workout_uses_only_fields_garmin_knows():
+    """A misspelt field would be accepted and silently ignored, so every key
+    written is checked against the ones a real payload came back with."""
+    for group in built(SQUAT, PLANK, between=60)["workoutSegments"][0]["workoutSteps"]:
+        keys = set(group)
+        if group["type"] == "RepeatGroupDTO":
+            assert keys <= GARMIN_GROUP_KEYS, keys - GARMIN_GROUP_KEYS
+            for inner in group["workoutSteps"]:
+                assert set(inner) <= GARMIN_STEP_KEYS, set(inner) - GARMIN_STEP_KEYS
+        else:
+            assert keys <= GARMIN_STEP_KEYS, keys - GARMIN_STEP_KEYS
+
+
+def test_a_built_workout_has_no_id_of_its_own():
+    """The id is Garmin's to issue, and its absence is what says 'create me'."""
+    assert "workoutId" not in new_workout("Workout C")
 
 
 # --- reading performed sets -----------------------------------------------

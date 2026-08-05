@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..domain.matching import normalise
+from ..domain.models import ExerciseSpec
 from ..domain.progression import PerformedSet, Target
 
 #: Garmin's base unit for strength loads.
@@ -41,6 +42,22 @@ NOTE_FIELD = "description"
 GENERATED_NOTE = re.compile(
     r"^\d+-\d+ (?:reps|s)(?: by \d+)? \| (?:bodyweight|\+[\d.]+ kg)$"
 )
+
+# Garmin names the parts of a workout by id and by key together, and returns
+# them that way. Sending the same objects is what keeps a workout built here
+# indistinguishable from one built in Connect.
+SPORT_STRENGTH = {"sportTypeId": 5, "sportTypeKey": "strength_training"}
+STEP_INTERVAL = {"stepTypeId": 3, "stepTypeKey": "interval"}
+STEP_REST = {"stepTypeId": 5, "stepTypeKey": "rest"}
+STEP_REPEAT = {"stepTypeId": 6, "stepTypeKey": "repeat"}
+END_LAP_BUTTON = {"conditionTypeId": 1, "conditionTypeKey": "lap.button"}
+END_TIME = {"conditionTypeId": 2, "conditionTypeKey": "time"}
+END_ITERATIONS = {"conditionTypeId": 7, "conditionTypeKey": "iterations"}
+END_REPS = {"conditionTypeId": 10, "conditionTypeKey": "reps"}
+
+#: What Connect puts on a step with nothing to aim at. Garmin accepts its
+#: absence and stores null, so this is for likeness rather than function.
+NO_TARGET = {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target"}
 
 
 # --- workout definitions ---------------------------------------------------
@@ -194,6 +211,145 @@ def apply_target(step: dict[str, Any], target: Target) -> None:
         # null, which setdefault would leave in place.
         if not step.get("weightUnit"):
             step["weightUnit"] = dict(KILOGRAM_UNIT)
+
+
+# --- building a workout ----------------------------------------------------
+#
+# Everything above reads or edits what Garmin already holds. These build the
+# same shapes from nothing, for a workout Garmin has not been told about, or an
+# exercise added to one it has. Garmin fills every field left out with null and
+# returns the key set Connect sends, so only what carries meaning is written
+# here - see docs/garmin-api.md.
+
+
+def new_workout(name: str) -> dict[str, Any]:
+    """The shell of a strength workout, with one empty segment to fill.
+
+    No id: that is Garmin's to issue, and its absence is what distinguishes a
+    workout to create from one to replace.
+    """
+    return {
+        "workoutName": name,
+        "sportType": dict(SPORT_STRENGTH),
+        "workoutSegments": [
+            {
+                "segmentOrder": 1,
+                "sportType": dict(SPORT_STRENGTH),
+                "workoutSteps": [],
+            }
+        ],
+    }
+
+
+def new_rest(seconds: int | None) -> dict[str, Any]:
+    """A rest step: a countdown, or a wait for the lap button when None.
+
+    The same shape wherever it sits - between the sets of one exercise, or
+    between two exercises. Only its position in the tree says which it is.
+    """
+    if seconds is None:
+        return {
+            "type": "ExecutableStepDTO",
+            "stepType": dict(STEP_REST),
+            "endCondition": dict(END_LAP_BUTTON),
+            "endConditionValue": None,
+        }
+    return {
+        "type": "ExecutableStepDTO",
+        "stepType": dict(STEP_REST),
+        "endCondition": dict(END_TIME),
+        "endConditionValue": float(seconds),
+    }
+
+
+def new_group(spec: ExerciseSpec, target: Target) -> dict[str, Any]:
+    """A repeat group holding one exercise and the rest that follows each set.
+
+    Sets are the group's iterations, so the exercise appears once however many
+    times it is performed. An exercise with no `rest` configured gets a
+    lap-button rest rather than no rest step at all: Connect builds one either
+    way, and a step that is there can be given a duration later.
+    """
+    step: dict[str, Any] = {
+        "type": "ExecutableStepDTO",
+        "stepType": dict(STEP_INTERVAL),
+        "endCondition": dict(END_TIME if spec.time_based else END_REPS),
+        "category": spec.garmin_category,
+        "exerciseName": spec.garmin_name,
+        "targetType": dict(NO_TARGET),
+        "targetValueTwo": 0.0,
+    }
+    apply_target(step, target)
+    apply_note(step, spec.note)
+
+    return {
+        "type": "RepeatGroupDTO",
+        "stepType": dict(STEP_REPEAT),
+        "numberOfIterations": spec.sets,
+        "endCondition": dict(END_ITERATIONS),
+        "endConditionValue": float(spec.sets),
+        "smartRepeat": False,
+        "skipLastRestStep": False,
+        "workoutSteps": [step, new_rest(spec.rest or None)],
+    }
+
+
+def set_exercise_steps(
+    payload: dict[str, Any],
+    groups: list[dict[str, Any]],
+    gaps: list[dict[str, Any]],
+) -> None:
+    """Lay out group, gap, group ... as the workout's steps, and renumber.
+
+    One gap per join, so nothing follows the last exercise: a workout ends when
+    its last set does. Each gap must be a step of its own - they are numbered
+    individually, so the same dict passed twice would leave two positions
+    claimed by one step.
+
+    Groups are placed as given rather than copied, so a group taken out of a
+    fetched workout keeps its identity, its ids, and the target stored in it.
+    """
+    steps: list[dict[str, Any]] = []
+    for position, group in enumerate(groups):
+        if position:
+            steps.append(gaps[position - 1])
+        steps.append(group)
+
+    payload["workoutSegments"][0]["workoutSteps"] = steps
+    renumber(payload)
+
+
+def renumber(payload: dict[str, Any]) -> None:
+    """Number the steps the way Garmin does, in place.
+
+    `stepOrder` runs 1..N depth-first, counting groups and their children
+    alike. `childStepId` counts the groups, and a group's children carry its
+    number; a step outside a group has none.
+
+    Garmin sorts by `stepOrder` and renumbers to exactly this on save, so this
+    is not bookkeeping: it is how the order of the exercises is expressed, and
+    producing anything else would mean every run saw a difference and wrote
+    again. A strength workout nests one level - a group holding steps - which
+    is all this numbers.
+    """
+    order = 1
+    child = 0
+    for segment in payload.get("workoutSegments") or []:
+        for step in segment.get("workoutSteps") or []:
+            step["stepOrder"] = order
+            order += 1
+
+            children = step.get("workoutSteps")
+            if not children:
+                step["childStepId"] = None
+                continue
+
+            child += 1
+            step["childStepId"] = child
+            for inner in children:
+                inner["stepOrder"] = order
+                inner["childStepId"] = child
+                order += 1
 
 
 # --- logged activities -----------------------------------------------------

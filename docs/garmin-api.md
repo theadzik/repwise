@@ -153,6 +153,26 @@ which stopped the workout working:
 group's value, whatever is sent. Send it correctly anyway, so that a payload
 built offline equals the one that comes back and a second run has nothing to do.
 
+### The PUT takes structural changes too
+
+`update_workout()` replaces the whole workout, and it accepts a step list that
+has been **reordered, added to and cut down** in the same request - not only
+one whose values changed. Verified by taking a three-exercise workout, dropping
+the first exercise, swapping the other two, appending a group built from
+scratch with no `stepId`, renumbering, and putting it back:
+
+- The order came back as sent, and the dropped exercise was gone.
+- The appended group was created and given ids, `stepId` not being needed to
+  add a step.
+- The **kept steps held their targets and notes**, which is what makes it safe
+  to rearrange a workout without resetting the progression stored in it.
+- What was sent equalled what came back, field for field, so a second run finds
+  nothing to do.
+
+That last point only holds because the numbering sent was the numbering Garmin
+would have chosen. Anything else round-trips into a difference, and every run
+would write again.
+
 ## Step order is a field, not a position
 
 **`stepOrder` decides the sequence; the position in `workoutSteps` does not.**

@@ -21,6 +21,57 @@ EXAMPLE_CONFIG = os.path.join(REPO_ROOT, "workouts.example.yaml")
 #: Garmin's kilogram unit, as it appears on a workout step.
 KILOGRAM = {"unitId": 8, "unitKey": "kilogram", "factor": 1000.0}
 
+#: Every key Garmin returns on a repeat group and on an executable step, copied
+#: from a real workout payload. A built step may use fewer - Garmin fills the
+#: rest with null - but never a key that is not here, which is what makes this
+#: worth keeping: a typo in a field name is otherwise silently ignored.
+GARMIN_GROUP_KEYS = {
+    "childStepId",
+    "endCondition",
+    "endConditionCompare",
+    "endConditionValue",
+    "numberOfIterations",
+    "preferredEndConditionUnit",
+    "skipLastRestStep",
+    "smartRepeat",
+    "stepId",
+    "stepOrder",
+    "stepType",
+    "type",
+    "workoutSteps",
+}
+GARMIN_STEP_KEYS = {
+    "category",
+    "childStepId",
+    "description",
+    "endCondition",
+    "endConditionCompare",
+    "endConditionValue",
+    "endConditionZone",
+    "equipmentType",
+    "exerciseName",
+    "preferredEndConditionUnit",
+    "providerExerciseSourceId",
+    "secondaryTargetType",
+    "secondaryTargetValueOne",
+    "secondaryTargetValueTwo",
+    "secondaryTargetValueUnit",
+    "secondaryZoneNumber",
+    "stepId",
+    "stepOrder",
+    "stepType",
+    "strokeType",
+    "targetType",
+    "targetValueOne",
+    "targetValueTwo",
+    "targetValueUnit",
+    "type",
+    "weightUnit",
+    "weightValue",
+    "workoutProvider",
+    "zoneNumber",
+}
+
 
 # --- the domain -----------------------------------------------------------
 
