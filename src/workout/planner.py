@@ -22,6 +22,8 @@ from .garmin.payloads import (
     apply_rest,
     apply_sets,
     apply_target,
+    is_rest,
+    is_timed_rest,
     iter_exercise_blocks,
     new_group,
     new_rest,
@@ -77,6 +79,31 @@ class SetChange:
 
 
 @dataclass(frozen=True)
+class GapChange:
+    """The rest between exercises, before and after.
+
+    One record for the whole workout rather than one per join: Garmin holds a
+    separate step between each pair of exercises, but the config carries a
+    single number for all of them, and reporting each separately would say the
+    same thing eight times.
+    """
+
+    #: How many of those steps this changes.
+    gaps: int
+    #: What each said before: seconds, or None where it waited for the button.
+    was: tuple[int | None, ...]
+    new: int
+
+    @property
+    def before(self) -> str:
+        """The old value, when they all agreed on one."""
+        distinct = set(self.was)
+        if len(distinct) > 1:
+            return "mixed"
+        return "lap button" if self.was[0] is None else f"{self.was[0]} s rest"
+
+
+@dataclass(frozen=True)
 class StructureChange:
     """An exercise added to a workout, removed from it, or moved within it.
 
@@ -115,6 +142,9 @@ class Plan:
     #: Exercises added, removed or moved. Config-driven again, and the only
     #: kind of change that alters what the workout is rather than what it asks.
     structure: list[StructureChange] = field(default_factory=list)
+    #: The rest between exercises, when the config moved it. One per workout,
+    #: because that is how the config expresses it.
+    gaps: GapChange | None = None
 
     @property
     def moved(self) -> list[Change]:
@@ -124,7 +154,12 @@ class Plan:
     def writable(self) -> bool:
         """Whether this plan has anything worth sending to Garmin."""
         return bool(
-            self.moved or self.notes or self.rests or self.sets or self.structure
+            self.moved
+            or self.notes
+            or self.rests
+            or self.sets
+            or self.structure
+            or self.gaps
         )
 
 
@@ -269,6 +304,36 @@ def _refresh_sets(
     sets.append(SetChange(spec, block.sets, spec.sets))
 
 
+def _refresh_gaps(workout: Workout, payload: dict[str, Any]) -> GapChange | None:
+    """Keep the rest between exercises at the one the workout asks for.
+
+    Garmin's own default there is a wait for the lap button, which is exactly
+    what `rest_between_exercises` exists to change, so declaring it is taken as
+    the instruction to make those steps count down. That is the opposite of the
+    stance on an exercise's own `rest`, deliberately: this key was added for
+    the conversion, while that one has always meant "how long the interval is".
+
+    Leaving the key out is having no opinion, and whatever Garmin holds -
+    button presses, or intervals set by hand in Connect - is left alone.
+    """
+    wanted = workout.rest_between
+    if wanted is None:
+        return None
+
+    blocks = list(iter_exercise_blocks(payload))
+    gaps = [step for step in _existing_gaps(payload, blocks) if is_rest(step)]
+    stale = [
+        step for step in gaps if not is_timed_rest(step) or step_rest(step) != wanted
+    ]
+    if not stale:
+        return None
+
+    was = tuple(step_rest(step) if is_timed_rest(step) else None for step in stale)
+    for step in stale:
+        apply_rest(step, wanted)
+    return GapChange(len(stale), was, wanted)
+
+
 def _index_blocks(blocks: list[ExerciseBlock]) -> ExerciseIndex[ExerciseBlock]:
     """The workout's exercises, looked up the way its steps are matched."""
     index: ExerciseIndex[ExerciseBlock] = ExerciseIndex()
@@ -363,7 +428,9 @@ def _reconcile(
         structure.append(StructureChange("moved", labels[ident], at[ident] + 1))
 
     if structure:
-        set_exercise_steps(payload, outers, _gaps_for(outers, gaps))
+        set_exercise_steps(
+            payload, outers, _gaps_for(outers, gaps, workout.rest_between)
+        )
 
 
 def _out_of_order(kept: list[int], was: dict[int, int]) -> list[int]:
@@ -409,12 +476,20 @@ def _exercise_step(outer: dict[str, Any]) -> dict[str, Any]:
 
 
 def _gaps_for(
-    outers: list[dict[str, Any]], existing: list[dict[str, Any]]
+    outers: list[dict[str, Any]],
+    existing: list[dict[str, Any]],
+    seconds: int | None,
 ) -> list[dict[str, Any]]:
-    """One step per join, reusing what was there and building the shortfall."""
+    """One step per join, reusing what was there and building the shortfall.
+
+    A gap built here starts at whatever the workout asks for, so that a new
+    join - or a whole new workout - needs no correcting afterwards. With no
+    `rest_between_exercises` it is a wait for the lap button, which is Garmin's
+    own default and so the least surprising thing to invent.
+    """
     needed = max(len(outers) - 1, 0)
     gaps = existing[:needed]
-    return gaps + [new_rest(None) for _ in range(needed - len(gaps))]
+    return gaps + [new_rest(seconds) for _ in range(needed - len(gaps))]
 
 
 def plan_workout(
@@ -439,6 +514,7 @@ def plan_workout(
     added: set[int] = set()
 
     _reconcile(workout, payload, structure, added)
+    gaps = _refresh_gaps(workout, payload)
 
     for block in iter_exercise_blocks(payload):
         step = block.step
@@ -493,6 +569,7 @@ def plan_workout(
         rests,
         sets=sets,
         structure=structure,
+        gaps=gaps,
     )
 
 

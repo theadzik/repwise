@@ -4,11 +4,21 @@ from copy import deepcopy
 from dataclasses import replace
 
 import pytest
-from builders import active, payload, rep_step, repeat, rest_step, spec, workout
+from builders import (
+    active,
+    payload,
+    rep_step,
+    repeat,
+    rest_step,
+    spec,
+    timed_rest,
+    workout,
+)
 
 from workout.domain.models import Config, Workout
 from workout.domain.progression import Target
 from workout.garmin.payloads import (
+    is_timed_rest,
     iter_exercise_blocks,
     performed_sets,
     step_note,
@@ -486,6 +496,99 @@ def test_a_workout_with_no_session_behind_it_plans_no_targets():
     assert plan.warnings == [], "and nothing to complain about"
     assert [c.kind for c in plan.structure] == ["added"]
     assert plan.notes, "but the programming still reaches the steps"
+
+
+# --- the rest between exercises -------------------------------------------
+
+
+def gaps_of(built):
+    """What each step between the exercises prescribes, in order."""
+    return [
+        step.get("endCondition", {}).get("conditionTypeKey")
+        if not is_timed_rest(step)
+        else int(step["endConditionValue"])
+        for step in built["workoutSegments"][0]["workoutSteps"]
+        if step.get("type") != "RepeatGroupDTO"
+    ]
+
+
+def resting(seconds, exercises=(SQUAT, CURLS)):
+    return replace(a_workout(exercises=list(exercises)), rest_between=seconds)
+
+
+def test_the_configured_gap_replaces_a_lap_button_wait():
+    """The whole point of the setting: Garmin's default is a button press."""
+    built = payload(group_of(SQUAT, 7, 20.0), rest_step(60.0), group_of(CURLS, 10, 7.0))
+
+    plan = plan_workout(resting(45), built)
+
+    assert gaps_of(built) == [45]
+    assert (plan.gaps.gaps, plan.gaps.was, plan.gaps.new) == (1, (None,), 45)
+    assert plan.gaps.before == "lap button"
+
+
+def test_the_configured_gap_retimes_an_existing_countdown():
+    built = payload(
+        group_of(SQUAT, 7, 20.0), timed_rest(90.0), group_of(CURLS, 10, 7.0)
+    )
+
+    plan = plan_workout(resting(45), built)
+
+    assert gaps_of(built) == [45]
+    assert plan.gaps.before == "90 s rest"
+
+
+def test_a_gap_that_already_matches_is_left_alone():
+    """Idempotent: the second run must find nothing to do."""
+    built = payload(
+        group_of(SQUAT, 7, 20.0), timed_rest(45.0), group_of(CURLS, 10, 7.0)
+    )
+    for group, each in zip(
+        [s for s in built["workoutSegments"][0]["workoutSteps"] if "workoutSteps" in s],
+        [SQUAT, CURLS],
+        strict=True,
+    ):
+        group["workoutSteps"][0]["description"] = each.note
+
+    plan = plan_workout(resting(45), built)
+
+    assert plan.gaps is None
+    assert not plan.writable
+
+
+def test_no_configured_gap_leaves_garmins_own_alone():
+    """Absent is no opinion, so a button press stays a button press."""
+    built = payload(group_of(SQUAT, 7, 20.0), rest_step(60.0), group_of(CURLS, 10, 7.0))
+
+    plan = plan_workout(resting(None), built)
+
+    assert plan.gaps is None
+    assert gaps_of(built) == ["lap.button"]
+
+
+def test_the_gap_is_applied_between_every_pair_and_after_none():
+    built = payload(
+        group_of(SQUAT, 7, 20.0),
+        rest_step(60.0),
+        group_of(CURLS, 10, 7.0),
+        rest_step(60.0),
+        group_of(CALF, 15, 20.0),
+    )
+
+    plan_workout(resting(30, (SQUAT, CURLS, CALF)), built)
+
+    assert gaps_of(built) == [30, 30], "two joins, nothing after the last exercise"
+
+
+def test_a_gap_built_for_a_new_join_starts_at_the_configured_rest():
+    """An exercise added at the end needs a gap in front of it, and it should
+    not need correcting a moment after it is built."""
+    built = payload(group_of(SQUAT, 7, 20.0))
+
+    plan = plan_workout(resting(30), built)
+
+    assert gaps_of(built) == [30]
+    assert plan.gaps is None, "built right, so nothing to report as changed"
 
 
 # --- set counts -----------------------------------------------------------

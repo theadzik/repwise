@@ -12,7 +12,14 @@ import logging
 
 from ..domain.models import ExerciseSpec
 from ..domain.progression import Target
-from ..planner import Change, Plan, RestChange, SetChange, StructureChange
+from ..planner import (
+    Change,
+    GapChange,
+    Plan,
+    RestChange,
+    SetChange,
+    StructureChange,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +77,16 @@ def report_sets(change: SetChange) -> None:
     )
 
 
+def report_gaps(change: GapChange) -> None:
+    """The rest between exercises: one line for the workout, not one per gap."""
+    report_prescribed(
+        "Between exercises",
+        change.before,
+        f"{change.new} s rest",
+        f"{change.gaps} gap(s), from workouts.yaml",
+    )
+
+
 #: The marker each kind of structural change prints under. Deliberately not
 #: `*`: these change what the workout is, not what it asks of you.
 STRUCTURE = {"added": "+", "removed": "-", "moved": "~"}
@@ -101,6 +118,8 @@ def report_plan(plan: Plan, force_flag: str | None = None) -> None:
         report_sets(count)
     for rest in plan.rests:
         report_rest(rest)
+    if plan.gaps:
+        report_gaps(plan.gaps)
     # Notes only move when workouts.yaml does, so they are a footnote to a
     # normal run: the count goes in the summary, the detail behind -v.
     for name in plan.notes:

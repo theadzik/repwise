@@ -184,6 +184,14 @@ def recounted_steps(plans: list[Plan]) -> set[tuple[str, str]]:
     }
 
 
+def regapped(plans: list[Plan]) -> set[str]:
+    """Which workouts had the rest between their exercises rewritten.
+
+    One per workout however many steps it touched: the config says it once.
+    """
+    return {counted_as(plan.workout) for plan in plans if plan.gaps}
+
+
 def restructured(plans: list[Plan]) -> set[tuple[str, str, str]]:
     """Which exercises were added, removed or moved, counted once each."""
     return {
@@ -387,11 +395,17 @@ def run_update(
     noted = len(noted_steps(plans))
     rested = len(rested_steps(plans))
     recounted = len(recounted_steps(plans))
+    regaps = len(regapped(plans))
     shaped = len(restructured(plans))
     structure = (
         f", {shaped} exercise(s) would be added, removed or moved" if shaped else ""
     )
     counts = f", {recounted} set count(s) would change" if recounted else ""
+    between = (
+        f", the rest between exercises would change in {regaps} workout(s)"
+        if regaps
+        else ""
+    )
     notes = f", {noted} note(s) would be refreshed" if noted else ""
     rests = f", {rested} rest time(s) would change" if rested else ""
 
@@ -399,11 +413,11 @@ def run_update(
         logger.info("")
         logger.info(
             f"Dry run: {updated} step(s) would change"
-            f"{structure}{counts}{rests}{notes}. Re-run with --apply."
+            f"{structure}{counts}{rests}{between}{notes}. Re-run with --apply."
         )
         return ExitCode.OK
 
-    if not (updated or noted or rested or recounted or shaped):
+    if not (updated or noted or rested or recounted or regaps or shaped):
         logger.info("")
         logger.info("Nothing to write.")
         return ExitCode.OK
@@ -416,6 +430,7 @@ def run_update(
         + (f" Added, removed or moved {shaped} exercise(s)." if shaped else "")
         + (f" Set {recounted} set count(s)." if recounted else "")
         + (f" Set {rested} rest time(s)." if rested else "")
+        + (f" Set the rest between exercises in {regaps}." if regaps else "")
         + (f" Refreshed {noted} note(s)." if noted else "")
     )
 

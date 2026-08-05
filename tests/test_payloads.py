@@ -19,6 +19,7 @@ from workout.garmin.payloads import (
     apply_note,
     apply_rest,
     apply_target,
+    is_timed_rest,
     iter_exercise_blocks,
     new_group,
     new_rest,
@@ -168,13 +169,25 @@ def test_apply_adds_a_unit_when_the_step_has_none():
     assert step_target(step) == Target(12, 20.0)
 
 
-def test_apply_rest_changes_only_the_duration():
-    """The step already ends on a time, so nothing about its shape moves."""
+def test_apply_rest_retimes_a_countdown():
     step = timed_rest(90.0)
     apply_rest(step, 150)
 
     assert step_rest(step) == 150
-    assert step["endCondition"] == {"conditionTypeKey": "time"}
+    assert is_timed_rest(step)
+
+
+def test_apply_rest_turns_a_lap_button_wait_into_a_countdown():
+    """Writing "rest this long" onto a step that waits for a button press has
+    to change the condition as well as the number. Whether that is a change
+    worth making is the planner's call, not this module's."""
+    step = rest_step(60.0)
+    assert not is_timed_rest(step)
+
+    apply_rest(step, 45)
+
+    assert is_timed_rest(step)
+    assert step_rest(step) == 45
 
 
 def test_a_written_rest_reads_back_through_the_block():

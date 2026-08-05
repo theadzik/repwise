@@ -97,8 +97,13 @@ class ExerciseBlock:
         return self.step if self.group is None else self.group
 
 
-def _rest_step(steps: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """The rest step of a repeat group, when it prescribes a fixed time.
+def is_rest(step: dict[str, Any]) -> bool:
+    """Whether this step is a rest rather than something to perform."""
+    return (step.get("stepType") or {}).get("stepTypeKey") == "rest"
+
+
+def is_timed_rest(step: dict[str, Any]) -> bool:
+    """Whether a rest counts down, rather than waiting for the lap button.
 
     The duration is tested against None rather than for truth, as `step_target`
     tests its own: what makes a rest unreadable is ending on the lap button or
@@ -106,15 +111,18 @@ def _rest_step(steps: list[dict[str, Any]]) -> dict[str, Any] | None:
     treating it as absent would refuse to write a configured rest onto a step
     that can hold one perfectly well.
     """
+    end = step.get("endCondition") or {}
+    return (
+        end.get("conditionTypeKey") == "time"
+        and step.get("endConditionValue") is not None
+    )
+
+
+def _rest_step(steps: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The rest step of a repeat group, when it prescribes a fixed time."""
     for step in steps:
-        if (step.get("stepType") or {}).get("stepTypeKey") != "rest":
-            continue
-        end = step.get("endCondition") or {}
         # A lap.button rest has no duration, only a prompt to press the button.
-        if (
-            end.get("conditionTypeKey") == "time"
-            and step.get("endConditionValue") is not None
-        ):
+        if is_rest(step) and is_timed_rest(step):
             return step
     return None
 
@@ -217,11 +225,14 @@ def apply_sets(group: dict[str, Any], sets: int) -> None:
 
 
 def apply_rest(step: dict[str, Any], seconds: int) -> None:
-    """Write a new interval onto a rest step, in place.
+    """Write an interval onto a rest step, in place.
 
-    Only the duration changes: the step already ends on a time, which is what
-    made it writable, so nothing about the shape of the workout moves.
+    The end condition is written along with the duration, so that a rest which
+    waited for the lap button becomes one that counts down. Whether that is a
+    change worth making is the planner's to judge, not this module's: here it
+    is simply what "rest for this long" means.
     """
+    step["endCondition"] = dict(END_TIME)
     step["endConditionValue"] = float(seconds)
 
 
