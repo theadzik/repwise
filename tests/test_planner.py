@@ -3,11 +3,16 @@
 from dataclasses import replace
 
 import pytest
-from builders import active, rep_step, spec, workout
+from builders import active, rep_step, repeat, rest_step, spec, workout
 
 from workout.domain.models import Config, Workout
 from workout.domain.progression import Target
-from workout.garmin.payloads import performed_sets, step_note, step_target
+from workout.garmin.payloads import (
+    iter_exercise_blocks,
+    performed_sets,
+    step_note,
+    step_target,
+)
 from workout.planner import (
     ActivityNotFound,
     decided_targets,
@@ -227,6 +232,104 @@ def test_notes_reach_a_workout_that_only_receives_a_sync():
 
     plan = plan_sync(a_workout("Workout B", "2", [CALF]), payload, targets, "Workout A")
     assert plan.notes == ["Weighted Standing Calf Raise"]
+
+
+# --- rest between sets ----------------------------------------------------
+
+
+RESTED = spec(sets=3, weight_step=2.5, rest=150)
+
+
+def squat_group(rest=120.0, reps=7):
+    """The squat as Garmin stores it: a repeat group with a timed rest."""
+    step = rep_step("BARBELL_BACK_SQUAT", "SQUAT", reps, 20.0)
+    return workout(repeat(step, sets=3, rest=rest))
+
+
+def rest_of(built):
+    return next(iter(iter_exercise_blocks(built))).rest
+
+
+def test_a_configured_rest_is_written_onto_the_rest_step():
+    """workouts.yaml is the source of the programming, so it wins."""
+    built = squat_group(rest=120.0)
+    plan = plan_workout(a_workout(exercises=[RESTED]), built, ({}, {}))
+
+    assert rest_of(built) == 150
+    assert [(c.old, c.new) for c in plan.rests] == [(120, 150)]
+    assert plan.writable, "a rest alone is worth writing"
+
+
+def test_an_already_correct_rest_is_left_alone():
+    """Idempotent: a second run must not re-save the workout for nothing."""
+    step = rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0)
+    step["description"] = RESTED.note  # so only the rest could be a reason
+    built = workout(repeat(step, sets=3, rest=150.0))
+
+    plan = plan_workout(a_workout(exercises=[RESTED]), built, ({}, {}))
+
+    assert plan.rests == []
+    assert not plan.writable
+
+
+def test_an_exercise_with_no_rest_configured_keeps_garmins():
+    """Leaving `rest` out is having no opinion, not asking for zero."""
+    built = squat_group(rest=120.0)
+    plan = plan_workout(a_workout(exercises=[SQUAT]), built, ({}, {}))
+
+    assert plan.rests == []
+    assert rest_of(built) == 120
+
+
+def test_a_lap_button_rest_is_reported_rather_than_retimed():
+    """Turning a button press into a countdown changes how it is performed."""
+    button = rest_step()
+    group = {
+        "type": "RepeatGroupDTO",
+        "numberOfIterations": 3,
+        "workoutSteps": [rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0), button],
+    }
+    plan = plan_workout(a_workout(exercises=[RESTED]), workout(group), ({}, {}))
+
+    assert plan.rests == []
+    assert button["endCondition"] == {"conditionTypeKey": "lap.button"}
+    assert any("not a fixed time in Garmin" in w for w in plan.warnings)
+
+
+def test_a_rest_of_zero_is_written_rather_than_called_unwritable():
+    """Zero is what the step says today, not a step that cannot hold a rest."""
+    built = squat_group(rest=0.0)
+    plan = plan_workout(a_workout(exercises=[RESTED]), built, ({}, {}))
+
+    assert [(c.old, c.new) for c in plan.rests] == [(0, 150)]
+    assert rest_of(built) == 150
+    assert not [w for w in plan.warnings if "rest" in w]
+
+
+def test_the_rest_moves_even_when_the_target_does_not():
+    """The rest describes the programming, not the session."""
+    built = squat_group(rest=120.0, reps=7)
+    performed = performed_sets(
+        {"exerciseSets": [active("BARBELL_BACK_SQUAT", "SQUAT", 5, 20000.0)] * 3}
+    )
+    plan = plan_workout(a_workout(exercises=[RESTED]), built, performed)
+
+    assert not plan.moved, "missed the target"
+    assert rest_of(built) == 150
+
+
+def test_rests_reach_a_workout_that_only_receives_a_sync():
+    step = rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 12, 0.0)
+    built = workout(repeat(step, sets=3, rest=60.0))
+    rested_calf = replace(CALF, rest=90)
+    targets = {"weightedstandingcalfraise": Target(12, 20.0)}
+
+    plan = plan_sync(
+        a_workout("Workout B", "2", [rested_calf]), built, targets, "Workout A"
+    )
+
+    assert [(c.old, c.new) for c in plan.rests] == [(60, 90)]
+    assert rest_of(built) == 90
 
 
 # --- syncing shared exercises ---------------------------------------------

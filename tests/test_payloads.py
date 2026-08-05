@@ -1,15 +1,17 @@
 """Mapping Garmin's JSON to and from this application's types."""
 
-from builders import active, rep_step, rest_step, spec, workout
+from builders import active, rep_step, rest_step, spec, timed_rest, workout
 
 from workout.domain.progression import Target
 from workout.garmin.payloads import (
     GENERATED_NOTE,
     apply_note,
+    apply_rest,
     apply_target,
-    iter_workout_steps,
+    iter_exercise_blocks,
     performed_sets,
     step_note,
+    step_rest,
     step_target,
 )
 
@@ -24,13 +26,74 @@ def test_iter_descends_into_repeat_groups():
             "numberOfIterations": 4,
             "workoutSteps": [
                 rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0),
-                rest_step(),
+                timed_rest(90.0),
             ],
         }
     )
-    steps = list(iter_workout_steps(payload))
-    assert len(steps) == 2
-    assert steps[0]["exerciseName"] == "BARBELL_BACK_SQUAT"
+    blocks = list(iter_exercise_blocks(payload))
+
+    assert len(blocks) == 1, "the rest step is not an exercise of its own"
+    assert blocks[0].step["exerciseName"] == "BARBELL_BACK_SQUAT"
+    assert blocks[0].sets == 4
+    assert blocks[0].rest == 90
+
+
+def test_a_step_outside_a_repeat_group_is_one_set_and_no_rest():
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0))
+    block = next(iter(iter_exercise_blocks(payload)))
+
+    assert (block.sets, block.rest, block.rest_step) == (1, None, None)
+
+
+def test_a_zero_second_rest_is_a_duration_like_any_other():
+    """Falsy but present: a step that can hold a rest, currently holding none."""
+    payload = workout(
+        {
+            "type": "RepeatGroupDTO",
+            "numberOfIterations": 3,
+            "workoutSteps": [
+                rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0),
+                timed_rest(0.0),
+            ],
+        }
+    )
+    block = next(iter(iter_exercise_blocks(payload)))
+
+    assert block.rest == 0
+    assert block.rest_step is not None, "a configured rest can be written here"
+
+
+def test_a_timed_rest_with_no_value_reads_as_no_rest():
+    payload = workout(
+        {
+            "type": "RepeatGroupDTO",
+            "numberOfIterations": 3,
+            "workoutSteps": [
+                rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0),
+                {
+                    "stepType": {"stepTypeKey": "rest"},
+                    "endCondition": {"conditionTypeKey": "time"},
+                    "endConditionValue": None,
+                },
+            ],
+        }
+    )
+    assert next(iter(iter_exercise_blocks(payload))).rest_step is None
+
+
+def test_a_lap_button_rest_is_no_interval_at_all():
+    """It prompts you to press the button; the value beside it means nothing."""
+    payload = workout(
+        {
+            "type": "RepeatGroupDTO",
+            "numberOfIterations": 3,
+            "workoutSteps": [rep_step("PLANK", "PLANK", 30, None), rest_step(60.0)],
+        }
+    )
+    block = next(iter(iter_exercise_blocks(payload)))
+
+    assert block.rest is None
+    assert block.rest_step is None, "nothing to write a configured rest onto"
 
 
 # --- reading targets ------------------------------------------------------
@@ -87,6 +150,33 @@ def test_apply_adds_a_unit_when_the_step_has_none():
     apply_target(step, Target(12, 20.0))
     assert step["weightUnit"]["unitKey"] == "kilogram"
     assert step_target(step) == Target(12, 20.0)
+
+
+def test_apply_rest_changes_only_the_duration():
+    """The step already ends on a time, so nothing about its shape moves."""
+    step = timed_rest(90.0)
+    apply_rest(step, 150)
+
+    assert step_rest(step) == 150
+    assert step["endCondition"] == {"conditionTypeKey": "time"}
+
+
+def test_a_written_rest_reads_back_through_the_block():
+    """What the planner relies on to leave an already-correct rest alone."""
+    payload = workout(
+        {
+            "type": "RepeatGroupDTO",
+            "numberOfIterations": 3,
+            "workoutSteps": [
+                rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0),
+                timed_rest(90.0),
+            ],
+        }
+    )
+    block = next(iter(iter_exercise_blocks(payload)))
+    apply_rest(block.rest_step, 120)
+
+    assert block.rest == 120
 
 
 def test_apply_leaves_bodyweight_unloaded():

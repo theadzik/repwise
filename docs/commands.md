@@ -104,17 +104,46 @@ One block per workout that had a session, oldest first.
 Targets print in the unit the exercise is measured in - `6 x 65 kg` for loaded
 work, `11 reps` for bodyweight, `47 s` for timed holds.
 
-The closing line also counts notes when any were rewritten:
+The closing line also counts rests and notes when any were rewritten:
 
 ```text
-Dry run: 8 step(s) would change, 17 note(s) would be refreshed. Re-run with --apply.
+Dry run: 8 step(s) would change, 1 rest time(s) would change, 17 note(s) would be refreshed. Re-run with --apply.
 ```
 
-See [step notes](#step-notes). Which exercises they were is behind `-v`, since
-notes only move when you edit `workouts.yaml`.
+See [rest between sets](#rest-between-sets) and [step notes](#step-notes).
+Which exercises the notes were is behind `-v`, since notes only move when you
+edit `workouts.yaml`.
 
 An "Also in ..." section appears when a target that moved also exists in another
 workout. See [shared exercises](progression.md#shared-exercises).
+
+### Rest between sets
+
+An exercise's `rest` in `workouts.yaml` is written to the Garmin workout, so
+the file is where you change how long you rest:
+
+```text
+* Barbell Back Squat            120 s rest  ->  150 s rest    (rest from workouts.yaml)
+```
+
+Like the notes below, this is config-driven rather than earned: nothing in a
+session moves a rest, so an edit to the file is on its own a reason to write a
+workout. Leaving `rest` out of an exercise is having no opinion about it, and
+Garmin's own value is kept.
+
+**Only a rest Garmin counts down can be retimed.** Garmin stores the rest
+between sets inside the repeat group, as either a fixed time or a wait for the
+lap button. A button press is not an interval, and turning one into a countdown
+would change how the workout is performed rather than correct a value, so it is
+reported and left alone:
+
+```text
+  ! Barbell Back Squat: rest is not a fixed time in Garmin, left alone (wanted 150s)
+```
+
+Set that step to a timed rest in Garmin Connect if you want the config to drive
+it. The rest *between exercises* is a separate step that this tool does not
+touch at all.
 
 ### Step notes
 
@@ -248,6 +277,16 @@ Workout A (111111111)
    ! Standing Calf Raise: config says WEIGHTED_STANDING_CALF_RAISE, Garmin says
      STANDING_CALF_RAISE. Matched by category CALF_RAISE, so it works, but the
      name is wrong
+```
+
+A rest that disagrees is only a note, because it is not drift you have to act
+on: `update --apply` sets it from the config on the next run. The exception is
+an exercise whose Garmin rest waits for the lap button, which nothing can
+retime for you - also a note, since the workout still runs:
+
+```text
+   Barbell Back Squat: rest 150s in config, but Garmin waits for the lap
+   button; only you can change that
 ```
 
 Exits non-zero when it finds anything beyond a note, so it fits in a cron job.

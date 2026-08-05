@@ -85,10 +85,19 @@ def check_workout(workout: Workout, payload: dict) -> list[Finding]:
 
         if block.sets != spec.sets:
             note(f"{spec.name}: {spec.sets} sets in config, {block.sets} in Garmin")
-        if block.rest is not None and spec.rest and block.rest != spec.rest:
+        if spec.rest and block.rest is None:
+            # Nothing to correct automatically: `update` can retime a rest, but
+            # not turn a lap.button one into a countdown. A note either way,
+            # since the workout still runs.
+            note(
+                f"{spec.name}: rest {spec.rest}s in config, but Garmin waits "
+                f"for the lap button; only you can change that",
+                "note",
+            )
+        elif block.rest is not None and spec.rest and block.rest != spec.rest:
             note(
                 f"{spec.name}: rest {spec.rest}s in config, {block.rest}s in "
-                f"Garmin (documentation only)",
+                f"Garmin (update --apply will set it)",
                 "note",
             )
 

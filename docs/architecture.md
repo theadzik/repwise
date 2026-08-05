@@ -169,10 +169,10 @@ its own session and a sync from a later one both survive a single write.
 ## Exercise matching
 
 `domain/matching.py` owns this, and is the only place it is implemented: the
-planner matches specs to workout steps and the checker matches them to
-exercise blocks, both through the same `ExerciseIndex`. Deciding which
-exercise a name refers to is this tool's rule, not Garmin's schema, which is
-why it sits in the domain rather than in the adapter.
+planner and the checker both match specs to the exercise blocks that
+`iter_exercise_blocks()` yields, through the same `ExerciseIndex`. Deciding
+which exercise a name refers to is this tool's rule, not Garmin's schema, which
+is why it sits in the domain rather than in the adapter.
 
 Names are normalised to letters and digits only, so `BARBELL_BACK_SQUAT` and
 `Barbell Back Squat` collapse to the same key.

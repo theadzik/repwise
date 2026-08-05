@@ -1,9 +1,10 @@
 """Choosing which sessions to update, and updating more than one at a time."""
 
 import logging
+from dataclasses import replace
 
 import pytest
-from builders import active, rep_step, spec
+from builders import active, rep_step, repeat, spec
 from builders import workout as steps
 
 from workout.app.update import (
@@ -257,6 +258,64 @@ def test_a_shared_exercise_ends_up_at_the_most_recent_decision(account):
 def test_a_dry_run_writes_nothing(account):
     assert run(account) == ExitCode.OK
     assert account.saved == []
+
+
+# --- rest times -----------------------------------------------------------
+
+
+@pytest.fixture
+def rested(account):
+    """Workout A with the squat in a repeat group resting 120s between sets."""
+    account.workouts["111"] = steps(
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 30.0), sets=3, rest=120.0),
+        rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 15, 20.0),
+    )
+    return account
+
+
+def saved_rest(saved, workout_id):
+    """The rest the written workout ended up prescribing between squat sets."""
+    payload = next(p for wid, p in saved if wid == workout_id)
+    group = payload["workoutSegments"][0]["workoutSteps"][0]
+    return group["workoutSteps"][1]["endConditionValue"]
+
+
+def test_a_configured_rest_is_written_with_the_targets(rested):
+    """One save carries the rest and the target alike."""
+    config = config_ab(a_exercises=(replace(SQUAT, rest=150), CALF))
+    run(rested, config, apply=True)
+
+    assert saved_rest(rested.saved, "111") == 150.0
+
+
+def test_a_dry_run_leaves_the_rest_alone(rested, caplog):
+    config = config_ab(a_exercises=(replace(SQUAT, rest=150), CALF))
+
+    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+        run(rested, config)
+
+    assert rested.saved == []
+    assert "1 rest time(s) would change" in caplog.text
+
+
+def test_a_rest_alone_is_reason_enough_to_write(rested):
+    """No session moves a rest, so nothing else need have changed."""
+    config = Config(
+        {
+            "Workout A": Workout(
+                "Workout A", "111", ["workout a"], [replace(SQUAT, rest=150)]
+            )
+        }
+    )
+    rested.sets["900"] = sets_of(
+        *[active("BARBELL_BACK_SQUAT", "SQUAT", 6, 30000.0)] * 3
+    )
+
+    code = run(rested, config, apply=True)
+
+    assert code == ExitCode.OK
+    assert [wid for wid, _ in rested.saved] == ["111"]
+    assert saved_rest(rested.saved, "111") == 150.0
 
 
 def test_nothing_is_pushed_without_apply(account):

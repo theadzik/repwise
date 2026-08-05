@@ -82,8 +82,11 @@ Warnings never fail a run silently - a skipped exercise is always reported.
 
 ## Known limitations
 
-- `rest` and `video` are documentation only; they are not written back to
-  Garmin. Only rep, time and weight targets are.
+- `video` is documentation only; it is not written back to Garmin. Rep, time
+  and weight targets, the step note and `rest` are.
+- A `rest` can only be retimed where Garmin already counts one down. An
+  exercise whose rest waits for the lap button is reported and left alone;
+  changing that is a structural edit, and only you can make it in Connect.
 - Workouts must already exist in Garmin Connect. This tool updates them, it
   does not create them.
 - Every set of an exercise gets the same target, matching the "same reps on

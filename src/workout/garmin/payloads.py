@@ -46,65 +46,72 @@ GENERATED_NOTE = re.compile(
 # --- workout definitions ---------------------------------------------------
 
 
-def iter_workout_steps(workout: dict[str, Any]) -> Iterator[dict[str, Any]]:
-    """Yield every executable step, descending into repeat groups.
-
-    Sets are modelled as a RepeatGroupDTO wrapping one executable step plus a
-    rest step, so a workout holds one step per exercise, not one per set.
-    """
-
-    def walk(steps):
-        for step in steps or []:
-            if step.get("type") == "RepeatGroupDTO" or "workoutSteps" in step:
-                yield from walk(step.get("workoutSteps"))
-            else:
-                yield step
-
-    for segment in workout.get("workoutSegments") or []:
-        yield from walk(segment.get("workoutSteps"))
-
-
 @dataclass(frozen=True)
 class ExerciseBlock:
     """An exercise step together with the repeat group that surrounds it.
 
-    `iter_workout_steps` flattens the tree, which is what the planner wants.
-    Importing needs the structure back: how many iterations the repeat group
-    prescribes, and how long the rest step alongside it lasts.
+    A workout is a tree, and every caller needs the same two things out of it:
+    the exercise step itself, and what the repeat group around it says - how
+    many iterations it prescribes, and the rest step alongside it.
+
+    The rest step is kept rather than the seconds it holds, because the planner
+    writes to it as well as reads it; `rest` stays honest about what the step
+    currently says either way.
     """
 
     step: dict[str, Any]
     sets: int
-    rest: int | None
+    rest_step: dict[str, Any] | None
+
+    @property
+    def rest(self) -> int | None:
+        """Seconds between sets, or None when Garmin prescribes no interval."""
+        return None if self.rest_step is None else step_rest(self.rest_step)
 
 
-def _rest_seconds(steps: list[dict[str, Any]]) -> int | None:
-    """Seconds from the rest step of a repeat group, when it is a fixed time."""
+def _rest_step(steps: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The rest step of a repeat group, when it prescribes a fixed time.
+
+    The duration is tested against None rather than for truth, as `step_target`
+    tests its own: what makes a rest unreadable is ending on the lap button or
+    carrying no value at all. Zero seconds is a duration like any other, and
+    treating it as absent would refuse to write a configured rest onto a step
+    that can hold one perfectly well.
+    """
     for step in steps:
         if (step.get("stepType") or {}).get("stepTypeKey") != "rest":
             continue
         end = step.get("endCondition") or {}
         # A lap.button rest has no duration, only a prompt to press the button.
-        if end.get("conditionTypeKey") == "time" and step.get("endConditionValue"):
-            return int(step["endConditionValue"])
+        if (
+            end.get("conditionTypeKey") == "time"
+            and step.get("endConditionValue") is not None
+        ):
+            return step
     return None
 
 
 def iter_exercise_blocks(workout: dict[str, Any]) -> Iterator[ExerciseBlock]:
-    """Yield each exercise with its set count and rest, for importing."""
+    """Yield each exercise with its set count and rest step.
+
+    Sets are modelled as a RepeatGroupDTO wrapping one executable step plus a
+    rest step, so a workout holds one step per exercise, not one per set. The
+    rest steps and any step with neither a name nor a category are skipped:
+    what comes out is one block per exercise, in the order they are performed.
+    """
 
     def walk(steps: list[dict[str, Any]] | None) -> Iterator[ExerciseBlock]:
         for step in steps or []:
             children = step.get("workoutSteps")
             if children:
                 sets = int(step.get("numberOfIterations") or 1)
-                rest = _rest_seconds(children)
+                rest = _rest_step(children)
                 for inner in walk(children):
-                    # An inner repeat group keeps its own count.
+                    # An inner repeat group keeps its own count and rest.
                     yield ExerciseBlock(
                         inner.step,
                         inner.sets if inner.sets > 1 else sets,
-                        inner.rest if inner.rest is not None else rest,
+                        inner.rest_step if inner.rest_step is not None else rest,
                     )
             elif step.get("exerciseName") or step.get("category"):
                 yield ExerciseBlock(step, 1, None)
@@ -150,6 +157,15 @@ def step_target(step: dict[str, Any], time_based: bool = False) -> Target | None
     return Target(int(value), round(kg, 3))
 
 
+def step_rest(step: dict[str, Any]) -> int:
+    """Seconds a rest step prescribes.
+
+    Only meaningful for the steps `ExerciseBlock.rest_step` holds, which are
+    the rests that end on a time rather than on the lap button.
+    """
+    return int(step["endConditionValue"])
+
+
 def step_note(step: dict[str, Any]) -> str:
     """The step's notes field. Absent, null and empty all read as no note."""
     return step.get(NOTE_FIELD) or ""
@@ -158,6 +174,15 @@ def step_note(step: dict[str, Any]) -> str:
 def apply_note(step: dict[str, Any], text: str) -> None:
     """Write the notes field of a workout step, in place."""
     step[NOTE_FIELD] = text
+
+
+def apply_rest(step: dict[str, Any], seconds: int) -> None:
+    """Write a new interval onto a rest step, in place.
+
+    Only the duration changes: the step already ends on a time, which is what
+    made it writable, so nothing about the shape of the workout moves.
+    """
+    step["endConditionValue"] = float(seconds)
 
 
 def apply_target(step: dict[str, Any], target: Target) -> None:

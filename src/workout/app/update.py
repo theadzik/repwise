@@ -142,6 +142,15 @@ def noted_steps(plans: list[Plan]) -> set[tuple[str, str]]:
     }
 
 
+def rested_steps(plans: list[Plan]) -> set[tuple[str, str]]:
+    """Which steps had their rest rewritten, counted once per step."""
+    return {
+        (plan.workout.garmin_workout_id, change.spec.garmin_name)
+        for plan in plans
+        for change in plan.rests
+    }
+
+
 def sync_other_workouts(
     payloads: Payloads,
     config: Config,
@@ -250,16 +259,19 @@ def run_update(
 
     updated = len(changed_steps(plans))
     noted = len(noted_steps(plans))
+    rested = len(rested_steps(plans))
     notes = f", {noted} note(s) would be refreshed" if noted else ""
+    rests = f", {rested} rest time(s) would change" if rested else ""
 
     if not options.apply:
         logger.info("")
         logger.info(
-            f"Dry run: {updated} step(s) would change{notes}. Re-run with --apply."
+            f"Dry run: {updated} step(s) would change{rests}{notes}. "
+            f"Re-run with --apply."
         )
         return ExitCode.OK
 
-    if not updated and not noted:
+    if not updated and not noted and not rested:
         logger.info("")
         logger.info("Nothing to write.")
         return ExitCode.OK
@@ -269,6 +281,7 @@ def run_update(
     logger.info("")
     logger.info(
         f"Wrote {updated} updated step(s) to Garmin."
+        + (f" Set {rested} rest time(s)." if rested else "")
         + (f" Refreshed {noted} note(s)." if noted else "")
     )
 
