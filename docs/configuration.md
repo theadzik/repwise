@@ -100,7 +100,7 @@ other languages - an activity called "Trening A" matches `trening a`.
 | `rep_step` | no | `1` | Reps added when a target is met. Use `2` for exercises counted per side |
 | `load` | yes | | `barbell`, `dumbbell`, `cable`, `machine`, or `bodyweight` |
 | `weight_step` | no | from `load` | kg added when the range is topped out, overriding the load type |
-| `rest` | no | `0` | Seconds between sets. Documentation only, not written to Garmin |
+| `rest` | no | none | Seconds between sets, written to the Garmin workout by `update --apply`. Left out, Garmin's own rest is kept |
 | `unit` | no | `reps` | `reps`, or `seconds` for timed holds like planks |
 | `video` | no | none | Reference link. Documentation only |
 

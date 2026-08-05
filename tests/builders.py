@@ -61,10 +61,24 @@ def rep_step(name, category, reps, weight, unit=KILOGRAM):
 
 
 def rest_step(seconds=60.0):
+    """The rest between exercises: a prompt to press the lap button.
+
+    Garmin stores a duration beside it, which the watch ignores.
+    """
     return {
         "type": "ExecutableStepDTO",
         "stepType": {"stepTypeKey": "rest"},
         "endCondition": {"conditionTypeKey": "lap.button"},
+        "endConditionValue": seconds,
+    }
+
+
+def timed_rest(seconds=90.0):
+    """The rest inside a repeat group: a countdown between sets."""
+    return {
+        "type": "ExecutableStepDTO",
+        "stepType": {"stepTypeKey": "rest"},
+        "endCondition": {"conditionTypeKey": "time"},
         "endConditionValue": seconds,
     }
 
@@ -78,14 +92,7 @@ def repeat(step, sets=3, rest=90.0):
     return {
         "type": "RepeatGroupDTO",
         "numberOfIterations": sets,
-        "workoutSteps": [
-            step,
-            {
-                "stepType": {"stepTypeKey": "rest"},
-                "endCondition": {"conditionTypeKey": "time"},
-                "endConditionValue": rest,
-            },
-        ],
+        "workoutSteps": [step, timed_rest(rest)],
     }
 
 

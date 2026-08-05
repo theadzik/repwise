@@ -17,12 +17,15 @@ from .domain.progression import PerformedSet, Target, next_target
 from .errors import ActivityNotFound
 from .garmin.payloads import (
     GENERATED_NOTE,
+    ExerciseBlock,
     apply_note,
+    apply_rest,
     apply_target,
-    iter_workout_steps,
+    iter_exercise_blocks,
     step_category,
     step_exercise_name,
     step_note,
+    step_rest,
     step_target,
 )
 
@@ -44,6 +47,20 @@ class Change:
 
 
 @dataclass(frozen=True)
+class RestChange:
+    """One exercise's rest between sets, before and after.
+
+    Not a `Change`: a rest is prescribed by workouts.yaml rather than earned in
+    a session, so there is no reason to report for it, and nothing to record at
+    all unless it moved.
+    """
+
+    spec: ExerciseSpec
+    old: int
+    new: int
+
+
+@dataclass(frozen=True)
 class Plan:
     """What a single workout would become."""
 
@@ -54,6 +71,9 @@ class Plan:
     #: Exercises whose notes field was rewritten, which is its own reason to
     #: save a workout: editing workouts.yaml moves no target on its own.
     notes: list[str] = field(default_factory=list)
+    #: Exercises whose rest step was rewritten. Config-driven like the notes,
+    #: and a reason to save for the same reason.
+    rests: list[RestChange] = field(default_factory=list)
 
     @property
     def moved(self) -> list[Change]:
@@ -62,7 +82,7 @@ class Plan:
     @property
     def writable(self) -> bool:
         """Whether this plan has anything worth sending to Garmin."""
-        return bool(self.moved or self.notes)
+        return bool(self.moved or self.notes or self.rests)
 
 
 def find_workout(config: Config, activity_name: str) -> Workout:
@@ -142,6 +162,43 @@ def _refresh_note(
     notes.append(spec.name)
 
 
+def _refresh_rest(
+    block: ExerciseBlock,
+    spec: ExerciseSpec,
+    rests: list[RestChange],
+    warnings: list[str],
+) -> None:
+    """Keep the repeat group's rest step showing the configured interval.
+
+    workouts.yaml is the source of the programming, so a `rest` declared there
+    is written the way a note is. An exercise that declares none has no opinion
+    and its step is left alone, which is also what keeps a config that predates
+    this behaviour writing nothing.
+
+    Only a rest Garmin stores as a fixed time can be written. A lap.button rest
+    is a prompt to press the button rather than an interval, and turning one
+    into a countdown would change how the workout is performed rather than
+    correct a value, so it is reported and left alone.
+    """
+    if not spec.rest:
+        return
+
+    rest_step = block.rest_step
+    if rest_step is None:
+        warnings.append(
+            f"{spec.name}: rest is not a fixed time in Garmin, left alone "
+            f"(wanted {spec.rest}s)"
+        )
+        return
+
+    current = step_rest(rest_step)
+    if current == spec.rest:
+        return
+
+    apply_rest(rest_step, spec.rest)
+    rests.append(RestChange(spec, current, spec.rest))
+
+
 def plan_workout(
     workout: Workout, payload: dict[str, Any], performed: Performed
 ) -> Plan:
@@ -151,20 +208,22 @@ def plan_workout(
     changes: list[Change] = []
     warnings: list[str] = []
     notes: list[str] = []
+    rests: list[RestChange] = []
 
-    for step in iter_workout_steps(payload):
+    for block in iter_exercise_blocks(payload):
+        step = block.step
         label = step_exercise_name(step) or step_category(step)
-        if not label:
-            continue
 
         spec = _match(step, specs)
         if spec is None:
             warnings.append(f"{label}: not in workouts.yaml, skipped")
             continue
 
-        # Before the target checks below: the note describes the programming,
-        # so it belongs on the step whether or not this session moved anything.
+        # Before the target checks below: the note and the rest describe the
+        # programming, so they belong on the step whether or not this session
+        # moved anything.
         _refresh_note(step, spec, notes, warnings)
+        _refresh_rest(block, spec, rests, warnings)
 
         current = step_target(step, spec.time_based)
         if current is None:
@@ -187,7 +246,7 @@ def plan_workout(
         if change.moved:
             apply_target(step, new)
 
-    return Plan(workout, payload, changes, warnings, notes)
+    return Plan(workout, payload, changes, warnings, notes, rests)
 
 
 def plan_sync(
@@ -207,13 +266,16 @@ def plan_sync(
     changes: list[Change] = []
     warnings: list[str] = []
     notes: list[str] = []
+    rests: list[RestChange] = []
 
-    for step in iter_workout_steps(payload):
+    for block in iter_exercise_blocks(payload):
+        step = block.step
         spec = _match(step, specs)
         if spec is None:
             continue
 
         _refresh_note(step, spec, notes, warnings)
+        _refresh_rest(block, spec, rests, warnings)
 
         new = targets.get(normalise(spec.garmin_name))
         if new is None:
@@ -234,7 +296,7 @@ def plan_sync(
         apply_target(step, new)
         changes.append(Change(spec, current, new, f"synced from {source}"))
 
-    return Plan(workout, payload, changes, warnings, notes)
+    return Plan(workout, payload, changes, warnings, notes, rests)
 
 
 def decided_targets(plan: Plan) -> dict[str, Target]:

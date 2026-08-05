@@ -1,6 +1,6 @@
 """Reporting drift between the config and Garmin."""
 
-from builders import payload, rep_step, repeat, spec
+from builders import payload, rep_step, repeat, rest_step, spec
 
 from workout.checker import check_workout
 from workout.domain.models import Workout
@@ -56,10 +56,21 @@ def test_a_set_count_mismatch_is_reported():
 
 
 def test_a_rest_mismatch_is_only_a_note():
-    """rest is documentation, so it should not fail a check on its own."""
+    """`update` corrects it, so it should not fail a check on its own."""
     findings = check_workout(configured(spec(sets=4, rest=90)), payload(SQUAT_GROUP))
     assert [f.severity for f in findings] == ["note"]
-    assert "documentation only" in findings[0].detail
+    assert "rest 90s in config, 120s in Garmin" in findings[0].detail
+    assert "update --apply will set it" in findings[0].detail
+
+
+def test_a_configured_rest_against_a_lap_button_one_is_reported():
+    """The one rest drift `update` cannot correct, so it says who must."""
+    button = repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0), sets=4)
+    button["workoutSteps"][1] = rest_step()
+    findings = check_workout(configured(SQUAT_SPEC), payload(button))
+
+    assert [f.severity for f in findings] == ["note"]
+    assert "waits for the lap button" in findings[0].detail
 
 
 def test_an_ambiguous_category_is_an_error():

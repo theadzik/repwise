@@ -20,7 +20,8 @@
 #   rep_step        reps added when a target is met (default 1; use 2 when the
 #                   watch counts each side separately)
 #   sets            prescribed working sets
-#   rest            seconds between sets (documentation only)
+#   rest            seconds between sets, written to the Garmin workout;
+#                   leave it out to keep whatever Garmin already prescribes
 #   load            barbell | dumbbell | cable | machine | bodyweight
 #                   picks the weight step, and bodyweight never gains load
 #   weight_step     kg added on a weight jump, overriding the load type
@@ -29,7 +30,8 @@
 #
 # The range and the weight step are also summarised into each Garmin step's
 # notes field -- "6-10 reps | +5 kg" -- so the watch shows what you are working
-# towards. Editing them here is enough to refresh it on the next run.
+# towards. Editing them here is enough to refresh it on the next run, as it is
+# for the rest: this file is the programming, not just a record of it.
 #
 # To find your own values:
 #   1. Build the workouts in Garmin Connect.

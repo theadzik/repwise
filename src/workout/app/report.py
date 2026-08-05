@@ -12,7 +12,7 @@ import logging
 
 from ..domain.models import ExerciseSpec
 from ..domain.progression import Target
-from ..planner import Change, Plan
+from ..planner import Change, Plan, RestChange
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +43,24 @@ def report_change(change: Change, force_flag: str | None = None) -> None:
     )
 
 
+def report_rest(change: RestChange) -> None:
+    """A rest workouts.yaml moved, in the same columns as a target.
+
+    Shown like a target rather than hidden like a note: it changes how the
+    workout is performed, and it is on the watch from the next sync.
+    """
+    logger.info(
+        f"* {change.spec.name:<40}"
+        f" {f'{change.old} s rest':>13}  ->  {f'{change.new} s rest':<13}"
+        f" (rest from workouts.yaml)"
+    )
+
+
 def report_plan(plan: Plan, force_flag: str | None = None) -> None:
     for change in plan.changes:
         report_change(change, force_flag)
+    for rest in plan.rests:
+        report_rest(rest)
     # Notes only move when workouts.yaml does, so they are a footnote to a
     # normal run: the count goes in the summary, the detail behind -v.
     for name in plan.notes:

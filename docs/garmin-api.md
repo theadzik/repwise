@@ -45,6 +45,7 @@ weight onto such a step has to set the unit explicitly.
 | Workout step | `endConditionValue` | Current and new rep or second target |
 | Workout step | `weightValue`, `weightUnit` | Current and new load |
 | Workout step | `description` | The step's notes, see below |
+| Rest step | `endCondition`, `endConditionValue` | The rest between sets, when it is a fixed time |
 | Exercise set | `setType == "ACTIVE"` | Skipping rest sets |
 | Exercise set | `repetitionCount` | Reps performed |
 | Exercise set | `duration` | Seconds held, for timed exercises |
@@ -91,8 +92,19 @@ RepeatGroupDTO (numberOfIterations: 4)
 └── ExecutableStepDTO   stepType: rest, endCondition: lap.button
 ```
 
-`iter_workout_steps()` walks into those groups. Rest steps end on `time` or
-`lap.button` and so return no target.
+`iter_exercise_blocks()` walks into those groups and yields one `ExerciseBlock`
+per exercise: the step itself, the group's `numberOfIterations`, and the rest
+step beside it. Rest steps end on `time` or `lap.button` and so return no
+target of their own.
+
+The rest step is what `rest` in `workouts.yaml` reads and writes, through
+`endConditionValue` in seconds. Only a `time` rest holds an interval - a
+`lap.button` one carries a duration Garmin ignores, so it reads as no rest at
+all rather than as the number stored beside it.
+
+Note which rest that is. The step **inside** the repeat group is the rest
+between sets; Connect also emits a `lap.button` rest **after** each group,
+which is the pause between exercises and is not this tool's business.
 
 ## Names drift between payloads
 
