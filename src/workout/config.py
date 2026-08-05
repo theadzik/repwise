@@ -166,6 +166,11 @@ def _build_exercise(
         # fails on the recorded problem either way.
         rep_step = 1
 
+    start_weight = float(raw.get("start_weight") or 0.0)
+    if start_weight < 0:
+        problems.add(f"{where}: {raw['name']!r} has a negative start_weight")
+        start_weight = 0.0
+
     return ExerciseSpec(
         name=raw["name"],
         garmin_name=raw["garmin_name"],
@@ -180,6 +185,7 @@ def _build_exercise(
         rest=int(raw.get("rest", 0)),
         unit=raw.get("unit", "reps"),
         video=raw.get("video"),
+        start_weight=start_weight,
     )
 
 
@@ -194,25 +200,36 @@ def _build_workout(
         return None
 
     workout_id = entry.get("garmin_workout_id")
-    if not workout_id:
-        problems.add(f"{path}: {key} is missing 'garmin_workout_id'")
 
-    # Checked even when the id is missing, so that one omission at the top of
-    # a workout does not hide every problem inside it.
     exercises = []
     for raw in entry.get("exercises") or []:
         spec = _build_exercise(raw, steps, f"{path}:{key}", problems)
         if spec is not None:
             exercises.append(spec)
 
-    if not workout_id:
+    # No id means "Garmin does not have this one yet", which is a workout to
+    # create rather than a mistake - but only if there is something to create.
+    if not workout_id and not exercises:
+        problems.add(
+            f"{path}: {key} has no 'garmin_workout_id' and no exercises, "
+            f"so there is nothing to find and nothing to create"
+        )
         return None
+
+    # Not `or 0`: an explicit 0 is a rest of no length, which is a different
+    # thing from having no opinion about the rest between exercises.
+    declared = entry.get("rest_between_exercises")
+    rest_between = None if declared is None else int(declared)
+    if rest_between is not None and rest_between < 0:
+        problems.add(f"{path}: {key} has a negative rest_between_exercises")
+        rest_between = None
 
     return Workout(
         key=key,
-        garmin_workout_id=str(workout_id),
+        garmin_workout_id=str(workout_id) if workout_id else None,
         activity_prefixes=[p.lower() for p in entry.get("activity_prefixes") or []],
         exercises=exercises,
+        rest_between=rest_between,
     )
 
 
@@ -294,7 +311,7 @@ def load_config(path: str | None = None) -> Config:
     if not workouts and not problems:
         problems.add(f"{path}: no workouts defined")
 
-    config = Config(workouts=workouts, garmin=garmin)
+    config = Config(workouts=workouts, garmin=garmin, path=path)
     _check_shared(config, path, problems)
 
     problems.raise_any()

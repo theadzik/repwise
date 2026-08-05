@@ -7,6 +7,7 @@ or talks to Garmin.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 BODYWEIGHT = "bodyweight"
@@ -28,6 +29,10 @@ class ExerciseSpec:
     rest: int = 0
     unit: str = "reps"
     video: str | None = None
+    #: The load a step starts at when this tool has to create it. Only ever
+    #: read for an exercise Garmin does not hold yet; progression owns the
+    #: weight from the first session onward.
+    start_weight: float = 0.0
 
     @property
     def bodyweight(self) -> bool:
@@ -55,12 +60,22 @@ class ExerciseSpec:
 
 @dataclass(frozen=True)
 class Workout:
-    """One workout: its Garmin id, how to spot its activities, its exercises."""
+    """One workout: its Garmin id, how to spot its activities, its exercises.
+
+    The id is what Garmin knows this workout as, and the one thing here that
+    the user does not choose. It is absent until Garmin has been told about the
+    workout, which is what makes a config entry declaring a workout that does
+    not exist yet expressible at all.
+    """
 
     key: str
-    garmin_workout_id: str
+    garmin_workout_id: str | None = None
     activity_prefixes: list[str] = field(default_factory=list)
     exercises: list[ExerciseSpec] = field(default_factory=list)
+    #: Seconds to rest between exercises, or None to leave Garmin's own steps
+    #: alone. One setting for the whole workout: it is a property of how the
+    #: session is run rather than of any exercise in it.
+    rest_between: int | None = None
 
 
 @dataclass(frozen=True)
@@ -78,11 +93,15 @@ class Config:
 
     workouts: dict[str, Workout]
     garmin: GarminSettings = field(default_factory=GarminSettings)
+    #: The file this was read from. Carried so that a use case which learns
+    #: something the file should record - a workout id Garmin has just issued -
+    #: can write it back without the CLI having to pass the path separately.
+    path: str = ""
 
     def __getitem__(self, key: str) -> Workout:
         return self.workouts[key]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Workout]:
         return iter(self.workouts.values())
 
     def shared_exercises(self) -> set[str]:

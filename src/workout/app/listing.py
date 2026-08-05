@@ -20,7 +20,7 @@ def run_list(
         logger.warning("No workouts found.")
         return ExitCode.NOTHING_USABLE
 
-    known = {w.garmin_workout_id for w in config}
+    known = {w.garmin_workout_id for w in config if w.garmin_workout_id}
     logger.info(f"{'ID':<12} {'UPDATED':<11} {'':<3}NAME")
     for entry in workouts:
         workout_id = str(entry.get("workoutId"))

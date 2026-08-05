@@ -16,10 +16,18 @@ logger = logging.getLogger(__name__)
 def run_check(session: GarminSession, config: Config) -> ExitCode:
     findings: list[Finding] = []
     for workout in config:
+        workout_id = workout.garmin_workout_id
+        if workout_id is None:
+            # Nothing in Garmin to disagree with yet. Said out loud, because
+            # silence here would read as "checked, and fine".
+            logger.info(f"{workout.key} (not in Garmin yet)")
+            logger.info("")
+            continue
+
         try:
-            payload = session.workout(workout.garmin_workout_id)
+            payload = session.workout(workout_id)
         except GarminError as exc:
-            detail = f"could not fetch workout {workout.garmin_workout_id}: {exc}"
+            detail = f"could not fetch workout {workout_id}: {exc}"
             logger.error(f"{workout.key}: {detail}")
             # A workout that cannot be read is itself an error-level finding,
             # so an unreachable workout still fails the command.
@@ -27,7 +35,7 @@ def run_check(session: GarminSession, config: Config) -> ExitCode:
             continue
 
         found = check_workout(workout, payload)
-        logger.info(f"{workout.key} ({workout.garmin_workout_id})")
+        logger.info(f"{workout.key} ({workout_id})")
         if not found:
             logger.info("  ok")
         for finding in found:

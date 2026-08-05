@@ -260,6 +260,24 @@ def test_a_dry_run_writes_nothing(account):
     assert account.saved == []
 
 
+# --- workouts Garmin does not hold yet -------------------------------------
+
+
+def test_a_workout_with_no_id_is_skipped_rather_than_fetched(account, caplog):
+    """Nothing to advance until it exists in Garmin. It must not be asked for
+    by an id that is not there, and the workouts that do exist carry on."""
+    config = config_ab()
+    config.workouts["Workout C"] = Workout("Workout C", None, ["workout c"], [SQUAT])
+
+    with caplog.at_level(logging.WARNING, logger="workout.app.update"):
+        code = run(account, config, apply=True)
+
+    assert code == ExitCode.OK
+    assert sorted(account.fetched) == ["111", "222"], "C was never fetched"
+    assert sorted(wid for wid, _ in account.saved) == ["111", "222"]
+    assert "Not in Garmin yet" in caplog.text and "Workout C" in caplog.text
+
+
 # --- rest times -----------------------------------------------------------
 
 

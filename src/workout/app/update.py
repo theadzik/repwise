@@ -101,6 +101,8 @@ def pick_sessions(
     activities = session.recent_activities()
     found: list[tuple[int, Workout, dict[str, Any]]] = []
     for workout in config:
+        if workout.garmin_workout_id is None:
+            continue  # not in Garmin yet, so there is no definition to advance
         for position, activity in enumerate(activities):
             name = (activity.get("activityName") or "").lower()
             if any(name.startswith(prefix) for prefix in workout.activity_prefixes):
@@ -118,6 +120,18 @@ def pick_sessions(
     return [(workout, activity) for _, workout, activity in found]
 
 
+def garmin_id(workout: Workout) -> str:
+    """The Garmin id of a workout that is known to have one.
+
+    A workout reaches a plan only after being found in Garmin, so by then its
+    id exists. Stating that in one place keeps the writes free of `or ""`, and
+    turns an impossible state into a message rather than a failed request.
+    """
+    if workout.garmin_workout_id is None:
+        raise GarminError(f"{workout.key} has no Garmin workout id.")
+    return workout.garmin_workout_id
+
+
 def changed_steps(plans: list[Plan]) -> set[tuple[str, str]]:
     """Which steps moved, counted once however many plans moved them.
 
@@ -125,7 +139,7 @@ def changed_steps(plans: list[Plan]) -> set[tuple[str, str]]:
     a second Change on the same step rather than another step changing.
     """
     return {
-        (plan.workout.garmin_workout_id, change.spec.garmin_name)
+        (garmin_id(plan.workout), change.spec.garmin_name)
         for plan in plans
         for change in plan.moved
     }
@@ -137,15 +151,13 @@ def noted_steps(plans: list[Plan]) -> set[tuple[str, str]]:
     A shared exercise is refreshed in each workout it appears in, and those
     are genuinely different steps, so they count separately.
     """
-    return {
-        (plan.workout.garmin_workout_id, name) for plan in plans for name in plan.notes
-    }
+    return {(garmin_id(plan.workout), name) for plan in plans for name in plan.notes}
 
 
 def rested_steps(plans: list[Plan]) -> set[tuple[str, str]]:
     """Which steps had their rest rewritten, counted once per step."""
     return {
-        (plan.workout.garmin_workout_id, change.spec.garmin_name)
+        (garmin_id(plan.workout), change.spec.garmin_name)
         for plan in plans
         for change in plan.rests
     }
@@ -160,12 +172,12 @@ def sync_other_workouts(
     """Propagate decided targets into every other workout that shares them."""
     plans: list[Plan] = []
     for other in config:
-        if other.key == source.key:
+        if other.key == source.key or other.garmin_workout_id is None:
             continue
         if not any(normalise(s.garmin_name) in targets for s in other.exercises):
             continue
 
-        payload = payloads[other.garmin_workout_id]
+        payload = payloads[garmin_id(other)]
         plan = plan_sync(other, payload, targets, source.key)
         if not plan.writable:
             continue
@@ -186,7 +198,7 @@ def push_to_watch(session: GarminSession, workouts: list[Workout]) -> None:
     message goes to the device you last used.
     """
     for workout in workouts:
-        session.push_workout(workout.garmin_workout_id)
+        session.push_workout(garmin_id(workout))
 
     logger.info("")
     logger.info(f"Queued {len(workouts)} send(s) to your last-used device.")
@@ -216,6 +228,15 @@ def run_update(
     session: GarminSession, config: Config, options: UpdateOptions
 ) -> ExitCode:
     payloads = Payloads(session)
+
+    # Reported before anything else, so that a workout being quietly left out
+    # of the run is never something to work out from its absence.
+    uncreated = [w.key for w in config if w.garmin_workout_id is None]
+    if uncreated:
+        logger.warning(
+            f"Not in Garmin yet, so nothing to update: {', '.join(uncreated)}."
+        )
+
     sessions = pick_sessions(session, config, options.activity)
 
     plans: list[Plan] = []
@@ -230,7 +251,7 @@ def run_update(
         logger.info("")
 
         sets_payload = session.exercise_sets(activity_id)
-        payload = payloads[workout.garmin_workout_id]
+        payload = payloads[garmin_id(workout)]
 
         if options.dump:
             dump(
@@ -301,10 +322,11 @@ def _write(session: GarminSession, plans: list[Plan]) -> list[Workout]:
     written: list[Workout] = []
     saved: set[str] = set()
     for each in plans:
-        if not each.writable or each.workout.garmin_workout_id in saved:
+        workout_id = garmin_id(each.workout)
+        if not each.writable or workout_id in saved:
             continue
-        saved.add(each.workout.garmin_workout_id)
-        session.save_workout(each.workout.garmin_workout_id, each.payload)
+        saved.add(workout_id)
+        session.save_workout(workout_id, each.payload)
         logger.info(
             f"Wrote {each.workout.key} (workout {each.workout.garmin_workout_id})"
         )
