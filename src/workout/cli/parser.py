@@ -41,8 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Advance Garmin strength workout targets using double progression.",
         epilog=(
             "examples:\n"
-            "  workout update            show what your latest sessions earned\n"
-            "  workout update --apply    write those targets back to Garmin\n"
+            "  workout update            show what a run would change\n"
+            "  workout update --apply    write it back to Garmin\n"
             "  workout update --dump     save the raw Garmin JSON, change nothing\n"
             "  workout update --apply --push   also send them to your watch\n"
             "  workout update --activity 1234  replay one session you skipped\n"
@@ -80,21 +80,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     update = sub.add_parser(
         "update",
-        help="advance targets from your latest sessions",
-        description="Take the most recent matching activity of every workout in "
-        "your config, work out the next target for each exercise, and show the "
-        "plan. Training A and then B and running once advances both: the "
-        "sessions are replayed oldest first, so the result is the same as "
-        "having run this after each of them. Targets follow the weight you "
-        "actually lifted, but only while it stays inside the exercise's rep "
-        "range: come up short of rep_low on a weight you were not prescribed "
-        "and the old target is kept. Each step's rest and notes field are kept "
-        "showing how its exercise is programmed, so editing workouts.yaml is on "
-        "its own a reason to write. Nothing is sent to Garmin unless --apply "
-        "is given. A target that moves is also synced into any other workout "
-        "containing that exercise. Editing a workout does not reach the watch "
-        "by itself, so --push queues it for the device to collect on its next "
-        "sync.",
+        help="advance targets, and bring your workouts in line with the config",
+        description="Two jobs in one. Every workout in your config is brought "
+        "in line with what the file says - which exercises it holds and in "
+        "what order, their sets, their rests, the note on each step - and one "
+        "with no garmin_workout_id is built in Garmin, its new id written back "
+        "into the file. Then the most recent matching activity of each workout "
+        "decides the next target for the exercises it contains. Training A and "
+        "then B and running once advances both: the sessions are replayed "
+        "oldest first, so the result is the same as having run this after each "
+        "of them. Targets follow the weight you actually lifted, but only "
+        "while it stays inside the exercise's rep range: come up short of "
+        "rep_low on a weight you were not prescribed and the old target is "
+        "kept. An exercise the config no longer names is removed, and one it "
+        "moves keeps the target stored in it. Nothing is sent to Garmin, and "
+        "nothing written back to workouts.yaml, unless --apply is given. A "
+        "target that moves is also synced into any other workout containing "
+        "that exercise. Editing a workout does not reach the watch by itself, "
+        "so --push queues it for the device to collect on its next sync.",
     )
     update.add_argument("--apply", action="store_true", help="write changes to Garmin")
     update.add_argument(

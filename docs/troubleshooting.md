@@ -4,6 +4,8 @@
 - [Common symptoms](#common-symptoms)
 - [Nothing matched my session](#nothing-matched-my-session)
 - [An exercise was skipped](#an-exercise-was-skipped)
+- [An exercise disappeared from my workout](#an-exercise-disappeared-from-my-workout)
+- [A workout was created twice](#a-workout-was-created-twice)
 - [Known limitations](#known-limitations)
 
 ## Authentication
@@ -80,15 +82,53 @@ identifiers](configuration.md#finding-your-exercise-identifiers).
 
 Warnings never fail a run silently - a skipped exercise is always reported.
 
+## An exercise disappeared from my workout
+
+The config drives the workout, so an exercise it does not name is removed from
+Garmin - **and the target stored in that step goes with it.** There is nowhere
+else that number is kept.
+
+Usually that is what you asked for. When it is not, the cause is almost always
+a `garmin_name` that no longer matches: the config names an exercise Garmin
+does not have, so it is built, and the one Garmin has goes unnamed, so it is
+dropped. A dry run shows both, one `+` line and one `-` line for what should
+have been the same exercise.
+
+[`workout check`](commands.md#check) reports mismatched names before any of
+that happens, and filling in `garmin_category` bridges them when it is
+unambiguous.
+
+## A workout was created twice
+
+A workout is created when its config entry has no `garmin_workout_id`, and the
+id is written straight back into the file. Two copies means that write-back did
+not happen: the run says so and stops, naming the id it could not record.
+
+Add it by hand and the extra copy stops being created:
+
+```yaml
+  - key: Workout C
+    garmin_workout_id: "1234567890"
+```
+
+Then delete whichever copy you do not want in Garmin Connect, keeping the one
+whose id is in the file.
+
 ## Known limitations
 
 - `video` is documentation only; it is not written back to Garmin. Rep, time
-  and weight targets, the step note and `rest` are.
-- A `rest` can only be retimed where Garmin already counts one down. An
-  exercise whose rest waits for the lap button is reported and left alone;
-  changing that is a structural edit, and only you can make it in Connect.
-- Workouts must already exist in Garmin Connect. This tool updates them, it
-  does not create them.
+  and weight targets, the step note, `sets`, `rest` and
+  `rest_between_exercises` all are.
+- An exercise's own `rest` can only be retimed where Garmin already counts one
+  down; a lap-button rest between sets is reported and left alone.
+  `rest_between_exercises` does convert one, that being the point of the key -
+  see [rest between exercises](commands.md#rest-between-exercises).
+- An exercise Garmin holds outside a repeat group has nowhere to keep a set
+  count, so a `sets` above 1 is reported and left alone. Connect builds a group
+  even for a single set, so this is unlikely to come up.
+- Deleting a workout from `workouts.yaml` does not delete it from Garmin.
+  Removing an exercise is reversible by hand; deleting a workout would take its
+  history with it, so it is left to you.
 - Every set of an exercise gets the same target, matching the "same reps on
   every set" model. Per-set targets are not supported.
 - The first matching activity within `activity_search_limit` is used; older

@@ -12,9 +12,15 @@ From nothing to your first automatic target update.
 
 ## 1. Build the workouts in Garmin
 
-This tool updates existing Garmin workouts; it does not create them. Build your
-routine in Garmin Connect first, as strength workouts with the exercises, sets
-and reps you want.
+Build your routine in Garmin Connect first, as strength workouts with the
+exercises, sets and reps you want. Starting there is the easier path: `workout
+import` then writes your config for you, exercise identifiers and all.
+
+You can skip this and describe the workouts in the config instead, leaving
+`garmin_workout_id` out so that `workout update --apply` builds them in Garmin.
+That means naming every exercise by its Garmin identifier by hand, which is
+fiddlier the first time round. See [creating a
+workout](commands.md#creating-a-workout).
 
 Name them so the activities they produce are recognisable later, for example
 "Workout A" and "Workout B". Matching works on the *activity* name, and an

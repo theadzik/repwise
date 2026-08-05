@@ -9,7 +9,23 @@
 # garmin_name and garmin_category values are real Garmin identifiers, but the
 # workout ids are placeholders -- replace them with your own (see below).
 #
-# Per-exercise fields:
+# This file drives the workout rather than describing it. `workout update`
+# builds a workout Garmin does not have, orders the exercises the way they are
+# ordered here, adds and removes them to match, and writes the sets and rests
+# below. What it does not decide is where each exercise has got to: the target
+# lives in Garmin, and your sessions move it.
+#
+# Per-workout fields:
+#   key                     the workout's name, and what a created workout is
+#                           called in Garmin
+#   garmin_workout_id       which Garmin workout this is. Leave it out and the
+#                           workout is created, then the id is written back
+#                           here -- the only thing ever written to this file
+#   activity_prefixes       how a logged activity is matched to this workout
+#   rest_between_exercises  seconds between exercises; leave it out to keep
+#                           Garmin's own wait for the lap button
+#
+# Per-exercise fields, in the order they are performed:
 #   name            label used in this tool's output
 #   garmin_name     exercise name as stored in the Garmin workout
 #   garmin_category Garmin's exercise category, used when the name does not
@@ -25,6 +41,8 @@
 #   load            barbell | dumbbell | cable | machine | bodyweight
 #                   picks the weight step, and bodyweight never gains load
 #   weight_step     kg added on a weight jump, overriding the load type
+#   start_weight    kg a newly created exercise starts at; never read again
+#                   once the step exists, progression owns the weight from then
 #   unit            reps (default) or seconds for timed holds
 #   video           reference link (documentation only)
 #
@@ -34,7 +52,8 @@
 # for the rest: this file is the programming, not just a record of it.
 #
 # To find your own values:
-#   1. Build the workouts in Garmin Connect.
+#   1. Build the workouts in Garmin Connect, or write them here with no
+#      garmin_workout_id and let `workout update --apply` build them for you.
 #   2. Take each garmin_workout_id from its Connect URL, e.g.
 #      https://connect.garmin.com/modern/workout/111111111
 #   3. Run `workout update --dump` after a session and read exerciseName and
@@ -149,6 +168,8 @@ workouts:
   - key: Workout B
     garmin_workout_id: "222222222"
     activity_prefixes: ["workout b", "training b"]
+    # Garmin waits for the lap button between exercises unless told otherwise.
+    rest_between_exercises: 60
     exercises:
       - name: Barbell Deadlift
         garmin_name: BARBELL_DEADLIFT
