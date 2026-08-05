@@ -163,6 +163,24 @@ def rested_steps(plans: list[Plan]) -> set[tuple[str, str]]:
     }
 
 
+def recounted_steps(plans: list[Plan]) -> set[tuple[str, str]]:
+    """Which steps had their set count rewritten, counted once per step."""
+    return {
+        (garmin_id(plan.workout), change.spec.garmin_name)
+        for plan in plans
+        for change in plan.sets
+    }
+
+
+def restructured(plans: list[Plan]) -> set[tuple[str, str, str]]:
+    """Which exercises were added, removed or moved, counted once each."""
+    return {
+        (garmin_id(plan.workout), change.kind, change.name)
+        for plan in plans
+        for change in plan.structure
+    }
+
+
 def sync_other_workouts(
     payloads: Payloads,
     config: Config,
@@ -281,18 +299,24 @@ def run_update(
     updated = len(changed_steps(plans))
     noted = len(noted_steps(plans))
     rested = len(rested_steps(plans))
+    recounted = len(recounted_steps(plans))
+    shaped = len(restructured(plans))
+    structure = (
+        f", {shaped} exercise(s) would be added, removed or moved" if shaped else ""
+    )
+    counts = f", {recounted} set count(s) would change" if recounted else ""
     notes = f", {noted} note(s) would be refreshed" if noted else ""
     rests = f", {rested} rest time(s) would change" if rested else ""
 
     if not options.apply:
         logger.info("")
         logger.info(
-            f"Dry run: {updated} step(s) would change{rests}{notes}. "
-            f"Re-run with --apply."
+            f"Dry run: {updated} step(s) would change"
+            f"{structure}{counts}{rests}{notes}. Re-run with --apply."
         )
         return ExitCode.OK
 
-    if not updated and not noted and not rested:
+    if not (updated or noted or rested or recounted or shaped):
         logger.info("")
         logger.info("Nothing to write.")
         return ExitCode.OK
@@ -302,6 +326,8 @@ def run_update(
     logger.info("")
     logger.info(
         f"Wrote {updated} updated step(s) to Garmin."
+        + (f" Added, removed or moved {shaped} exercise(s)." if shaped else "")
+        + (f" Set {recounted} set count(s)." if recounted else "")
         + (f" Set {rested} rest time(s)." if rested else "")
         + (f" Refreshed {noted} note(s)." if noted else "")
     )

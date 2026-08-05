@@ -84,7 +84,13 @@ def check_workout(workout: Workout, payload: dict) -> list[Finding]:
         seen.add(id(block))
 
         if block.sets != spec.sets:
-            note(f"{spec.name}: {spec.sets} sets in config, {block.sets} in Garmin")
+            # A note rather than a warning: `update --apply` sets it from the
+            # config, so it is drift that corrects itself on the next run.
+            note(
+                f"{spec.name}: {spec.sets} sets in config, {block.sets} in "
+                f"Garmin (update --apply will set it)",
+                "note",
+            )
         if spec.rest and block.rest is None:
             # Nothing to correct automatically: `update` can retime a rest, but
             # not turn a lap.button one into a countdown. A note either way,

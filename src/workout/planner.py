@@ -20,8 +20,12 @@ from .garmin.payloads import (
     ExerciseBlock,
     apply_note,
     apply_rest,
+    apply_sets,
     apply_target,
     iter_exercise_blocks,
+    new_group,
+    new_rest,
+    set_exercise_steps,
     step_category,
     step_exercise_name,
     step_note,
@@ -61,6 +65,38 @@ class RestChange:
 
 
 @dataclass(frozen=True)
+class SetChange:
+    """One exercise's set count, before and after.
+
+    Prescribed by workouts.yaml rather than earned, exactly as a rest is.
+    """
+
+    spec: ExerciseSpec
+    old: int
+    new: int
+
+
+@dataclass(frozen=True)
+class StructureChange:
+    """An exercise added to a workout, removed from it, or moved within it.
+
+    The shape of a workout is the config's to decide, so none of these are
+    earned in a session: they follow from the file being edited.
+    """
+
+    kind: str
+    #: What to call it. The configured name for an exercise the config knows,
+    #: and whatever Garmin calls it for one being removed.
+    name: str
+    #: Where it now sits among the exercises, counting from 1. None when it is
+    #: being removed and so sits nowhere.
+    position: int | None = None
+    #: What a newly built step starts at. Only set when kind is "added".
+    spec: ExerciseSpec | None = None
+    target: Target | None = None
+
+
+@dataclass(frozen=True)
 class Plan:
     """What a single workout would become."""
 
@@ -74,6 +110,11 @@ class Plan:
     #: Exercises whose rest step was rewritten. Config-driven like the notes,
     #: and a reason to save for the same reason.
     rests: list[RestChange] = field(default_factory=list)
+    #: Exercises whose repeat group now prescribes a different number of sets.
+    sets: list[SetChange] = field(default_factory=list)
+    #: Exercises added, removed or moved. Config-driven again, and the only
+    #: kind of change that alters what the workout is rather than what it asks.
+    structure: list[StructureChange] = field(default_factory=list)
 
     @property
     def moved(self) -> list[Change]:
@@ -82,7 +123,9 @@ class Plan:
     @property
     def writable(self) -> bool:
         """Whether this plan has anything worth sending to Garmin."""
-        return bool(self.moved or self.notes or self.rests)
+        return bool(
+            self.moved or self.notes or self.rests or self.sets or self.structure
+        )
 
 
 def find_workout(config: Config, activity_name: str) -> Workout:
@@ -199,16 +242,203 @@ def _refresh_rest(
     rests.append(RestChange(spec, current, spec.rest))
 
 
+def _refresh_sets(
+    block: ExerciseBlock,
+    spec: ExerciseSpec,
+    sets: list[SetChange],
+    warnings: list[str],
+) -> None:
+    """Keep the repeat group prescribing as many sets as the config asks for.
+
+    Garmin counts sets as the iterations of the group around an exercise, so an
+    exercise it performs once may have no group at all. Building one around a
+    step Garmin already holds is a change of shape rather than of number, and
+    is left to Connect: the step is reported and kept as it is.
+    """
+    if block.sets == spec.sets:
+        return
+
+    if block.group is None:
+        warnings.append(
+            f"{spec.name}: {spec.sets} sets in config, but Garmin performs it "
+            f"once, with no repeat group to count them"
+        )
+        return
+
+    apply_sets(block.group, spec.sets)
+    sets.append(SetChange(spec, block.sets, spec.sets))
+
+
+def _index_blocks(blocks: list[ExerciseBlock]) -> ExerciseIndex[ExerciseBlock]:
+    """The workout's exercises, looked up the way its steps are matched."""
+    index: ExerciseIndex[ExerciseBlock] = ExerciseIndex()
+    for block in blocks:
+        index.add(
+            block,
+            name=step_exercise_name(block.step),
+            category=step_category(block.step),
+        )
+    return index
+
+
+def _existing_gaps(
+    payload: dict[str, Any], blocks: list[ExerciseBlock]
+) -> list[dict[str, Any]]:
+    """The steps between the exercises: rests, and anything else up there.
+
+    Kept and put back rather than rebuilt, so that a run which changes nothing
+    leaves the between-exercise rests exactly as Garmin stored them - down to
+    the value a lap-button rest carries and ignores.
+    """
+    exercises = {id(block.outer) for block in blocks}
+    segments = payload.get("workoutSegments") or [{}]
+    return [
+        step
+        for step in segments[0].get("workoutSteps") or []
+        if id(step) not in exercises
+    ]
+
+
+def _reconcile(
+    workout: Workout,
+    payload: dict[str, Any],
+    structure: list[StructureChange],
+    added: set[int],
+) -> None:
+    """Make the workout hold the exercises workouts.yaml names, in that order.
+
+    Steps Garmin already has are moved rather than rebuilt: the target lives in
+    the step and nowhere else, so a rebuilt one would silently restart the
+    progression. An exercise the config names but Garmin lacks is built at the
+    bottom of its range; one Garmin has but the config no longer names is
+    dropped, which is the config being the source of truth taken seriously.
+
+    Nothing is decided about order beyond what the file says: `set_exercise_steps`
+    renumbers, and Garmin sorts by those numbers.
+    """
+    blocks = list(iter_exercise_blocks(payload))
+    index = _index_blocks(blocks)
+    gaps = _existing_gaps(payload, blocks)
+
+    # Steps are compared by identity throughout: two exercises can hold equal
+    # dictionaries, and it matters which one of them is being moved.
+    was = {id(block.outer): position for position, block in enumerate(blocks)}
+    labels = {
+        id(block.outer): step_exercise_name(block.step)
+        or step_category(block.step)
+        or "?"
+        for block in blocks
+    }
+
+    outers: list[dict[str, Any]] = []
+    kept: list[int] = []
+
+    for spec in workout.exercises:
+        block = index.find(spec.garmin_name, spec.garmin_category)
+        if block is None or id(block.outer) in kept:
+            # Nothing in Garmin answers to this, or an earlier exercise already
+            # claimed the step that does. Either way it needs one of its own.
+            target = Target(spec.rep_low, spec.start_weight)
+            group = new_group(spec, target)
+            outers.append(group)
+            added.add(id(group))
+            structure.append(
+                StructureChange("added", spec.name, len(outers), spec, target)
+            )
+            continue
+
+        outers.append(block.outer)
+        kept.append(id(block.outer))
+        # Now that a spec claims it, call it what the config calls it. Only an
+        # exercise being removed keeps the name Garmin knows it by, there being
+        # nothing else left to call it.
+        labels[id(block.outer)] = spec.name
+
+    for block in blocks:
+        if id(block.outer) not in kept:
+            structure.append(StructureChange("removed", labels[id(block.outer)]))
+
+    at = {id(outer): position for position, outer in enumerate(outers)}
+    for ident in _out_of_order(kept, was):
+        structure.append(StructureChange("moved", labels[ident], at[ident] + 1))
+
+    if structure:
+        set_exercise_steps(payload, outers, _gaps_for(outers, gaps))
+
+
+def _out_of_order(kept: list[int], was: dict[int, int]) -> list[int]:
+    """The fewest exercises whose moving accounts for the new order.
+
+    Everything that held its relative place is left out of the report, and what
+    is left is the complement of the longest such run. Without this, moving the
+    plank from last to first reads as every other exercise moving down one -
+    true of their positions, and useless to read.
+
+    Longest increasing subsequence, quadratic, over a handful of exercises.
+    """
+    if not kept:
+        return []
+
+    before = [was[ident] for ident in kept]
+    longest = [1] * len(before)
+    came_from = [-1] * len(before)
+    for later in range(len(before)):
+        for earlier in range(later):
+            if (
+                before[earlier] < before[later]
+                and longest[earlier] + 1 > longest[later]
+            ):
+                longest[later] = longest[earlier] + 1
+                came_from[later] = earlier
+
+    at = max(range(len(before)), key=lambda position: longest[position])
+    in_place = set()
+    while at != -1:
+        in_place.add(at)
+        at = came_from[at]
+
+    return [ident for position, ident in enumerate(kept) if position not in in_place]
+
+
+def _exercise_step(outer: dict[str, Any]) -> dict[str, Any]:
+    """The exercise inside a repeat group, or the step itself when bare."""
+    for inner in outer.get("workoutSteps") or []:
+        if inner.get("exerciseName") or inner.get("category"):
+            return inner
+    return outer
+
+
+def _gaps_for(
+    outers: list[dict[str, Any]], existing: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """One step per join, reusing what was there and building the shortfall."""
+    needed = max(len(outers) - 1, 0)
+    gaps = existing[:needed]
+    return gaps + [new_rest(None) for _ in range(needed - len(gaps))]
+
+
 def plan_workout(
-    workout: Workout, payload: dict[str, Any], performed: Performed
+    workout: Workout, payload: dict[str, Any], performed: Performed | None = None
 ) -> Plan:
-    """Work out the new target for every step of the workout just performed."""
+    """Bring a workout in line with the config, and advance what was trained.
+
+    Two kinds of change, in that order. The config decides the shape - which
+    exercises, in what order, resting how long, described how - and is applied
+    whether or not anything was trained. The session decides the targets, and
+    only for the exercises it actually contains: pass no `performed` at all for
+    a workout with no session behind it, and only the first kind happens.
+    """
     specs = index_specs(workout.exercises)
 
     changes: list[Change] = []
     warnings: list[str] = []
     notes: list[str] = []
     rests: list[RestChange] = []
+    sets: list[SetChange] = []
+    structure: list[StructureChange] = []
+    added: set[int] = set()
+
+    _reconcile(workout, payload, structure, added)
 
     for block in iter_exercise_blocks(payload):
         step = block.step
@@ -216,14 +446,22 @@ def plan_workout(
 
         spec = _match(step, specs)
         if spec is None:
+            # Unreachable after reconciling, which keeps only what the config
+            # names, but a step that matched nothing is not one to write to.
             warnings.append(f"{label}: not in workouts.yaml, skipped")
             continue
 
-        # Before the target checks below: the note and the rest describe the
-        # programming, so they belong on the step whether or not this session
-        # moved anything.
+        # Before the target checks below: the note, the rest and the set count
+        # describe the programming, so they belong on the step whether or not
+        # this session moved anything.
         _refresh_note(step, spec, notes, warnings)
         _refresh_rest(block, spec, rests, warnings)
+        _refresh_sets(block, spec, sets, warnings)
+
+        if performed is None or id(block.outer) in added:
+            # Either no session to learn from, or a step this run has just
+            # built, which already holds exactly what the config asks for.
+            continue
 
         current = step_target(step, spec.time_based)
         if current is None:
@@ -246,7 +484,16 @@ def plan_workout(
         if change.moved:
             apply_target(step, new)
 
-    return Plan(workout, payload, changes, warnings, notes, rests)
+    return Plan(
+        workout,
+        payload,
+        changes,
+        warnings,
+        notes,
+        rests,
+        sets=sets,
+        structure=structure,
+    )
 
 
 def plan_sync(
@@ -267,6 +514,7 @@ def plan_sync(
     warnings: list[str] = []
     notes: list[str] = []
     rests: list[RestChange] = []
+    sets: list[SetChange] = []
 
     for block in iter_exercise_blocks(payload):
         step = block.step
@@ -276,6 +524,7 @@ def plan_sync(
 
         _refresh_note(step, spec, notes, warnings)
         _refresh_rest(block, spec, rests, warnings)
+        _refresh_sets(block, spec, sets, warnings)
 
         new = targets.get(normalise(spec.garmin_name))
         if new is None:
@@ -296,7 +545,7 @@ def plan_sync(
         apply_target(step, new)
         changes.append(Change(spec, current, new, f"synced from {source}"))
 
-    return Plan(workout, payload, changes, warnings, notes, rests)
+    return Plan(workout, payload, changes, warnings, notes, rests, sets=sets)
 
 
 def decided_targets(plan: Plan) -> dict[str, Target]:

@@ -1,9 +1,10 @@
 """Matching workout steps to exercises, and planning the updates."""
 
+from copy import deepcopy
 from dataclasses import replace
 
 import pytest
-from builders import active, rep_step, repeat, rest_step, spec, workout
+from builders import active, payload, rep_step, repeat, rest_step, spec, workout
 
 from workout.domain.models import Config, Workout
 from workout.domain.progression import Target
@@ -113,7 +114,12 @@ def test_plan_advances_a_met_target():
 
 def test_plan_matches_by_category_when_the_logged_name_differs():
     """Garmin logs SEATED_... where the workout programs STANDING_..."""
-    payload = workout(rep_step("STANDING_ALTERNATING_DUMBBELL_CURLS", "CURL", 10, 7.0))
+    payload = workout(
+        repeat(
+            rep_step("STANDING_ALTERNATING_DUMBBELL_CURLS", "CURL", 10, 7.0),
+            sets=CURLS.sets,
+        )
+    )
     performed = performed_sets(
         {
             "exerciseSets": [active("SEATED_DUMBBELL_BICEPS_CURL", "CURL", 10, 7000.0)]
@@ -126,15 +132,18 @@ def test_plan_matches_by_category_when_the_logged_name_differs():
     assert plan.changes[0].new == Target(11, 7.0)
 
 
-def test_plan_warns_about_an_unknown_exercise():
+def test_plan_removes_an_exercise_the_config_does_not_name():
+    """It used to be warned about and left alone. The config drives now, so
+    what it stops naming stops being in the workout."""
     payload = workout(rep_step("MYSTERY_LIFT", "MYSTERY", 5, 1.0))
     plan = plan_workout(a_workout(), payload, ({}, {}))
+
+    assert ("removed", "MYSTERY_LIFT") in [(c.kind, c.name) for c in plan.structure]
     assert plan.changes == []
-    assert "not in workouts.yaml" in plan.warnings[0]
 
 
 def test_plan_warns_when_an_exercise_was_not_performed():
-    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0))
+    payload = workout(repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0), sets=3))
     plan = plan_workout(a_workout(), payload, ({}, {}))
     assert plan.changes == []
     assert "not found in the activity" in plan.warnings[0]
@@ -332,6 +341,209 @@ def test_rests_reach_a_workout_that_only_receives_a_sync():
     assert rest_of(built) == 90
 
 
+# --- the shape of the workout ---------------------------------------------
+#
+# The config decides which exercises a workout holds and in what order. Garmin
+# keeps where each one has got to, so a step it already has is moved rather
+# than rebuilt - rebuilding would quietly restart the progression stored in it.
+
+
+def group_of(spec, reps, weight, sets=None, rest=90.0):
+    """An exercise as Garmin really stores one: wrapped in a repeat group.
+
+    The set count follows the spec unless a test is about them disagreeing.
+    """
+    return repeat(
+        rep_step(spec.garmin_name, spec.garmin_category, reps, weight),
+        spec.sets if sets is None else sets,
+        rest,
+    )
+
+
+def as_built(payload):
+    """The exercises in the order the workout now performs them."""
+    return [b.step["exerciseName"] for b in iter_exercise_blocks(payload)]
+
+
+def test_an_exercise_the_config_adds_is_built_at_the_bottom_of_its_range():
+    built = payload(group_of(SQUAT, 7, 20.0))
+    config = a_workout(exercises=[SQUAT, replace(CURLS, start_weight=6.0)])
+
+    plan = plan_workout(config, built, ({}, {}))
+
+    assert as_built(built) == [
+        "BARBELL_BACK_SQUAT",
+        "STANDING_ALTERNATING_DUMBBELL_CURLS",
+    ]
+    added = [c for c in plan.structure if c.kind == "added"]
+    assert [(c.name, c.position) for c in added] == [
+        ("Standing Alternating Dumbbell Curls", 2)
+    ]
+    assert added[0].target == Target(CURLS.rep_low, 6.0)
+
+
+def test_the_config_order_becomes_the_workouts_order():
+    built = payload(group_of(SQUAT, 7, 20.0), group_of(CURLS, 10, 7.0))
+    config = a_workout(exercises=[CURLS, SQUAT])
+
+    plan = plan_workout(config, built, ({}, {}))
+
+    assert as_built(built) == [
+        "STANDING_ALTERNATING_DUMBBELL_CURLS",
+        "BARBELL_BACK_SQUAT",
+    ]
+    assert [(c.kind, c.name, c.position) for c in plan.structure] == [
+        ("moved", "Barbell Back Squat", 2)
+    ], "one move explains it, reported under the name the config gives it"
+
+
+def test_moving_one_exercise_is_reported_as_one_move():
+    """The last exercise brought to the front is one move. Everything else
+    shifting down is a consequence, not nine more things to read about."""
+    built = payload(
+        group_of(SQUAT, 7, 20.0), group_of(CURLS, 10, 7.0), group_of(CALF, 15, 20.0)
+    )
+    config = a_workout(exercises=[CALF, SQUAT, CURLS])
+
+    plan = plan_workout(config, built, ({}, {}))
+
+    assert as_built(built)[0] == "WEIGHTED_STANDING_CALF_RAISE"
+    assert [(c.kind, c.name) for c in plan.structure] == [
+        ("moved", "Weighted Standing Calf Raise")
+    ]
+
+
+def test_a_moved_exercise_keeps_the_target_it_had():
+    """The whole reason for moving the step rather than building a new one."""
+    built = payload(group_of(SQUAT, 7, 20.0), group_of(CURLS, 13, 7.0))
+
+    plan_workout(a_workout(exercises=[CURLS, SQUAT]), built, ({}, {}))
+
+    first, second = iter_exercise_blocks(built)
+    assert step_target(first.step) == Target(13, 7.0), "not reset to rep_low"
+    assert step_target(second.step) == Target(7, 20.0)
+    assert (first.sets, first.rest) == (CURLS.sets, 90), "its sets and rest travelled"
+
+
+def test_inserting_at_the_top_does_not_report_everything_below_as_moved():
+    """Position shifts because something was added, which is not a move."""
+    built = payload(group_of(SQUAT, 7, 20.0), group_of(CURLS, 10, 7.0))
+    config = a_workout(exercises=[LATERAL, SQUAT, CURLS])
+
+    plan = plan_workout(config, built, ({}, {}))
+
+    assert [c.kind for c in plan.structure] == ["added"]
+
+
+def test_an_unchanged_workout_is_left_exactly_as_it_was():
+    """The idempotency that stops a run writing for the sake of it. Verified
+    against a real account for the payload half; this is the planner half."""
+    built = payload(group_of(SQUAT, 7, 20.0), group_of(CURLS, 10, 7.0))
+    groups = built["workoutSegments"][0]["workoutSteps"]
+    for group, each in zip(groups, [SQUAT, CURLS], strict=True):
+        group["workoutSteps"][0]["description"] = each.note
+    before = deepcopy(built)
+
+    plan = plan_workout(a_workout(exercises=[SQUAT, CURLS]), built, ({}, {}))
+
+    assert plan.structure == []
+    assert not plan.writable
+    assert built == before, "not one field touched"
+
+
+def test_a_newly_built_exercise_is_not_reported_as_missing_from_the_activity():
+    """It was created a moment ago by this same run; of course it was not
+    performed. Saying so would be noise around the line that matters."""
+    built = payload(group_of(SQUAT, 7, 20.0))
+    performed = performed_sets(
+        {"exerciseSets": [active("BARBELL_BACK_SQUAT", "SQUAT", 7, 20000.0)] * 3}
+    )
+
+    plan = plan_workout(a_workout(exercises=[SQUAT, CURLS]), built, performed)
+
+    assert [c.kind for c in plan.structure] == ["added"]
+    assert not [w for w in plan.warnings if "not found in the activity" in w]
+
+
+def test_the_rests_between_exercises_are_kept_as_they_were():
+    """Reordering must not quietly retime the gaps, which Phase 5 owns."""
+    built = payload(group_of(SQUAT, 7, 20.0), rest_step(60.0), group_of(CURLS, 10, 7.0))
+
+    plan_workout(a_workout(exercises=[CURLS, SQUAT]), built, ({}, {}))
+
+    steps = built["workoutSegments"][0]["workoutSteps"]
+    assert steps[1]["endCondition"]["conditionTypeKey"] == "lap.button"
+    assert steps[1]["endConditionValue"] == 60.0, "the value Garmin stored, untouched"
+
+
+def test_a_workout_with_no_session_behind_it_plans_no_targets():
+    """What Phase 4 needs: shape the workout without pretending it was trained."""
+    built = payload(group_of(SQUAT, 7, 20.0))
+
+    plan = plan_workout(a_workout(exercises=[SQUAT, CURLS]), built)
+
+    assert plan.changes == [], "no session, so nothing earned"
+    assert plan.warnings == [], "and nothing to complain about"
+    assert [c.kind for c in plan.structure] == ["added"]
+    assert plan.notes, "but the programming still reaches the steps"
+
+
+# --- set counts -----------------------------------------------------------
+
+
+def test_the_configured_set_count_is_written_to_the_group():
+    built = payload(group_of(SQUAT, 7, 20.0, sets=3))
+
+    plan = plan_workout(a_workout(exercises=[replace(SQUAT, sets=5)]), built)
+
+    assert [(c.old, c.new) for c in plan.sets] == [(3, 5)]
+    assert next(iter(iter_exercise_blocks(built))).sets == 5
+    group = built["workoutSegments"][0]["workoutSteps"][0]
+    assert group["endConditionValue"] == 5.0, "Garmin holds the count twice"
+
+
+def test_dropping_a_set_is_written_too():
+    built = payload(group_of(SQUAT, 7, 20.0, sets=4))
+
+    plan = plan_workout(a_workout(exercises=[replace(SQUAT, sets=2)]), built)
+
+    assert [(c.old, c.new) for c in plan.sets] == [(4, 2)]
+
+
+def test_a_matching_set_count_is_left_alone():
+    """Idempotent: the second run must find nothing to do."""
+    built = payload(group_of(SQUAT, 7, 20.0))
+    built["workoutSegments"][0]["workoutSteps"][0]["workoutSteps"][0]["description"] = (
+        SQUAT.note
+    )
+
+    plan = plan_workout(a_workout(), built)
+
+    assert plan.sets == []
+    assert not plan.writable
+
+
+def test_an_exercise_with_no_repeat_group_is_reported_rather_than_wrapped():
+    """Garmin counts sets as a group's iterations, so a step performed once has
+    nowhere to hold them. Building the group is a change of shape, and Connect's
+    to make."""
+    built = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0))
+
+    plan = plan_workout(a_workout(exercises=[replace(SQUAT, sets=3)]), built)
+
+    assert plan.sets == []
+    assert any("no repeat group to count them" in w for w in plan.warnings)
+
+
+def test_a_newly_built_exercise_needs_no_set_correction():
+    built = payload(group_of(SQUAT, 7, 20.0))
+
+    plan = plan_workout(a_workout(exercises=[SQUAT, CURLS]), built)
+
+    assert plan.sets == [], "it was built with the count the config asked for"
+    assert next(iter(iter_exercise_blocks(built))).sets == SQUAT.sets
+
+
 # --- syncing shared exercises ---------------------------------------------
 
 
@@ -353,7 +565,7 @@ def test_sync_ignores_exercises_that_did_not_move():
 
 
 def test_sync_warns_when_a_target_leaves_the_range():
-    payload = workout(rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 12, 0.0))
+    payload = workout(group_of(CALF, 12, 0.0))
     targets = {"weightedstandingcalfraise": Target(30, 20.0)}  # above rep_high 20
 
     plan = plan_sync(a_workout("Workout B", "2", [CALF]), payload, targets, "Workout A")

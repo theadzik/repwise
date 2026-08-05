@@ -51,8 +51,12 @@ def test_an_exercise_missing_from_the_config_is_reported():
 
 
 def test_a_set_count_mismatch_is_reported():
+    """A note, not a warning: `update --apply` sets it from the config, so it
+    is drift that corrects itself rather than something to go and fix."""
     findings = check_workout(configured(spec(sets=3, rest=120)), payload(SQUAT_GROUP))
+
     assert "3 sets in config, 4 in Garmin" in findings[0].detail
+    assert [f.severity for f in findings] == ["note"]
 
 
 def test_a_rest_mismatch_is_only_a_note():

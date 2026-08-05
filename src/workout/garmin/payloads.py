@@ -79,11 +79,22 @@ class ExerciseBlock:
     step: dict[str, Any]
     sets: int
     rest_step: dict[str, Any] | None
+    group: dict[str, Any] | None = None
 
     @property
     def rest(self) -> int | None:
         """Seconds between sets, or None when Garmin prescribes no interval."""
         return None if self.rest_step is None else step_rest(self.rest_step)
+
+    @property
+    def outer(self) -> dict[str, Any]:
+        """The step this block occupies in the workout's own list.
+
+        The repeat group when the exercise is performed for sets, and the
+        exercise step itself when it stands alone. That is the thing to move
+        when the exercise moves: everything else travels inside it.
+        """
+        return self.step if self.group is None else self.group
 
 
 def _rest_step(steps: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -124,11 +135,13 @@ def iter_exercise_blocks(workout: dict[str, Any]) -> Iterator[ExerciseBlock]:
                 sets = int(step.get("numberOfIterations") or 1)
                 rest = _rest_step(children)
                 for inner in walk(children):
-                    # An inner repeat group keeps its own count and rest.
+                    # An inner repeat group keeps its own count and rest, and
+                    # is the group its exercise travels with.
                     yield ExerciseBlock(
                         inner.step,
                         inner.sets if inner.sets > 1 else sets,
                         inner.rest_step if inner.rest_step is not None else rest,
+                        inner.group if inner.group is not None else step,
                     )
             elif step.get("exerciseName") or step.get("category"):
                 yield ExerciseBlock(step, 1, None)
@@ -191,6 +204,16 @@ def step_note(step: dict[str, Any]) -> str:
 def apply_note(step: dict[str, Any], text: str) -> None:
     """Write the notes field of a workout step, in place."""
     step[NOTE_FIELD] = text
+
+
+def apply_sets(group: dict[str, Any], sets: int) -> None:
+    """Write a new set count onto a repeat group, in place.
+
+    Garmin holds the number twice - as the group's iterations, and as the value
+    its `iterations` end condition counts up to - and the two have to agree.
+    """
+    group["numberOfIterations"] = sets
+    group["endConditionValue"] = float(sets)
 
 
 def apply_rest(step: dict[str, Any], seconds: int) -> None:
