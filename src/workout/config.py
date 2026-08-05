@@ -11,13 +11,20 @@ for rather than computed from this module's location - see `search_path()`.
 from __future__ import annotations
 
 import os
+import re
 
 import yaml
 
 from .domain.models import BODYWEIGHT, Config, ExerciseSpec, GarminSettings, Workout
 from .errors import ConfigError
 
-__all__ = ["load_config", "resolve_config", "search_path", "ConfigError"]
+__all__ = [
+    "load_config",
+    "record_workout_id",
+    "resolve_config",
+    "search_path",
+    "ConfigError",
+]
 
 CONFIG_NAME = "workouts.yaml"
 EXAMPLE_NAME = "workouts.example.yaml"
@@ -98,6 +105,68 @@ def resolve_config(explicit: str | None = None) -> str:
         f"    workout import -o {searched[0]}"
     )
     raise ConfigError(f"No {CONFIG_NAME} found. Looked in:\n{where}\n{hint}")
+
+
+def _workout_entry(lines: list[str], key: str) -> int | None:
+    """Which line starts the workout with this key, if any."""
+    for position, line in enumerate(lines):
+        found = re.match(r"^\s*-\s+key:\s*(.+?)\s*$", line)
+        if found and found.group(1).strip("'\"") == key:
+            return position
+    return None
+
+
+def record_workout_id(path: str, key: str, workout_id: str) -> None:
+    """Write a workout id that Garmin has just issued back into the config.
+
+    Garmin decides the id, so the file has to learn it from a run rather than
+    the other way round. It is the only thing this tool ever writes to
+    workouts.yaml.
+
+    Edited as text rather than by re-dumping the parsed document, because that
+    file is written by hand: it holds comments, blank lines, quoting choices
+    and an order of its own, all of which a round trip through a YAML dumper
+    would quietly rearrange. One line is inserted or replaced and nothing else
+    is touched.
+    """
+    try:
+        with open(path) as fh:
+            lines = fh.readlines()
+    except OSError as exc:
+        raise ConfigError(f"{path} could not be read: {exc}") from exc
+
+    start = _workout_entry(lines, key)
+    if start is None:
+        # Refused rather than guessed at: writing the id into the wrong entry
+        # would point two workouts at one Garmin workout.
+        raise ConfigError(f"{path}: cannot find the workout entry for {key!r}")
+
+    dash = len(lines[start]) - len(lines[start].lstrip())
+    # Where the keys of this entry sit: under `key:`, not under the dash.
+    inside = dash + lines[start].lstrip().index("key:")
+    written = f'{" " * inside}garmin_workout_id: "{workout_id}"\n'
+
+    end = len(lines)
+    for position in range(start + 1, len(lines)):
+        stripped = lines[position].strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if len(lines[position]) - len(lines[position].lstrip()) <= dash:
+            end = position
+            break
+
+    for position in range(start + 1, end):
+        if lines[position].strip().startswith("garmin_workout_id:"):
+            lines[position] = written
+            break
+    else:
+        lines.insert(start + 1, written)
+
+    try:
+        with open(path, "w") as fh:
+            fh.writelines(lines)
+    except OSError as exc:
+        raise ConfigError(f"{path} could not be written: {exc}") from exc
 
 
 class Problems:

@@ -6,7 +6,12 @@ import pytest
 from builders import EXAMPLE_CONFIG, FIXTURE
 
 from workout import config as config_module
-from workout.config import ConfigError, load_config, resolve_config
+from workout.config import (
+    ConfigError,
+    load_config,
+    record_workout_id,
+    resolve_config,
+)
 
 SHARED = """
 settings:
@@ -94,6 +99,81 @@ def test_start_weight_is_read_per_exercise(write_config):
     )
     config = load_config(write_config(text))
     assert config["Workout A"].exercises[0].start_weight == 40.0
+
+
+# --- recording an id Garmin issued ----------------------------------------
+
+
+COMMENTED = """\
+# My routine. Edit the numbers, not the ids.
+settings:
+  weight_steps:
+    barbell: 5.0
+
+workouts:
+  # Trained on Mondays.
+  - key: Workout A
+    activity_prefixes: ["training a"]   # whatever the watch calls it
+    exercises:
+      - name: Barbell Back Squat
+        garmin_name: BARBELL_BACK_SQUAT
+        rep_low: 6
+        rep_high: 10
+        sets: 4
+        load: barbell
+
+  - key: Workout B
+    garmin_workout_id: "222"
+    exercises:
+      - name: Barbell Deadlift
+        garmin_name: BARBELL_DEADLIFT
+        rep_low: 5
+        rep_high: 8
+        sets: 3
+        load: barbell
+"""
+
+
+def test_an_id_is_inserted_into_the_workout_that_earned_it(write_config):
+    path = write_config(COMMENTED)
+
+    record_workout_id(path, "Workout A", "1234567")
+
+    assert load_config(path)["Workout A"].garmin_workout_id == "1234567"
+
+
+def test_recording_an_id_changes_nothing_else_in_the_file(write_config):
+    """The file is written by hand: comments, spacing and quoting are the
+    user's, and a YAML round trip would quietly rearrange all three."""
+    path = write_config(COMMENTED)
+
+    record_workout_id(path, "Workout A", "1234567")
+
+    with open(path) as fh:
+        after = fh.read()
+    assert after == COMMENTED.replace(
+        "  - key: Workout A\n",
+        '  - key: Workout A\n    garmin_workout_id: "1234567"\n',
+    )
+
+
+def test_an_existing_id_is_replaced_rather_than_doubled(write_config):
+    path = write_config(COMMENTED)
+
+    record_workout_id(path, "Workout B", "999")
+
+    with open(path) as fh:
+        after = fh.read()
+    assert after.count("garmin_workout_id") == 1
+    assert load_config(path)["Workout B"].garmin_workout_id == "999"
+
+
+def test_recording_refuses_a_workout_it_cannot_find(write_config):
+    """Guessing would point two workouts at one Garmin workout."""
+    path = write_config(COMMENTED)
+
+    with pytest.raises(ConfigError, match="cannot find the workout entry"):
+        record_workout_id(path, "Workout C", "1234567")
 
 
 def test_garmin_settings_have_defaults(write_config):

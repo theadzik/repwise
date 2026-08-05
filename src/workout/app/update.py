@@ -11,15 +11,16 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
+from ..config import ConfigError, record_workout_id
 from ..domain.matching import normalise
 from ..domain.models import Config, Workout
 from ..domain.progression import Target
 from ..errors import ActivityNotFound, ExitCode, GarminError, UsageError
 from ..garmin.client import GarminSession
-from ..garmin.payloads import performed_sets
+from ..garmin.payloads import new_workout, performed_sets
 from ..planner import (
     Plan,
     decided_targets,
@@ -123,13 +124,24 @@ def pick_sessions(
 def garmin_id(workout: Workout) -> str:
     """The Garmin id of a workout that is known to have one.
 
-    A workout reaches a plan only after being found in Garmin, so by then its
-    id exists. Stating that in one place keeps the writes free of `or ""`, and
-    turns an impossible state into a message rather than a failed request.
+    Every write goes through here: by the time one happens the workout has
+    either been found in Garmin or just been created there. Stating that in
+    one place keeps the writes free of `or ""`, and turns an impossible state
+    into a message rather than a failed request.
     """
     if workout.garmin_workout_id is None:
         raise GarminError(f"{workout.key} has no Garmin workout id.")
     return workout.garmin_workout_id
+
+
+def counted_as(workout: Workout) -> str:
+    """What identifies a workout while counting up what a run would do.
+
+    Its Garmin id once it has one, and its config key before that: a workout
+    still to be created has to be countable too, and a dry run never gives it
+    an id to be counted by.
+    """
+    return workout.garmin_workout_id or workout.key
 
 
 def changed_steps(plans: list[Plan]) -> set[tuple[str, str]]:
@@ -139,7 +151,7 @@ def changed_steps(plans: list[Plan]) -> set[tuple[str, str]]:
     a second Change on the same step rather than another step changing.
     """
     return {
-        (garmin_id(plan.workout), change.spec.garmin_name)
+        (counted_as(plan.workout), change.spec.garmin_name)
         for plan in plans
         for change in plan.moved
     }
@@ -151,13 +163,13 @@ def noted_steps(plans: list[Plan]) -> set[tuple[str, str]]:
     A shared exercise is refreshed in each workout it appears in, and those
     are genuinely different steps, so they count separately.
     """
-    return {(garmin_id(plan.workout), name) for plan in plans for name in plan.notes}
+    return {(counted_as(plan.workout), name) for plan in plans for name in plan.notes}
 
 
 def rested_steps(plans: list[Plan]) -> set[tuple[str, str]]:
     """Which steps had their rest rewritten, counted once per step."""
     return {
-        (garmin_id(plan.workout), change.spec.garmin_name)
+        (counted_as(plan.workout), change.spec.garmin_name)
         for plan in plans
         for change in plan.rests
     }
@@ -166,7 +178,7 @@ def rested_steps(plans: list[Plan]) -> set[tuple[str, str]]:
 def recounted_steps(plans: list[Plan]) -> set[tuple[str, str]]:
     """Which steps had their set count rewritten, counted once per step."""
     return {
-        (garmin_id(plan.workout), change.spec.garmin_name)
+        (counted_as(plan.workout), change.spec.garmin_name)
         for plan in plans
         for change in plan.sets
     }
@@ -175,7 +187,7 @@ def recounted_steps(plans: list[Plan]) -> set[tuple[str, str]]:
 def restructured(plans: list[Plan]) -> set[tuple[str, str, str]]:
     """Which exercises were added, removed or moved, counted once each."""
     return {
-        (garmin_id(plan.workout), change.kind, change.name)
+        (counted_as(plan.workout), change.kind, change.name)
         for plan in plans
         for change in plan.structure
     }
@@ -206,6 +218,103 @@ def sync_other_workouts(
         plans.append(plan)
 
     return plans
+
+
+def definition_for(payloads: Payloads, workout: Workout) -> dict[str, Any]:
+    """The Garmin definition to plan against: the stored one, or a fresh shell.
+
+    A workout with no id has nothing stored, so it starts from an empty
+    workout named after its config key and is filled in by the planner like
+    any other. Nothing has been created at this point - a dry run gets the
+    same shell and simply never sends it.
+    """
+    if workout.garmin_workout_id is None:
+        return new_workout(workout.key)
+    return payloads[workout.garmin_workout_id]
+
+
+def shape_untrained(
+    payloads: Payloads, config: Config, trained: set[str]
+) -> list[Plan]:
+    """Bring every workout with no session behind it in line with the config.
+
+    Only the shape: which exercises, in what order, how many sets, resting how
+    long, described how. Nothing here was earned in a session, so no target
+    moves and nothing is warned about not having been performed.
+    """
+    plans: list[Plan] = []
+    for workout in config:
+        if workout.key in trained:
+            continue
+
+        plan = plan_workout(workout, definition_for(payloads, workout))
+        if not plan.writable:
+            continue
+
+        logger.info("")
+        if workout.garmin_workout_id is None:
+            logger.info(f"Creating: {workout.key}")
+        else:
+            logger.info(
+                f"Shaping: {workout.key} -> workout {workout.garmin_workout_id}"
+            )
+        logger.info("")
+        report_plan(plan)
+        plans.append(plan)
+
+    return plans
+
+
+def advance_trained(
+    session: GarminSession,
+    payloads: Payloads,
+    config: Config,
+    options: UpdateOptions,
+    sessions: list[tuple[Workout, dict[str, Any]]],
+) -> tuple[list[Plan], bool]:
+    """Plan every session that was trained, oldest first.
+
+    Returns the plans, and whether any session turned out to hold working sets
+    at all - an activity with none is not a run that failed, but it is not one
+    that learned anything either.
+    """
+    plans: list[Plan] = []
+    usable = False
+
+    for position, (workout, activity) in enumerate(sessions):
+        activity_id = str(activity["activityId"])
+        if position:
+            logger.info("")
+        logger.info(f"Activity: {activity.get('activityName') or ''} ({activity_id})")
+        logger.info(f"Updating: {workout.key} -> workout {workout.garmin_workout_id}")
+        logger.info("")
+
+        sets_payload = session.exercise_sets(activity_id)
+        payload = payloads[garmin_id(workout)]
+
+        if options.dump:
+            dump(
+                {"sets": sets_payload, "workout": payload},
+                config.garmin.dump_dir,
+                activity_id,
+            )
+
+        performed = performed_sets(sets_payload)
+        if not any(performed):
+            logger.warning("No working sets found in that activity; nothing to do.")
+            continue
+        usable = True
+
+        plan = plan_workout(workout, payload, performed)
+        report_plan(plan)
+        plans.append(plan)
+
+        # Anything that moved must move everywhere that exercise appears.
+        targets = decided_targets(plan)
+        if targets:
+            plans.extend(sync_other_workouts(payloads, config, workout, targets))
+
+    return plans, usable
 
 
 def push_to_watch(session: GarminSession, workouts: list[Workout]) -> None:
@@ -246,55 +355,33 @@ def run_update(
     session: GarminSession, config: Config, options: UpdateOptions
 ) -> ExitCode:
     payloads = Payloads(session)
-
-    # Reported before anything else, so that a workout being quietly left out
-    # of the run is never something to work out from its absence.
-    uncreated = [w.key for w in config if w.garmin_workout_id is None]
-    if uncreated:
-        logger.warning(
-            f"Not in Garmin yet, so nothing to update: {', '.join(uncreated)}."
-        )
-
-    sessions = pick_sessions(session, config, options.activity)
-
     plans: list[Plan] = []
-    usable = False
 
-    for position, (workout, activity) in enumerate(sessions):
-        activity_id = str(activity["activityId"])
-        if position:
-            logger.info("")
-        logger.info(f"Activity: {activity.get('activityName') or ''} ({activity_id})")
-        logger.info(f"Updating: {workout.key} -> workout {workout.garmin_workout_id}")
-        logger.info("")
+    # A run with no session behind it still has work to do: the config decides
+    # the shape of a workout, and a config edit is not something to sit on
+    # until the next time that workout is trained.
+    untrained: ActivityNotFound | None = None
+    try:
+        sessions = pick_sessions(session, config, options.activity)
+    except ActivityNotFound as exc:
+        sessions, untrained = [], exc
 
-        sets_payload = session.exercise_sets(activity_id)
-        payload = payloads[garmin_id(workout)]
+    plans.extend(shape_untrained(payloads, config, {w.key for w, _ in sessions}))
 
-        if options.dump:
-            dump(
-                {"sets": sets_payload, "workout": payload},
-                config.garmin.dump_dir,
-                activity_id,
-            )
+    trained, usable = advance_trained(session, payloads, config, options, sessions)
+    plans.extend(trained)
 
-        performed = performed_sets(sets_payload)
-        if not any(performed):
-            logger.warning("No working sets found in that activity; nothing to do.")
-            continue
-        usable = True
-
-        plan = plan_workout(workout, payload, performed)
-        report_plan(plan)
-        plans.append(plan)
-
-        # Anything that moved must move everywhere that exercise appears.
-        targets = decided_targets(plan)
-        if targets:
-            plans.extend(sync_other_workouts(payloads, config, workout, targets))
-
-    if not usable:
+    if not usable and not plans:
+        # Nothing was trained and nothing needed shaping, so the run has
+        # genuinely found nothing to do. A missing activity is the more useful
+        # thing to say when that is why.
+        if untrained is not None:
+            raise untrained
         return ExitCode.NOTHING_USABLE
+
+    if untrained is not None:
+        logger.info("")
+        logger.info(f"{untrained} Shaping the workouts from the config regardless.")
 
     updated = len(changed_steps(plans))
     noted = len(noted_steps(plans))
@@ -321,7 +408,7 @@ def run_update(
         logger.info("Nothing to write.")
         return ExitCode.OK
 
-    written = _write(session, plans)
+    written = _write(session, config, plans)
 
     logger.info("")
     logger.info(
@@ -338,23 +425,62 @@ def run_update(
     return ExitCode.OK
 
 
-def _write(session: GarminSession, plans: list[Plan]) -> list[Workout]:
+def _write(session: GarminSession, config: Config, plans: list[Plan]) -> list[Workout]:
     """Save every workout that has something to save, once each.
 
     A workout can appear in more than one plan - its own, plus a sync from a
     later session - but every plan mutated the same payload, so one write
     carries all of them.
+
+    A workout Garmin does not have yet is created here instead, which is the
+    only difference between the two: one workout, one request, either way.
     """
     written: list[Workout] = []
     saved: set[str] = set()
     for each in plans:
+        if not each.writable:
+            continue
+
+        if each.workout.garmin_workout_id is None:
+            written.append(_create(session, config, each))
+            continue
+
         workout_id = garmin_id(each.workout)
-        if not each.writable or workout_id in saved:
+        if workout_id in saved:
             continue
         saved.add(workout_id)
         session.save_workout(workout_id, each.payload)
-        logger.info(
-            f"Wrote {each.workout.key} (workout {each.workout.garmin_workout_id})"
-        )
+        logger.info(f"Wrote {each.workout.key} (workout {workout_id})")
         written.append(each.workout)
     return written
+
+
+def _create(session: GarminSession, config: Config, plan: Plan) -> Workout:
+    """Add a workout to Garmin and record the id it was given.
+
+    The id goes into workouts.yaml straight away, and the run carries on with
+    it, so that everything downstream - a sync into this workout, a push to the
+    watch, the next run recognising it - treats it as any other workout.
+
+    A config that cannot be updated is worth stopping for: the workout now
+    exists in Garmin and nothing in the file points at it, so the next run
+    would build a second one.
+    """
+    workout = plan.workout
+    workout_id = session.create_workout(plan.payload)
+    logger.info(f"Created {workout.key} (workout {workout_id})")
+
+    try:
+        record_workout_id(config.path, workout.key, workout_id)
+    except ConfigError as exc:
+        raise ConfigError(
+            f"{workout.key} was created in Garmin as {workout_id}, but its id "
+            f"could not be written back: {exc}. Add "
+            f'garmin_workout_id: "{workout_id}" to it by hand, or the next run '
+            f"will create a second copy."
+        ) from exc
+
+    logger.info(f"Recorded its id in {config.path}")
+    created = replace(workout, garmin_workout_id=workout_id)
+    config.workouts[workout.key] = created
+    return created
