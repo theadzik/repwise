@@ -70,13 +70,23 @@ class ExerciseBlock:
 
 
 def _rest_step(steps: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """The rest step of a repeat group, when it prescribes a fixed time."""
+    """The rest step of a repeat group, when it prescribes a fixed time.
+
+    The duration is tested against None rather than for truth, as `step_target`
+    tests its own: what makes a rest unreadable is ending on the lap button or
+    carrying no value at all. Zero seconds is a duration like any other, and
+    treating it as absent would refuse to write a configured rest onto a step
+    that can hold one perfectly well.
+    """
     for step in steps:
         if (step.get("stepType") or {}).get("stepTypeKey") != "rest":
             continue
         end = step.get("endCondition") or {}
         # A lap.button rest has no duration, only a prompt to press the button.
-        if end.get("conditionTypeKey") == "time" and step.get("endConditionValue"):
+        if (
+            end.get("conditionTypeKey") == "time"
+            and step.get("endConditionValue") is not None
+        ):
             return step
     return None
 

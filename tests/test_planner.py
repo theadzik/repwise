@@ -296,6 +296,16 @@ def test_a_lap_button_rest_is_reported_rather_than_retimed():
     assert any("not a fixed time in Garmin" in w for w in plan.warnings)
 
 
+def test_a_rest_of_zero_is_written_rather_than_called_unwritable():
+    """Zero is what the step says today, not a step that cannot hold a rest."""
+    built = squat_group(rest=0.0)
+    plan = plan_workout(a_workout(exercises=[RESTED]), built, ({}, {}))
+
+    assert [(c.old, c.new) for c in plan.rests] == [(0, 150)]
+    assert rest_of(built) == 150
+    assert not [w for w in plan.warnings if "rest" in w]
+
+
 def test_the_rest_moves_even_when_the_target_does_not():
     """The rest describes the programming, not the session."""
     built = squat_group(rest=120.0, reps=7)

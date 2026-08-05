@@ -45,6 +45,42 @@ def test_a_step_outside_a_repeat_group_is_one_set_and_no_rest():
     assert (block.sets, block.rest, block.rest_step) == (1, None, None)
 
 
+def test_a_zero_second_rest_is_a_duration_like_any_other():
+    """Falsy but present: a step that can hold a rest, currently holding none."""
+    payload = workout(
+        {
+            "type": "RepeatGroupDTO",
+            "numberOfIterations": 3,
+            "workoutSteps": [
+                rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0),
+                timed_rest(0.0),
+            ],
+        }
+    )
+    block = next(iter(iter_exercise_blocks(payload)))
+
+    assert block.rest == 0
+    assert block.rest_step is not None, "a configured rest can be written here"
+
+
+def test_a_timed_rest_with_no_value_reads_as_no_rest():
+    payload = workout(
+        {
+            "type": "RepeatGroupDTO",
+            "numberOfIterations": 3,
+            "workoutSteps": [
+                rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0),
+                {
+                    "stepType": {"stepTypeKey": "rest"},
+                    "endCondition": {"conditionTypeKey": "time"},
+                    "endConditionValue": None,
+                },
+            ],
+        }
+    )
+    assert next(iter(iter_exercise_blocks(payload))).rest_step is None
+
+
 def test_a_lap_button_rest_is_no_interval_at_all():
     """It prompts you to press the button; the value beside it means nothing."""
     payload = workout(
