@@ -93,11 +93,19 @@ Usually that is what you asked for. When it is not, the cause is almost always
 a `garmin_name` that no longer matches: the config names an exercise Garmin
 does not have, so it is built, and the one Garmin has goes unnamed, so it is
 dropped. A dry run shows both, one `+` line and one `-` line for what should
-have been the same exercise.
+have been the same exercise - and warns when the two look like one movement:
 
-[`workout check`](commands.md#check) reports mismatched names before any of
-that happens, and filling in `garmin_category` bridges them when it is
-unambiguous.
+```text
+  ! Lat Pull-down: added while LAT_PULLDOWN is removed, and the two look like
+    the same exercise. If that is a renamed garmin_name rather than a swap, the
+    target on LAT_PULLDOWN is about to be lost with it
+```
+
+Two things stop it getting that far. Filling in `garmin_category` bridges a
+mistyped name whenever exactly one exercise in the workout claims that
+category, and [`workout check`](commands.md#check) reports the names it is
+rescuing, before the day a second exercise claims the same category and it
+stops being able to.
 
 ## A workout was created twice
 

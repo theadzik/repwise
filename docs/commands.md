@@ -209,6 +209,21 @@ number is stored. The dry run lists every removal before anything is written,
 which is the moment to check that a `-` line is a decision and not a typo in a
 `garmin_name`.
 
+A plan that removes one exercise and adds another that looks like the same
+movement says so, because that is what a mistyped `garmin_name` produces:
+
+```text
+  ! Lat Pull-down: added while LAT_PULLDOWN is removed, and the two look like
+    the same exercise. If that is a renamed garmin_name rather than a swap, the
+    target on LAT_PULLDOWN is about to be lost with it
+```
+
+It is a warning rather than a refusal, because deliberately swapping a movement
+for a variant of it looks identical from here. Matching a name and matching a
+category both have to fail before it can happen at all, so filling in
+`garmin_category` is what stops most typos ever getting this far -
+[`workout check`](#check) reports the ones it rescues.
+
 Only genuine moves are reported. Adding an exercise at the top shifts the
 position of everything under it without any of that being a move, so those
 lines do not appear.
