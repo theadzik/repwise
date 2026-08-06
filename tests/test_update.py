@@ -5,7 +5,7 @@ import os
 from dataclasses import replace
 
 import pytest
-from builders import active, rep_step, repeat, spec
+from builders import active, rep_step, repeat, rest_step, spec
 from builders import workout as steps
 
 from workout.app.update import (
@@ -353,6 +353,45 @@ def test_a_config_that_cannot_be_updated_names_the_id_it_lost(account, uncreated
 def test_a_created_workout_can_be_pushed_to_the_watch(account, uncreated):
     run(account, uncreated, apply=True, push=True)
     assert account.pushed == [account.next_id]
+
+
+# --- how the summary reads ------------------------------------------------
+
+
+def with_a_gap(account, seconds=45):
+    """Workout A as Garmin really stores one, and a config that retimes the
+    lap-button wait between its two exercises."""
+    account.workouts["111"] = steps(
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 30.0), sets=SQUAT.sets),
+        rest_step(60.0),
+        repeat(
+            rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 15, 20.0),
+            sets=CALF.sets,
+        ),
+    )
+    config = config_ab()
+    config.workouts["Workout A"] = replace(config["Workout A"], rest_between=seconds)
+    return config
+
+
+def test_the_gap_summary_counts_what_it_is_counting(account, caplog):
+    """A bare number reads as an unfinished sentence, and does not match the
+    dry run's wording for the same thing."""
+    config = with_a_gap(account)
+
+    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+        run(account, config, apply=True)
+
+    assert "Set the rest between exercises in 1 workout(s)." in caplog.text
+
+
+def test_the_dry_run_says_the_same_thing_the_other_way_round(account, caplog):
+    config = with_a_gap(account)
+
+    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+        run(account, config)
+
+    assert "the rest between exercises would change in 1 workout(s)" in caplog.text
 
 
 # --- shaping a workout no session touched ---------------------------------

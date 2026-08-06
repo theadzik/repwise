@@ -430,7 +430,7 @@ def run_update(
         + (f" Added, removed or moved {shaped} exercise(s)." if shaped else "")
         + (f" Set {recounted} set count(s)." if recounted else "")
         + (f" Set {rested} rest time(s)." if rested else "")
-        + (f" Set the rest between exercises in {regaps}." if regaps else "")
+        + (f" Set the rest between exercises in {regaps} workout(s)." if regaps else "")
         + (f" Refreshed {noted} note(s)." if noted else "")
     )
 
