@@ -5,6 +5,11 @@
 # workouts.yaml is gitignored, so your routine and Garmin ids stay private.
 # Pass --config to use a file somewhere else entirely.
 #
+# One caveat about editing it: the one thing this tool writes back - a workout
+# id Garmin has just issued - is written by re-dumping the whole file, so your
+# comments and blank lines are lost the first time that happens. Put anything
+# you want kept in an exercise's `notes`, which is part of the document.
+#
 # What follows is a complete, valid 3x/week A/B full body split. The
 # garmin_name and garmin_category values are real Garmin identifiers, but the
 # workout ids are placeholders -- replace them with your own (see below).
@@ -44,7 +49,10 @@
 #   start_weight    kg a newly created exercise starts at; never read again
 #                   once the step exists, progression owns the weight from then
 #   unit            reps (default) or seconds for timed holds
-#   video           reference link (documentation only)
+#   notes           free text: a cue, a link, a reminder. Read by nobody -
+#                   not this tool, not Garmin. Survives a rewrite of the file,
+#                   which is what makes it the place for anything you would
+#                   otherwise have written as a comment
 #
 # The range and the weight step are also summarised into each Garmin step's
 # notes field -- "6-10 reps | +5 kg" -- so the watch shows what you are working
@@ -95,6 +103,8 @@ workouts:
         # upper body lifts. Drop to the barbell default once 5 kg starts
         # failing.
         weight_step: 5.0
+        # Free text, for whatever you want beside the exercise.
+        notes: Bar high on the traps, knees tracking over the toes.
 
       - name: Barbell Bench Press
         garmin_name: BARBELL_BENCH_PRESS

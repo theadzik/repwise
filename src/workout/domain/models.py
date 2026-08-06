@@ -28,7 +28,10 @@ class ExerciseSpec:
     rep_step: int = 1
     rest: int = 0
     unit: str = "reps"
-    video: str | None = None
+    #: Whatever the user wants to keep beside this exercise: a cue, a link, a
+    #: reminder. Read by nobody - not this tool, not Garmin. Distinct from
+    #: `note` below, which this tool writes to the watch.
+    notes: str | None = None
     #: The load a step starts at when this tool has to create it. Only ever
     #: read for an exercise Garmin does not hold yet; progression owns the
     #: weight from the first session onward.

@@ -88,7 +88,8 @@ takes plain data and returns plain data, which is the point of keeping it pure.
 | What a new user starts from | `workouts.example.yaml`, which the tests validate |
 | A progression rule | `next_target()` in `domain/progression.py`, plus `test_progression.py` |
 | Garmin changed its schema | `garmin/payloads.py` only, both halves of it: what reads a payload and what builds one |
-| A new field on a workout or exercise | The field on `domain/models.py`, reading it in `config.py`, applying it in `planner.py`, and a `render_*` line in `importer.py` so a round trip keeps it |
+| A new field on a workout or exercise | The field on `domain/models.py`, reading it in `config.py`, applying it in `planner.py`, and a key in the `render_*` mapping in `importer.py` so a round trip keeps it |
+| How the config file is read or written | `yamlio.py`, which every other module goes through |
 | A new setting | `workouts.yaml` under `settings`, the field on `GarminSettings` in `domain/models.py`, and reading it in `config.py`. Nothing should be hardcoded outside the config |
 | A new load type | `settings.weight_steps`, otherwise loading rejects any exercise using it. A single exercise can instead set its own `weight_step` |
 | A new command | A module in `app/` exposing `run_<name>()`, a subparser in `cli/parser.py`, and an entry in `HANDLERS` in `cli/__init__.py` |

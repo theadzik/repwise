@@ -119,9 +119,13 @@ Four boundaries carry the weight:
   caller can build a plan and throw it away, which is exactly what a dry run
   does - so a dry run cannot accidentally write.
 - **`config.py` is the only module that writes to `workouts.yaml`,** and the
-  only thing it ever writes is a workout id Garmin has just issued. That edit
-  is made on the file's text rather than by re-dumping a parsed document, so a
-  hand-written config keeps its comments, spacing and ordering.
+  only thing it ever writes is a workout id Garmin has just issued. It parses
+  the document, sets the one key and dumps the whole thing back, so values and
+  ordering survive but comments do not.
+- **`yamlio.py` is the only module that touches the file at all.** Reading,
+  dumping and the atomic replace live there, so `config.py`, `importer.py` and
+  the import use case cannot disagree about how the file is parsed, how what we
+  write is styled, or how it gets onto disk.
 
 Everything the application talks to Garmin through is `GarminSession` in
 `garmin/client.py`, so the `garminconnect` dependency stays in one place.

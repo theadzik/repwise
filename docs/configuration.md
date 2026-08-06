@@ -108,9 +108,14 @@ writes the id Garmin issued back into this file:
 ```
 
 Every exercise starts at `rep_low` and its `start_weight`, and progression
-takes over from the first session. The only line that changes in the file is
-the one carrying the new id: comments, spacing and ordering are left exactly as
-you wrote them.
+takes over from the first session.
+
+**This is the one time the tool writes to your config, and it rewrites the
+whole file to do it.** The document is parsed, the id set under its `key`, and
+the whole thing dumped back: every workout, exercise, value and unrecognised
+key survives, in the order you wrote them. Comments and blank lines do not -
+they are not part of the document. Keep anything worth saying in an exercise's
+[`notes`](#exercise-fields), which is.
 
 ## Exercise fields
 
@@ -123,7 +128,7 @@ you wrote them.
         sets: 4
         rest: 120
         load: barbell
-        video: https://www.youtube.com/watch?v=NK9Fqjco4iw
+        notes: Bar high on the traps, knees over the toes.
 ```
 
 | Field | Required | Default | Meaning |
@@ -140,7 +145,7 @@ you wrote them.
 | `rest` | no | none | Seconds between sets, written to the Garmin workout by `update --apply`. Left out, Garmin's own rest is kept |
 | `start_weight` | no | `0` | kg a **newly created** exercise starts at. Never read again once the step exists; progression owns the weight from then on |
 | `unit` | no | `reps` | `reps`, or `seconds` for timed holds like planks |
-| `video` | no | none | Reference link. Documentation only |
+| `notes` | no | none | Free text: a cue, a link, a reminder. Read by nobody - not this tool, not Garmin |
 
 `garmin_category` is worth filling in even though it is optional: Garmin
 sometimes logs a different name than the one programmed, and the category is

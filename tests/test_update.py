@@ -319,7 +319,7 @@ def test_the_id_garmin_issues_is_written_back_to_the_config(account, uncreated):
 
     with open(uncreated.path) as fh:
         after = fh.read()
-    assert f'garmin_workout_id: "{account.next_id}"' in after
+    assert f"garmin_workout_id: '{account.next_id}'" in after
     assert uncreated["Workout C"].garmin_workout_id == account.next_id, (
         "and the run carries on with it, so a push or a sync can find it"
     )

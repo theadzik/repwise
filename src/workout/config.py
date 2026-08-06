@@ -11,14 +11,10 @@ for rather than computed from this module's location - see `search_path()`.
 from __future__ import annotations
 
 import os
-import re
-import shutil
-import tempfile
-
-import yaml
 
 from .domain.models import BODYWEIGHT, Config, ExerciseSpec, GarminSettings, Workout
 from .errors import ConfigError
+from .yamlio import dump, read, write
 
 __all__ = [
     "load_config",
@@ -109,13 +105,22 @@ def resolve_config(explicit: str | None = None) -> str:
     raise ConfigError(f"No {CONFIG_NAME} found. Looked in:\n{where}\n{hint}")
 
 
-def _workout_entry(lines: list[str], key: str) -> int | None:
-    """Which line starts the workout with this key, if any."""
-    for position, line in enumerate(lines):
-        found = re.match(r"^\s*-\s+key:\s*(.+?)\s*$", line)
-        if found and found.group(1).strip("'\"") == key:
-            return position
-    return None
+def _identified(entry: dict, workout_id: str) -> dict:
+    """The entry with its Garmin id set, and set where a reader expects it.
+
+    Rebuilt rather than assigned into so that an id this tool has just learnt
+    lands under `key`, where the hand-written ones are, rather than at the end
+    of the entry underneath the exercises.
+    """
+    rebuilt: dict = {}
+    for name, value in entry.items():
+        if name == "garmin_workout_id":
+            continue  # dropped here, re-added under `key` or below
+        rebuilt[name] = value
+        if name == "key":
+            rebuilt["garmin_workout_id"] = workout_id
+    rebuilt.setdefault("garmin_workout_id", workout_id)
+    return rebuilt
 
 
 def record_workout_id(path: str, key: str, workout_id: str) -> None:
@@ -125,79 +130,27 @@ def record_workout_id(path: str, key: str, workout_id: str) -> None:
     the other way round. It is the only thing this tool ever writes to
     workouts.yaml.
 
-    Edited as text rather than by re-dumping the parsed document, because that
-    file is written by hand: it holds comments, blank lines, quoting choices
-    and an order of its own, all of which a round trip through a YAML dumper
-    would quietly rearrange. One line is inserted or replaced and nothing else
-    is touched.
+    The whole document is parsed, the one id set, and the whole thing written
+    back. Comments and the user's own spacing do not survive that: it is the
+    price of treating the file as data, and it buys one way of writing it
+    rather than a line editor that has to reason about indentation.
     """
-    try:
-        with open(path) as fh:
-            lines = fh.readlines()
-    except OSError as exc:
-        raise ConfigError(f"{path} could not be read: {exc}") from exc
+    data = read(path)
 
-    start = _workout_entry(lines, key)
-    if start is None:
+    workouts = data.get("workouts") if isinstance(data, dict) else None
+    if not isinstance(workouts, list):
+        raise ConfigError(f"{path}: expected a mapping with a 'workouts' key")
+
+    for position, entry in enumerate(workouts):
+        if isinstance(entry, dict) and entry.get("key") == key:
+            workouts[position] = _identified(entry, workout_id)
+            break
+    else:
         # Refused rather than guessed at: writing the id into the wrong entry
         # would point two workouts at one Garmin workout.
         raise ConfigError(f"{path}: cannot find the workout entry for {key!r}")
 
-    dash = len(lines[start]) - len(lines[start].lstrip())
-    # Where the keys of this entry sit: under `key:`, not under the dash.
-    inside = dash + lines[start].lstrip().index("key:")
-    written = f'{" " * inside}garmin_workout_id: "{workout_id}"\n'
-
-    end = len(lines)
-    for position in range(start + 1, len(lines)):
-        stripped = lines[position].strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if len(lines[position]) - len(lines[position].lstrip()) <= dash:
-            end = position
-            break
-
-    for position in range(start + 1, end):
-        if lines[position].strip().startswith("garmin_workout_id:"):
-            lines[position] = written
-            break
-    else:
-        lines.insert(start + 1, written)
-
-    _replace(path, lines)
-
-
-def _replace(path: str, lines: list[str]) -> None:
-    """Put these lines in the file, or leave the file exactly as it was.
-
-    Written beside the original and moved onto it, rather than opening the
-    original for writing - which truncates it before a byte is written, and
-    would leave a hand-written config in pieces if the run died in between.
-
-    That matters here more than the odds suggest: the only caller writes an id
-    Garmin has just issued, so a half-written config would cost the routine and
-    the id that stops the next run creating the workout a second time.
-    """
-    directory = os.path.dirname(path) or "."
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            dir=directory,  # the same filesystem, or the move would not be atomic
-            prefix=f".{os.path.basename(path)}.",
-            delete=False,
-        ) as fh:
-            temporary = fh.name
-            fh.writelines(lines)
-            fh.flush()
-            os.fsync(fh.fileno())  # on disk before the move, not just written
-
-        shutil.copymode(path, temporary)  # keep whatever permissions it had
-        os.replace(temporary, path)
-    except OSError as exc:
-        if temporary and os.path.exists(temporary):
-            os.unlink(temporary)
-        raise ConfigError(f"{path} could not be written: {exc}") from exc
+    write(path, dump(data))
 
 
 class Problems:
@@ -284,7 +237,7 @@ def _build_exercise(
         rep_step=rep_step,
         rest=int(raw.get("rest", 0)),
         unit=raw.get("unit", "reps"),
-        video=raw.get("video"),
+        notes=raw.get("notes"),
         start_weight=start_weight,
     )
 
@@ -366,16 +319,7 @@ def load_config(path: str | None = None) -> Config:
         # resolved one exists by construction.
         raise ConfigError(f"{path} does not exist")
 
-    # A file that cannot be read or parsed is a configuration problem like any
-    # other, so it leaves here as one rather than as a traceback from yaml.
-    try:
-        with open(path) as fh:
-            data = yaml.safe_load(fh)
-    except OSError as exc:
-        raise ConfigError(f"{path} could not be read: {exc}") from exc
-    except yaml.YAMLError as exc:
-        raise ConfigError(f"{path} is not valid YAML: {exc}") from exc
-
+    data = read(path)
     if not isinstance(data, dict) or "workouts" not in data:
         raise ConfigError(f"{path}: expected a mapping with a 'workouts' key")
     if not isinstance(data["workouts"], list):
