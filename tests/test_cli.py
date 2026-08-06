@@ -15,7 +15,7 @@ def help_text(argv: list[str], capsys) -> str:
 def test_examples_keep_their_line_breaks(capsys):
     """argparse reflows help text unless told not to, squashing the examples."""
     out = help_text(["--help"], capsys)
-    assert "\n  workout update --apply    write those targets back to Garmin\n" in out
+    assert "\n  workout update --apply    write it back to Garmin\n" in out
 
 
 def test_top_level_help_lists_both_commands(capsys):

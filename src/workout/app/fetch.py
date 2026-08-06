@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 def run_fetch(
     session: GarminSession, config: Config, workout_ids: list[str] | None = None
 ) -> ExitCode:
-    ids = workout_ids or [w.garmin_workout_id for w in config]
+    # A workout Garmin does not hold yet has no definition to download, so it
+    # is simply not among the ids rather than a failure to report.
+    ids = workout_ids or [w.garmin_workout_id for w in config if w.garmin_workout_id]
     failed = False
     for workout_id in ids:
         try:

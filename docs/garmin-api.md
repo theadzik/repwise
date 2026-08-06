@@ -11,6 +11,8 @@ is where the fix goes.
 - [Weight units](#weight-units)
 - [Fields relied on](#fields-relied-on)
 - [Sets are repeat groups](#sets-are-repeat-groups)
+- [Creating a workout](#creating-a-workout)
+- [Step order is a field, not a position](#step-order-is-a-field-not-a-position)
 - [Names drift between payloads](#names-drift-between-payloads)
 - [Device messages](#device-messages)
 - [The workout list endpoint](#the-workout-list-endpoint)
@@ -104,7 +106,87 @@ all rather than as the number stored beside it.
 
 Note which rest that is. The step **inside** the repeat group is the rest
 between sets; Connect also emits a `lap.button` rest **after** each group,
-which is the pause between exercises and is not this tool's business.
+which is the pause between exercises.
+
+## Creating a workout
+
+`POST /workout-service/workout` creates one and returns it with a server-issued
+`workoutId`. That is `upload_workout()` in `garminconnect`; the PUT that
+replaces an existing workout is `update_workout()`.
+
+**Garmin accepts far less than Connect sends.** Verified by building a
+three-exercise workout by hand, posting it, and reading it back: what comes
+back has exactly the key set a Connect-built workout has, with everything
+omitted filled in as `null`. The minimum that produced a correct workout:
+
+```json
+{
+  "workoutName": "...",
+  "sportType": {"sportTypeId": 5, "sportTypeKey": "strength_training"},
+  "workoutSegments": [{
+    "segmentOrder": 1,
+    "sportType": {"sportTypeId": 5, "sportTypeKey": "strength_training"},
+    "workoutSteps": [ ... ]
+  }]
+}
+```
+
+Per step, only these are needed - `displayOrder` inside the type objects,
+`preferredEndConditionUnit`, `strokeType`, `equipmentType` and the secondary
+target fields can all be left out:
+
+| Step | Required |
+| --- | --- |
+| Repeat group | `type: RepeatGroupDTO`, `stepOrder`, `stepType` `repeat` (id 6), `childStepId`, `numberOfIterations`, `endCondition` `iterations` (id 7) with the set count as `endConditionValue`, `smartRepeat: false`, `workoutSteps` |
+| Exercise | `type: ExecutableStepDTO`, `stepOrder`, `stepType` `interval` (id 3), `childStepId`, `endCondition` `reps` (id 10) or `time` (id 2) with `endConditionValue`, `category`, `exerciseName`, and `weightValue` + `weightUnit` when loaded |
+| Rest | as above but `stepType` `rest` (id 5), and `endCondition` `time` (id 2) with seconds, or `lap.button` (id 1) with `endConditionValue: null` |
+
+Two differences from a Connect-built workout survive the round trip, neither of
+which stopped the workout working:
+
+- `targetType` comes back `null` where Connect sets `no.target` (id 1), and
+  `targetValueTwo` `null` where Connect sets `0.0`. Cheap to send, so send them.
+- `estimatedDurationInSecs` is not computed for a posted workout. Connect shows
+  an estimate for its own; ours has none until Connect next saves it.
+
+`childStepId` on a group's children is corrected server-side to the parent
+group's value, whatever is sent. Send it correctly anyway, so that a payload
+built offline equals the one that comes back and a second run has nothing to do.
+
+### The PUT takes structural changes too
+
+`update_workout()` replaces the whole workout, and it accepts a step list that
+has been **reordered, added to and cut down** in the same request - not only
+one whose values changed. Verified by taking a three-exercise workout, dropping
+the first exercise, swapping the other two, appending a group built from
+scratch with no `stepId`, renumbering, and putting it back:
+
+- The order came back as sent, and the dropped exercise was gone.
+- The appended group was created and given ids, `stepId` not being needed to
+  add a step.
+- The **kept steps held their targets and notes**, which is what makes it safe
+  to rearrange a workout without resetting the progression stored in it.
+- What was sent equalled what came back, field for field, so a second run finds
+  nothing to do.
+
+That last point only holds because the numbering sent was the numbering Garmin
+would have chosen. Anything else round-trips into a difference, and every run
+would write again.
+
+## Step order is a field, not a position
+
+**`stepOrder` decides the sequence; the position in `workoutSteps` does not.**
+Verified by posting three exercises in one array order with `stepOrder` values
+saying the opposite: the workout came back in `stepOrder`'s order, renumbered
+to a contiguous 1..N with `childStepId` reassigned 1..N by group to match.
+
+So reordering exercises means **renumbering**, not rearranging a list. The
+numbering Garmin settles on, and therefore the one to build:
+
+| Field | Rule |
+| --- | --- |
+| `stepOrder` | Flat 1..N depth-first across the segment, counting groups and their children alike |
+| `childStepId` | 1 for the first repeat group, 2 for the second, and so on. A group's children carry its value. `null` on steps outside a group |
 
 ## Names drift between payloads
 

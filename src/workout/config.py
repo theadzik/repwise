@@ -11,13 +11,22 @@ for rather than computed from this module's location - see `search_path()`.
 from __future__ import annotations
 
 import os
+import re
+import shutil
+import tempfile
 
 import yaml
 
 from .domain.models import BODYWEIGHT, Config, ExerciseSpec, GarminSettings, Workout
 from .errors import ConfigError
 
-__all__ = ["load_config", "resolve_config", "search_path", "ConfigError"]
+__all__ = [
+    "load_config",
+    "record_workout_id",
+    "resolve_config",
+    "search_path",
+    "ConfigError",
+]
 
 CONFIG_NAME = "workouts.yaml"
 EXAMPLE_NAME = "workouts.example.yaml"
@@ -100,6 +109,97 @@ def resolve_config(explicit: str | None = None) -> str:
     raise ConfigError(f"No {CONFIG_NAME} found. Looked in:\n{where}\n{hint}")
 
 
+def _workout_entry(lines: list[str], key: str) -> int | None:
+    """Which line starts the workout with this key, if any."""
+    for position, line in enumerate(lines):
+        found = re.match(r"^\s*-\s+key:\s*(.+?)\s*$", line)
+        if found and found.group(1).strip("'\"") == key:
+            return position
+    return None
+
+
+def record_workout_id(path: str, key: str, workout_id: str) -> None:
+    """Write a workout id that Garmin has just issued back into the config.
+
+    Garmin decides the id, so the file has to learn it from a run rather than
+    the other way round. It is the only thing this tool ever writes to
+    workouts.yaml.
+
+    Edited as text rather than by re-dumping the parsed document, because that
+    file is written by hand: it holds comments, blank lines, quoting choices
+    and an order of its own, all of which a round trip through a YAML dumper
+    would quietly rearrange. One line is inserted or replaced and nothing else
+    is touched.
+    """
+    try:
+        with open(path) as fh:
+            lines = fh.readlines()
+    except OSError as exc:
+        raise ConfigError(f"{path} could not be read: {exc}") from exc
+
+    start = _workout_entry(lines, key)
+    if start is None:
+        # Refused rather than guessed at: writing the id into the wrong entry
+        # would point two workouts at one Garmin workout.
+        raise ConfigError(f"{path}: cannot find the workout entry for {key!r}")
+
+    dash = len(lines[start]) - len(lines[start].lstrip())
+    # Where the keys of this entry sit: under `key:`, not under the dash.
+    inside = dash + lines[start].lstrip().index("key:")
+    written = f'{" " * inside}garmin_workout_id: "{workout_id}"\n'
+
+    end = len(lines)
+    for position in range(start + 1, len(lines)):
+        stripped = lines[position].strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if len(lines[position]) - len(lines[position].lstrip()) <= dash:
+            end = position
+            break
+
+    for position in range(start + 1, end):
+        if lines[position].strip().startswith("garmin_workout_id:"):
+            lines[position] = written
+            break
+    else:
+        lines.insert(start + 1, written)
+
+    _replace(path, lines)
+
+
+def _replace(path: str, lines: list[str]) -> None:
+    """Put these lines in the file, or leave the file exactly as it was.
+
+    Written beside the original and moved onto it, rather than opening the
+    original for writing - which truncates it before a byte is written, and
+    would leave a hand-written config in pieces if the run died in between.
+
+    That matters here more than the odds suggest: the only caller writes an id
+    Garmin has just issued, so a half-written config would cost the routine and
+    the id that stops the next run creating the workout a second time.
+    """
+    directory = os.path.dirname(path) or "."
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=directory,  # the same filesystem, or the move would not be atomic
+            prefix=f".{os.path.basename(path)}.",
+            delete=False,
+        ) as fh:
+            temporary = fh.name
+            fh.writelines(lines)
+            fh.flush()
+            os.fsync(fh.fileno())  # on disk before the move, not just written
+
+        shutil.copymode(path, temporary)  # keep whatever permissions it had
+        os.replace(temporary, path)
+    except OSError as exc:
+        if temporary and os.path.exists(temporary):
+            os.unlink(temporary)
+        raise ConfigError(f"{path} could not be written: {exc}") from exc
+
+
 class Problems:
     """Everything wrong with the file, so that one run reports all of it.
 
@@ -166,6 +266,11 @@ def _build_exercise(
         # fails on the recorded problem either way.
         rep_step = 1
 
+    start_weight = float(raw.get("start_weight") or 0.0)
+    if start_weight < 0:
+        problems.add(f"{where}: {raw['name']!r} has a negative start_weight")
+        start_weight = 0.0
+
     return ExerciseSpec(
         name=raw["name"],
         garmin_name=raw["garmin_name"],
@@ -180,6 +285,7 @@ def _build_exercise(
         rest=int(raw.get("rest", 0)),
         unit=raw.get("unit", "reps"),
         video=raw.get("video"),
+        start_weight=start_weight,
     )
 
 
@@ -194,25 +300,36 @@ def _build_workout(
         return None
 
     workout_id = entry.get("garmin_workout_id")
-    if not workout_id:
-        problems.add(f"{path}: {key} is missing 'garmin_workout_id'")
 
-    # Checked even when the id is missing, so that one omission at the top of
-    # a workout does not hide every problem inside it.
     exercises = []
     for raw in entry.get("exercises") or []:
         spec = _build_exercise(raw, steps, f"{path}:{key}", problems)
         if spec is not None:
             exercises.append(spec)
 
-    if not workout_id:
+    # No id means "Garmin does not have this one yet", which is a workout to
+    # create rather than a mistake - but only if there is something to create.
+    if not workout_id and not exercises:
+        problems.add(
+            f"{path}: {key} has no 'garmin_workout_id' and no exercises, "
+            f"so there is nothing to find and nothing to create"
+        )
         return None
+
+    # Not `or 0`: an explicit 0 is a rest of no length, which is a different
+    # thing from having no opinion about the rest between exercises.
+    declared = entry.get("rest_between_exercises")
+    rest_between = None if declared is None else int(declared)
+    if rest_between is not None and rest_between < 0:
+        problems.add(f"{path}: {key} has a negative rest_between_exercises")
+        rest_between = None
 
     return Workout(
         key=key,
-        garmin_workout_id=str(workout_id),
+        garmin_workout_id=str(workout_id) if workout_id else None,
         activity_prefixes=[p.lower() for p in entry.get("activity_prefixes") or []],
         exercises=exercises,
+        rest_between=rest_between,
     )
 
 
@@ -294,7 +411,7 @@ def load_config(path: str | None = None) -> Config:
     if not workouts and not problems:
         problems.add(f"{path}: no workouts defined")
 
-    config = Config(workouts=workouts, garmin=garmin)
+    config = Config(workouts=workouts, garmin=garmin, path=path)
     _check_shared(config, path, problems)
 
     problems.raise_any()

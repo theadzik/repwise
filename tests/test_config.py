@@ -1,12 +1,18 @@
 """Loading and validating workouts.yaml."""
 
+import os
 import re
 
 import pytest
 from builders import EXAMPLE_CONFIG, FIXTURE
 
 from workout import config as config_module
-from workout.config import ConfigError, load_config, resolve_config
+from workout.config import (
+    ConfigError,
+    load_config,
+    record_workout_id,
+    resolve_config,
+)
 
 SHARED = """
 settings:
@@ -53,6 +59,150 @@ def test_loads_fixture(write_config):
 
     assert plank.bodyweight and plank.time_based
     assert plank.weight_step == 0.0
+
+
+def test_the_config_remembers_where_it_was_read_from(write_config):
+    """So that a workout id Garmin issues can be written back to that file."""
+    path = write_config(FIXTURE)
+    assert load_config(path).path == path
+
+
+def test_rest_between_exercises_is_read_per_workout(write_config):
+    text = FIXTURE.replace(
+        '    garmin_workout_id: "123"\n',
+        '    garmin_workout_id: "123"\n    rest_between_exercises: 45\n',
+    )
+    assert load_config(write_config(text))["Workout A"].rest_between == 45
+
+
+def test_no_rest_between_exercises_is_no_opinion(write_config):
+    """Absent is not zero: it means leave whatever Garmin already prescribes."""
+    assert load_config(write_config(FIXTURE))["Workout A"].rest_between is None
+
+
+def test_a_negative_rest_between_exercises_is_rejected(write_config):
+    text = FIXTURE.replace(
+        '    garmin_workout_id: "123"\n',
+        '    garmin_workout_id: "123"\n    rest_between_exercises: -30\n',
+    )
+    with pytest.raises(ConfigError, match="negative rest_between_exercises"):
+        load_config(write_config(text))
+
+
+def test_start_weight_defaults_to_nothing_on_the_bar(write_config):
+    config = load_config(write_config(FIXTURE))
+    assert config["Workout A"].exercises[0].start_weight == 0.0
+
+
+def test_start_weight_is_read_per_exercise(write_config):
+    text = FIXTURE.replace(
+        "        sets: 4\n", "        sets: 4\n        start_weight: 40\n"
+    )
+    config = load_config(write_config(text))
+    assert config["Workout A"].exercises[0].start_weight == 40.0
+
+
+# --- recording an id Garmin issued ----------------------------------------
+
+
+COMMENTED = """\
+# My routine. Edit the numbers, not the ids.
+settings:
+  weight_steps:
+    barbell: 5.0
+
+workouts:
+  # Trained on Mondays.
+  - key: Workout A
+    activity_prefixes: ["training a"]   # whatever the watch calls it
+    exercises:
+      - name: Barbell Back Squat
+        garmin_name: BARBELL_BACK_SQUAT
+        rep_low: 6
+        rep_high: 10
+        sets: 4
+        load: barbell
+
+  - key: Workout B
+    garmin_workout_id: "222"
+    exercises:
+      - name: Barbell Deadlift
+        garmin_name: BARBELL_DEADLIFT
+        rep_low: 5
+        rep_high: 8
+        sets: 3
+        load: barbell
+"""
+
+
+def test_an_id_is_inserted_into_the_workout_that_earned_it(write_config):
+    path = write_config(COMMENTED)
+
+    record_workout_id(path, "Workout A", "1234567")
+
+    assert load_config(path)["Workout A"].garmin_workout_id == "1234567"
+
+
+def test_recording_an_id_changes_nothing_else_in_the_file(write_config):
+    """The file is written by hand: comments, spacing and quoting are the
+    user's, and a YAML round trip would quietly rearrange all three."""
+    path = write_config(COMMENTED)
+
+    record_workout_id(path, "Workout A", "1234567")
+
+    with open(path) as fh:
+        after = fh.read()
+    assert after == COMMENTED.replace(
+        "  - key: Workout A\n",
+        '  - key: Workout A\n    garmin_workout_id: "1234567"\n',
+    )
+
+
+def test_an_existing_id_is_replaced_rather_than_doubled(write_config):
+    path = write_config(COMMENTED)
+
+    record_workout_id(path, "Workout B", "999")
+
+    with open(path) as fh:
+        after = fh.read()
+    assert after.count("garmin_workout_id") == 1
+    assert load_config(path)["Workout B"].garmin_workout_id == "999"
+
+
+def test_recording_refuses_a_workout_it_cannot_find(write_config):
+    """Guessing would point two workouts at one Garmin workout."""
+    path = write_config(COMMENTED)
+
+    with pytest.raises(ConfigError, match="cannot find the workout entry"):
+        record_workout_id(path, "Workout C", "1234567")
+
+
+def test_a_write_that_fails_leaves_the_config_exactly_as_it_was(
+    write_config, monkeypatch
+):
+    """Opening the file for writing would truncate it first. A run that died
+    in between would cost the routine, and the id that stops the workout being
+    created all over again."""
+    path = write_config(COMMENTED)
+
+    def full(*args, **kwargs):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(config_module.tempfile, "NamedTemporaryFile", full)
+
+    with pytest.raises(ConfigError, match="could not be written"):
+        record_workout_id(path, "Workout A", "1234567")
+
+    with open(path) as fh:
+        assert fh.read() == COMMENTED, "not a byte of it lost"
+
+
+def test_recording_leaves_no_working_file_behind(write_config, tmp_path):
+    path = write_config(COMMENTED)
+
+    record_workout_id(path, "Workout A", "1234567")
+
+    assert [each.name for each in tmp_path.iterdir()] == [os.path.basename(path)]
 
 
 def test_garmin_settings_have_defaults(write_config):
@@ -152,18 +302,32 @@ def test_a_single_problem_is_reported_on_its_own(write_config):
     assert "problems" not in str(caught.value)
 
 
-def test_a_workout_missing_its_id_still_reports_its_exercises(write_config):
+def test_a_workout_with_no_id_is_one_to_create_rather_than_a_mistake(write_config):
+    """A config may name a workout Garmin has not been told about yet."""
+    text = FIXTURE.replace('    garmin_workout_id: "123"\n', "")
+
+    config = load_config(write_config(text))
+
+    assert config["Workout A"].garmin_workout_id is None
+    assert config["Workout A"].exercises, "the rest of it loaded normally"
+
+
+def test_a_workout_with_no_id_still_reports_its_exercises(write_config):
     """One omission at the top should not hide everything below it."""
     bad = FIXTURE.replace('    garmin_workout_id: "123"\n', "").replace(
         "rep_low: 6", "rep_low: 12"
     )
 
-    with pytest.raises(ConfigError) as caught:
+    with pytest.raises(ConfigError, match="rep_low >= rep_high"):
         load_config(write_config(bad))
 
-    message = str(caught.value)
-    assert "garmin_workout_id" in message
-    assert "rep_low >= rep_high" in message
+
+def test_a_workout_with_neither_an_id_nor_exercises_is_a_mistake(write_config):
+    """Nothing to look up in Garmin, and nothing to build there either."""
+    text = "workouts:\n  - key: Workout A\n"
+
+    with pytest.raises(ConfigError, match="nothing to find and nothing to create"):
+        load_config(write_config(text))
 
 
 def test_an_empty_file_says_so_rather_than_listing_nothing(write_config):

@@ -12,7 +12,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .garmin.payloads import iter_exercise_blocks, step_target
+from .garmin.payloads import (
+    is_rest,
+    is_timed_rest,
+    iter_exercise_blocks,
+    step_rest,
+    step_target,
+)
 
 #: How many reps above the imported target to suggest as the top of the range.
 REP_RANGE_WIDTH = 4
@@ -57,6 +63,10 @@ class ImportedWorkout:
     garmin_workout_id: str
     activity_prefixes: list[str]
     exercises: list[ImportedExercise]
+    #: Seconds between exercises, when every gap in the workout agrees on one.
+    #: None when they differ or wait for the lap button, which the config has
+    #: no way to say other than by leaving the key out.
+    rest_between: int | None = None
 
 
 def humanise(garmin_name: str) -> str:
@@ -124,7 +134,29 @@ def describe_workout(payload: dict) -> ImportedWorkout:
         garmin_workout_id=str(payload.get("workoutId") or ""),
         activity_prefixes=[name.lower()],
         exercises=exercises,
+        rest_between=_rest_between(payload),
     )
+
+
+def _rest_between(payload: dict) -> int | None:
+    """The rest between exercises, when the whole workout agrees on one.
+
+    A single number is all the config can hold, so a workout whose gaps differ
+    - or waits for the lap button, as Garmin's own default does - imports
+    without the key rather than with a value that would change the others.
+    """
+    exercises = {id(block.outer) for block in iter_exercise_blocks(payload)}
+    segments = payload.get("workoutSegments") or [{}]
+    gaps = [
+        step
+        for step in segments[0].get("workoutSteps") or []
+        if id(step) not in exercises and is_rest(step)
+    ]
+    if not gaps or not all(is_timed_rest(step) for step in gaps):
+        return None
+
+    seconds = {step_rest(step) for step in gaps}
+    return seconds.pop() if len(seconds) == 1 else None
 
 
 # --- rendering -------------------------------------------------------------
@@ -177,11 +209,16 @@ def render_exercise(exercise: ImportedExercise) -> list[str]:
 
 def render_workout(workout: ImportedWorkout) -> list[str]:
     prefixes = ", ".join(f'"{p}"' for p in workout.activity_prefixes)
-    return [
+    lines = [
         f"  - key: {workout.key}",
         f'    garmin_workout_id: "{workout.garmin_workout_id}"',
         f"    activity_prefixes: [{prefixes}]"
         "   # TODO: how your logged activities are named",
+    ]
+    if workout.rest_between is not None:
+        lines.append(f"    rest_between_exercises: {workout.rest_between}")
+    return [
+        *lines,
         "    exercises:",
         *[line for e in workout.exercises for line in render_exercise(e)],
     ]

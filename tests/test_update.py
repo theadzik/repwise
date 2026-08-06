@@ -1,10 +1,11 @@
 """Choosing which sessions to update, and updating more than one at a time."""
 
 import logging
+import os
 from dataclasses import replace
 
 import pytest
-from builders import active, rep_step, repeat, spec
+from builders import active, rep_step, repeat, rest_step, spec
 from builders import workout as steps
 
 from workout.app.update import (
@@ -14,6 +15,7 @@ from workout.app.update import (
     pick_sessions,
     run_update,
 )
+from workout.config import ConfigError
 from workout.domain.models import Config, Workout
 from workout.errors import ActivityNotFound, ExitCode, GarminError, UsageError
 
@@ -39,15 +41,23 @@ BENCH = spec(
 class FakeSession:
     """A Garmin account: activities newest first, and workout definitions."""
 
+    #: What Garmin calls the next workout it is asked to create.
+    next_id = "555"
+
     def __init__(self, activities, workouts, sets):
         self.activities = activities
         self.workouts = workouts
         self.sets = sets
         self.fetched: list[str] = []
         self.saved: list[tuple[str, dict]] = []
+        self.created: list[dict] = []
         self.pushed: list[str] = []
         self.queue_reads = 0
         self.queue_failure: Exception | None = None
+
+    def create_workout(self, payload):
+        self.created.append(payload)
+        return self.next_id
 
     def recent_activities(self, limit=None):
         return self.activities
@@ -258,6 +268,178 @@ def test_a_shared_exercise_ends_up_at_the_most_recent_decision(account):
 def test_a_dry_run_writes_nothing(account):
     assert run(account) == ExitCode.OK
     assert account.saved == []
+
+
+# --- workouts Garmin does not hold yet -------------------------------------
+
+
+NEW_WORKOUT = """\
+workouts:
+  - key: Workout C
+    activity_prefixes: ["workout c"]
+    exercises:
+      - name: Barbell Back Squat
+        garmin_name: BARBELL_BACK_SQUAT
+        garmin_category: SQUAT
+        rep_low: 6
+        rep_high: 10
+        sets: 3
+        load: barbell
+        weight_step: 2.5
+        start_weight: 40
+"""
+
+
+@pytest.fixture
+def uncreated(write_config):
+    """A config naming one workout that Garmin has never heard of."""
+    from workout.config import load_config
+
+    return load_config(write_config(NEW_WORKOUT))
+
+
+def test_a_workout_with_no_id_is_created(account, uncreated):
+    code = run(account, uncreated, apply=True)
+
+    assert code == ExitCode.OK
+    assert len(account.created) == 1, "one create, not a save"
+    assert account.saved == []
+
+    payload = account.created[0]
+    assert payload["workoutName"] == "Workout C"
+    steps = payload["workoutSegments"][0]["workoutSteps"]
+    assert steps[0]["workoutSteps"][0]["exerciseName"] == "BARBELL_BACK_SQUAT"
+    assert steps[0]["numberOfIterations"] == 3
+    assert steps[0]["workoutSteps"][0]["endConditionValue"] == 6.0, "starts at rep_low"
+    assert steps[0]["workoutSteps"][0]["weightValue"] == 40.0, "and at start_weight"
+
+
+def test_the_id_garmin_issues_is_written_back_to_the_config(account, uncreated):
+    run(account, uncreated, apply=True)
+
+    with open(uncreated.path) as fh:
+        after = fh.read()
+    assert f'garmin_workout_id: "{account.next_id}"' in after
+    assert uncreated["Workout C"].garmin_workout_id == account.next_id, (
+        "and the run carries on with it, so a push or a sync can find it"
+    )
+
+
+def test_a_dry_run_creates_nothing_and_writes_to_no_file(account, uncreated):
+    with open(uncreated.path) as fh:
+        before = fh.read()
+
+    code = run(account, uncreated)
+
+    assert code == ExitCode.OK
+    assert account.created == []
+    with open(uncreated.path) as fh:
+        assert fh.read() == before
+
+
+def test_a_config_that_cannot_be_updated_names_the_id_it_lost(account, uncreated):
+    """The workout exists in Garmin now. Failing quietly here would mean the
+    next run built a second copy of it."""
+    os.remove(uncreated.path)
+
+    with pytest.raises(ConfigError) as caught:
+        run(account, uncreated, apply=True)
+
+    message = str(caught.value)
+    assert account.next_id in message
+    assert "will create a second copy" in message
+
+
+def test_a_created_workout_can_be_pushed_to_the_watch(account, uncreated):
+    run(account, uncreated, apply=True, push=True)
+    assert account.pushed == [account.next_id]
+
+
+# --- how the summary reads ------------------------------------------------
+
+
+def with_a_gap(account, seconds=45):
+    """Workout A as Garmin really stores one, and a config that retimes the
+    lap-button wait between its two exercises."""
+    account.workouts["111"] = steps(
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 30.0), sets=SQUAT.sets),
+        rest_step(60.0),
+        repeat(
+            rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 15, 20.0),
+            sets=CALF.sets,
+        ),
+    )
+    config = config_ab()
+    config.workouts["Workout A"] = replace(config["Workout A"], rest_between=seconds)
+    return config
+
+
+def test_the_gap_summary_counts_what_it_is_counting(account, caplog):
+    """A bare number reads as an unfinished sentence, and does not match the
+    dry run's wording for the same thing."""
+    config = with_a_gap(account)
+
+    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+        run(account, config, apply=True)
+
+    assert "Set the rest between exercises in 1 workout(s)." in caplog.text
+
+
+def test_the_dry_run_says_the_same_thing_the_other_way_round(account, caplog):
+    config = with_a_gap(account)
+
+    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+        run(account, config)
+
+    assert "the rest between exercises would change in 1 workout(s)" in caplog.text
+
+
+# --- shaping a workout no session touched ---------------------------------
+
+
+def test_a_workout_with_no_session_is_still_brought_in_line(account):
+    """A config edit should not have to wait until that workout is next
+    trained. Workout B has no activity here; its shape is applied anyway."""
+    account.activities = [an_activity(900, "Workout A")]
+    config = config_ab(b_exercises=(BENCH,))  # the calf raise is gone from B
+
+    run(account, config, apply=True)
+
+    saved = dict(account.saved)
+    assert "222" in saved, "Workout B was written without having been trained"
+    names = [
+        step["exerciseName"]
+        for step in saved["222"]["workoutSegments"][0]["workoutSteps"]
+    ]
+    assert names == ["BARBELL_BENCH_PRESS"], "the calf raise was dropped"
+
+
+def test_no_activity_at_all_still_shapes_the_workouts(account, caplog):
+    """It used to end the run. There is config-driven work to do regardless."""
+    account.activities = [an_activity(1, "Gdynia Walking")]
+    config = config_ab(a_exercises=(SQUAT,))  # the calf raise is gone from A
+
+    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+        code = run(account, config, apply=True)
+
+    assert code == ExitCode.OK
+    assert "111" in dict(account.saved)
+    assert "Shaping the workouts from the config regardless" in caplog.text
+
+
+def test_no_activity_and_nothing_to_shape_is_still_an_error(account):
+    """With neither a session nor a config change, the missing activity is the
+    only thing worth saying."""
+    account.activities = [an_activity(1, "Gdynia Walking")]
+    account.workouts["111"] = steps(
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 30.0), sets=SQUAT.sets)
+    )
+    config = Config({"Workout A": Workout("Workout A", "111", ["workout a"], [SQUAT])})
+    for group in account.workouts["111"]["workoutSegments"][0]["workoutSteps"]:
+        group["workoutSteps"][0]["description"] = SQUAT.note
+
+    with pytest.raises(ActivityNotFound):
+        run(account, config, apply=True)
 
 
 # --- rest times -----------------------------------------------------------

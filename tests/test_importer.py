@@ -1,6 +1,6 @@
 """Turning a Garmin workout into config."""
 
-from builders import payload, rep_step, repeat, rest_step
+from builders import payload, rep_step, repeat, rest_step, timed_rest
 
 from workout.config import load_config
 from workout.importer import (
@@ -88,6 +88,26 @@ def test_steps_without_a_target_are_skipped():
     }
     workout = describe_workout(payload(SQUAT, repeat(stray)))
     assert [e.garmin_name for e in workout.exercises] == ["BARBELL_BACK_SQUAT"]
+
+
+def test_a_consistent_gap_between_exercises_is_imported():
+    """So a round trip keeps what it found rather than dropping it."""
+    workout = describe_workout(payload(SQUAT, timed_rest(45.0), SQUAT))
+    assert workout.rest_between == 45
+
+
+def test_lap_button_gaps_import_as_no_setting_at_all():
+    """Garmin's own default, and what leaving the key out already means."""
+    workout = describe_workout(payload(SQUAT, rest_step(60.0), SQUAT))
+    assert workout.rest_between is None
+
+
+def test_gaps_that_disagree_import_as_no_setting_at_all():
+    """One number cannot describe them, and guessing would change the others."""
+    workout = describe_workout(
+        payload(SQUAT, timed_rest(45.0), SQUAT, timed_rest(90.0), SQUAT)
+    )
+    assert workout.rest_between is None
 
 
 # --- rendering ------------------------------------------------------------

@@ -69,9 +69,25 @@ Each exercise also gets a one-line note on its Garmin step, such as
 `6-10 reps | +5 kg`, so the watch shows what you are working towards and not
 just today's target. Notes you wrote yourself are left alone.
 
-`workouts.yaml` drives the programming, not only the progression: change an
-exercise's `rest` there and the next run writes it to the Garmin workout, so
-the watch counts down the new interval.
+## Your config is the workout
+
+`workouts.yaml` decides what a workout **is**; Garmin keeps track of where each
+exercise has **got to**. Edit the file and the next run brings Garmin into
+line:
+
+- **Write a workout that does not exist yet.** Leave `garmin_workout_id` out
+  and it is built in Garmin, then the id is written back into your file.
+- **Reorder the exercises.** The order in the file is the order on the watch.
+  Add one and it is added; delete one and it is deleted.
+- **Set the rests and the sets.** Including the rest *between* exercises, which
+  Garmin leaves as a wait for the lap button until you ask for a time.
+
+An exercise that moves keeps everything it had, target included, because the
+step itself is moved rather than rebuilt. That is the difference between
+reordering your workout and quietly restarting your progression.
+
+Nothing reaches Garmin without `--apply`, and a dry run prints every addition,
+removal and move first.
 
 It also covers timed holds like planks, exercises the watch counts per side, and
 keeping an exercise in sync when it appears in more than one workout.
@@ -81,8 +97,8 @@ keeping an exercise in sync when it appears in more than one workout.
 
 | Command | What it does |
 | --- | --- |
-| `workout update` | Advance targets from the latest session of each workout. Dry run by default |
-| `workout update --apply --push` | Write the new targets and send them to your watch |
+| `workout update` | Advance targets from the latest session, and bring every workout in line with the config. Dry run by default |
+| `workout update --apply --push` | Write all of that to Garmin and send it to your watch |
 | `workout list` | Show your Garmin workouts and their ids |
 | `workout import` | Build a `workouts.yaml` from your Garmin workouts |
 | `workout check` | Report where your config and Garmin disagree |
@@ -93,10 +109,14 @@ each are in [Commands](docs/commands.md).
 
 ## Your routine
 
-Your routine lives in `workouts.yaml`: the exercises, rep ranges, set counts,
-and which Garmin workout each belongs to. Generate it with `workout import`, or
-copy [workouts.example.yaml](workouts.example.yaml) - a complete working A/B
-full body split, annotated field by field.
+Your routine lives in `workouts.yaml`: the exercises, their order, rep ranges,
+set counts, rests, and which Garmin workout each belongs to. Generate it with
+`workout import`, or copy [workouts.example.yaml](workouts.example.yaml) - a
+complete working A/B full body split, annotated field by field.
+
+It is the source of truth rather than a copy of one: `update` writes what it
+says to Garmin, and the only thing ever written back into it is an id Garmin
+issues for a workout it has just created.
 
 That file is gitignored, so your routine and Garmin ids stay out of version
 control. Every field is described in [Configuration](docs/configuration.md).

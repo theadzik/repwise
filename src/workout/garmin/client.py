@@ -124,6 +124,21 @@ class GarminSession:
 
     # --- writes ---
 
+    @_reporting("create the workout")
+    def create_workout(self, payload: dict[str, Any]) -> str:
+        """Add a workout to the account, and return the id Garmin issued it.
+
+        The id is the point of the call: it is the one thing about a workout
+        this tool cannot decide for itself, and everything afterwards - writing
+        to the workout, sending it to the watch, recognising it next run - is
+        addressed by it.
+        """
+        created = self._api.upload_workout(payload) or {}
+        workout_id = created.get("workoutId")
+        if not workout_id:
+            raise GarminError("Garmin accepted the workout but returned no id for it.")
+        return str(workout_id)
+
     @_reporting("save the workout")
     def save_workout(self, workout_id: str, payload: dict[str, Any]) -> Any:
         """Replace a workout definition, keeping its id and any schedules."""

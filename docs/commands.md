@@ -26,8 +26,30 @@ stderr, so they stay visible when they do.
 
 ## update
 
-The main command. Reads the latest logged session of every workout in your
-config and advances the targets in each.
+The main command, and two jobs in one. It brings every workout in your config
+into line with what the file says, and it advances the targets of the ones you
+have trained.
+
+### What the config drives
+
+`workouts.yaml` decides what a workout **is**; Garmin keeps track of where each
+exercise has **got to**. Everything in the first column is applied on every
+run, trained or not:
+
+| From the config | From your sessions |
+| --- | --- |
+| Which workouts exist, creating any Garmin lacks | The target: reps and weight |
+| Which exercises each holds, and in what order | |
+| `sets`, `rest`, and `rest_between_exercises` | |
+| The note on each step | |
+
+That split is why an exercise Garmin already holds is **moved rather than
+rebuilt** when you reorder it: the target lives in the step and nowhere else,
+so a rebuilt step would quietly restart your progression.
+
+A config edit therefore reaches Garmin on the next run, without waiting for
+that workout to come round again. A run that matches no activity at all still
+does the first column, and says so.
 
 ```bash
 workout update                    # dry run, shows changes
@@ -40,12 +62,13 @@ workout update --activity 1234    # use a specific activity
 | Flag | Effect |
 | --- | --- |
 | *(none)* | Dry run. Prints the plan and writes nothing |
-| `--apply` | Write the new targets to Garmin Connect |
+| `--apply` | Write to Garmin Connect: new targets, and any workout the config creates or reshapes |
 | `--push` | Queue the written workouts for your devices. Requires `--apply` |
 | `--activity ID` | Update from this one activity instead of scanning |
 | `--dump` | Also save the raw activity and workout JSON |
 
-**Dry run is the default.** Nothing is sent to Garmin without `--apply`.
+**Dry run is the default.** Nothing is sent to Garmin without `--apply`, and
+nothing is written back to `workouts.yaml` either.
 
 ### Choosing the activities
 
@@ -56,8 +79,17 @@ matched case-insensitively, so `["workout a", "trening a"]` catches either
 spelling.
 
 **Train A, then B, then run once and both advance.** You do not have to run the
-tool between sessions. A workout with no matching activity in that window is
-simply left out, and only a run that matches nothing at all is an error.
+tool between sessions. A workout with no matching activity in that window keeps
+whatever targets it has, and is still brought in line with the config.
+
+A run that matches no activity at all is only an error when there was nothing
+to do anyway. If the config asks for anything, the run says the activity was
+missing and gets on with the rest:
+
+```text
+No recent activity matching ['workout a', 'workout b']. Pass --activity <id> to
+choose one explicitly. Shaping the workouts from the config regardless.
+```
 
 Sessions are replayed oldest first, so the result is the same as having run the
 tool after each of them. That also settles [shared
@@ -93,29 +125,110 @@ Updating: Workout A -> workout 222222222
 Dry run: 4 step(s) would change. Re-run with --apply.
 ```
 
-One block per workout that had a session, oldest first.
+One block per workout that had a session, oldest first, each headed by the
+activity it learned from. A workout the config changed but no session touched
+gets a block of its own, headed `Shaping:` or `Creating:` instead.
 
 | Marker | Meaning |
 | --- | --- |
 | `*` | This step would change |
 | *(space)* | Unchanged, with the reason why |
 | `!` | Warning: the exercise was skipped, and why |
+| `+` `-` `~` | An exercise added, removed, or moved. See [ordering](#ordering-adding-and-removing) |
 
 Targets print in the unit the exercise is measured in - `6 x 65 kg` for loaded
 work, `11 reps` for bodyweight, `47 s` for timed holds.
 
-The closing line also counts rests and notes when any were rewritten:
+The closing line counts everything else the run would touch:
 
 ```text
-Dry run: 8 step(s) would change, 1 rest time(s) would change, 17 note(s) would be refreshed. Re-run with --apply.
+Dry run: 8 step(s) would change, 2 exercise(s) would be added, removed or moved, 1 set count(s) would change, 1 rest time(s) would change, 17 note(s) would be refreshed. Re-run with --apply.
 ```
 
-See [rest between sets](#rest-between-sets) and [step notes](#step-notes).
-Which exercises the notes were is behind `-v`, since notes only move when you
-edit `workouts.yaml`.
+Each clause appears only when it applies. See [ordering, adding and
+removing](#ordering-adding-and-removing), [rest between
+sets](#rest-between-sets) and [step notes](#step-notes). Which exercises the
+notes were is behind `-v`, since notes only move when you edit
+`workouts.yaml`.
 
 An "Also in ..." section appears when a target that moved also exists in another
 workout. See [shared exercises](progression.md#shared-exercises).
+
+### Creating a workout
+
+A config entry with no `garmin_workout_id` is one Garmin has not been told
+about. `update --apply` builds it, and writes the id it is given back into
+`workouts.yaml`:
+
+```text
+Creating: Workout C
+
++ Front Squat                              new at position 1, 4 x 6 x 40 kg
++ Romanian Deadlift                        new at position 2, 3 x 8 x 60 kg
+
+Created Workout C (workout 1234567890)
+Recorded its id in /home/you/workouts.yaml
+```
+
+The workout takes its Garmin name from `key`, every exercise starts at
+`rep_low` and its `start_weight`, and progression takes over from the first
+session you log against it. A dry run prints the same plan and creates nothing.
+
+**Only one line of your config changes** - the one carrying the new id.
+Comments, blank lines, quoting and ordering are left exactly as you wrote them,
+because the file is edited as text rather than re-dumped from a parsed
+document.
+
+If the id cannot be written back - the file is read-only, say - the run stops
+and says which id it could not record. The workout exists in Garmin by then,
+and a run that shrugged that off would build a second copy of it next time.
+
+### Ordering, adding and removing
+
+The order of `exercises` in the config is the order of the workout. Reordering,
+adding and removing all show up under their own markers:
+
+```text
++ Front Squat                              new at position 4, 3 x 8 x 20 kg
+- Leg Curl                                 removed: no longer in workouts.yaml
+~ Plank                                    moved to position 1
+```
+
+| Marker | Meaning |
+| --- | --- |
+| `+` | The config names an exercise Garmin does not have, so it is built |
+| `-` | Garmin has one the config no longer names, so it is dropped |
+| `~` | It is still there, in a different place |
+
+**An exercise moved keeps everything it had** - its target, its sets, its rest
+and its notes travel with it, because the step itself is moved rather than
+rebuilt.
+
+**An exercise removed loses its target for good.** There is nowhere else that
+number is stored. The dry run lists every removal before anything is written,
+which is the moment to check that a `-` line is a decision and not a typo in a
+`garmin_name`.
+
+Only genuine moves are reported. Adding an exercise at the top shifts the
+position of everything under it without any of that being a move, so those
+lines do not appear.
+
+### Rest between exercises
+
+Garmin separates exercises with a wait for the lap button. Set
+`rest_between_exercises` on a workout and each of those becomes a countdown:
+
+```text
+* Between exercises                    lap button  ->  30 s rest     (8 gap(s), from workouts.yaml)
+```
+
+One line for the workout, however many gaps it has, because the config says it
+once. Leave the key out and Garmin's own steps are left alone, whether they
+wait for the button or were given a time in Connect.
+
+`workout import` fills the key in when every gap in a workout agrees on one
+fixed time, and leaves it out otherwise - one number cannot describe gaps that
+differ, and guessing would change the others.
 
 ### Rest between sets
 
@@ -252,9 +365,11 @@ checking:
 | `rep_high` | A suggestion: `rep_low` plus a few. **Check it** |
 | `load` | Guessed from the exercise name (`BARBELL_*`, `DUMBBELL_*`, `CABLE_*`), else `machine` if loaded and `bodyweight` if not |
 
-`rep_step`, `weight_step` and `video` have no Garmin equivalent at all and are
-left to you. Everything else - `sets`, `rest`, `unit`, `garmin_name`,
-`garmin_category`, `garmin_workout_id` - is read straight from the payload.
+`rep_step`, `weight_step`, `start_weight` and `video` have no Garmin equivalent
+at all and are left to you. Everything else - `sets`, `rest`, `unit`,
+`garmin_name`, `garmin_category`, `garmin_workout_id` - is read straight from
+the payload, as is `rest_between_exercises` when every gap in the workout
+agrees on one fixed time.
 
 Garmin's API has no server-side name search, so `--name` filters locally.
 
@@ -268,9 +383,9 @@ Compares your config against the Garmin workouts and reports where they
 disagree: an exercise renamed in the Garmin app, a set count or rest time
 changed, an exercise present in one but not the other.
 
-Worth running occasionally, because a wrong `garmin_name` does not fail loudly -
-matching falls back to `garmin_category`, so the run keeps working until the
-fallback stops working too:
+**Worth running before an `update --apply` you are unsure of**, because a wrong
+`garmin_name` does not fail loudly - matching falls back to `garmin_category`,
+so the run keeps working until the fallback stops working too:
 
 ```text
 Workout A (111111111)
@@ -279,10 +394,16 @@ Workout A (111111111)
      name is wrong
 ```
 
-A rest that disagrees is only a note, because it is not drift you have to act
-on: `update --apply` sets it from the config on the next run. The exception is
-an exercise whose Garmin rest waits for the lap button, which nothing can
-retime for you - also a note, since the workout still runs:
+That one matters more than it used to. An exercise the config does not name is
+now removed rather than warned about, so a `garmin_name` with no category to
+bridge it would have `update` drop the exercise and build a new one beside it.
+A workout with no `garmin_workout_id` yet is reported as "not in Garmin yet"
+rather than checked, there being nothing to compare it against.
+
+A set count or rest time that disagrees is only a note, because it is not drift
+you have to act on: `update --apply` sets both from the config on the next run.
+The exception is an exercise whose Garmin rest waits for the lap button, which
+nothing can retime for you - also a note, since the workout still runs:
 
 ```text
    Barbell Back Squat: rest 150s in config, but Garmin waits for the lap

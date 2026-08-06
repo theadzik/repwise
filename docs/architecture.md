@@ -25,7 +25,8 @@ src/workout/
     cli/
         parser.py          what the command line accepts, and its help
         __init__.py        main(): parse, connect, dispatch, map failures
-    config.py              workouts.yaml -> models, with validation
+    config.py              workouts.yaml -> models, with validation, and the
+                           one write back to it: an id Garmin has just issued
     planner.py             match steps to exercises, decide the changes
     importer.py            Garmin workout -> config YAML
     checker.py             compare config against Garmin
@@ -33,7 +34,8 @@ src/workout/
     log.py                 which stream a message lands on, and its level
     garmin/
         client.py          authentication and the Garmin session
-        payloads.py        Garmin's JSON <-> our types
+        payloads.py        Garmin's JSON <-> our types, and building it from
+                           nothing for a workout Garmin does not have yet
 tests/
     builders.py            the payloads and specs every test builds from
     conftest.py            fixtures
@@ -109,10 +111,17 @@ Four boundaries carry the weight:
   names and categories. That is what makes the rules testable without a
   network.
 - **`garmin/payloads.py` is the only module that knows Garmin's schema.** If
-  Garmin changes their JSON, everything to fix is in that one file.
+  Garmin changes their JSON, everything to fix is in that one file. It has two
+  halves: reading and editing what Garmin holds, and building the same shapes
+  from nothing for a workout it does not. Both only ever write what they are
+  told to; whether a change is worth making is the planner's judgement.
 - **Only `planner.py` mutates a workout payload, and it performs no I/O.** A
   caller can build a plan and throw it away, which is exactly what a dry run
   does - so a dry run cannot accidentally write.
+- **`config.py` is the only module that writes to `workouts.yaml`,** and the
+  only thing it ever writes is a workout id Garmin has just issued. That edit
+  is made on the file's text rather than by re-dumping a parsed document, so a
+  hand-written config keeps its comments, spacing and ordering.
 
 Everything the application talks to Garmin through is `GarminSession` in
 `garmin/client.py`, so the `garminconnect` dependency stays in one place.
@@ -141,6 +150,10 @@ flowchart TD
     ACT["Garmin activity"] -->|performed_sets| PERF["PerformedSet list"]
     WKT["Garmin workout"] -->|step_target| CUR["current Target"]
 
+    SPEC --> SHAPE{{"_reconcile()"}}
+    WKT --> SHAPE
+    SHAPE -->|"new_group, set_exercise_steps, renumber"| MUT
+
     SPEC --> RULES{{"next_target()"}}
     PERF --> RULES
     CUR --> RULES
@@ -148,6 +161,8 @@ flowchart TD
     RULES --> NEW["new Target"]
     NEW -->|apply_target| MUT["mutated workout payload"]
     MUT -->|"save_workout, when applying"| OUT[("Garmin Connect")]
+    MUT -->|"create_workout, when it is new"| OUT
+    OUT -->|"the id it issues"| BACK["record_workout_id"] --> YAML
 ```
 
 An `update` run in order:
@@ -156,15 +171,25 @@ An `update` run in order:
 2. Authenticate, reusing cached tokens if present.
 3. For every workout, find the latest activity whose name starts with one of
    its `activity_prefixes`. With `--activity`, take just that one instead.
-4. Order those sessions oldest first, so replaying them matches what running
-   the tool after each would have done.
-5. For each in turn, fetch the activity's exercise sets and the Garmin workout
-   definition, match every step to an exercise, and compute the next target.
-6. Propagate any target that moved into other workouts sharing that exercise.
-7. Print the plan. With `--apply`, PUT the mutated workouts back.
+4. Shape every workout no session touched: reconcile its exercises against the
+   config, building a whole workout from scratch when Garmin has none.
+5. Order the sessions oldest first, so replaying them matches what running the
+   tool after each would have done.
+6. For each in turn, fetch the activity's exercise sets and the Garmin workout
+   definition, reconcile it the same way, and compute the next target.
+7. Propagate any target that moved into other workouts sharing that exercise.
+8. Print the plan. With `--apply`, PUT the mutated workouts back - or POST the
+   ones Garmin does not have, and record the ids it issues.
 
 A workout definition is fetched at most once per run and mutated in place, so
-its own session and a sync from a later one both survive a single write.
+its own session and a sync from a later one both survive a single write. Every
+workout is reconciled exactly once, by whichever of steps 4 and 6 reaches it.
+
+**Reconciling reuses steps rather than rebuilding them.** A step Garmin already
+holds is moved into place as it is, because the current target lives in that
+step and nowhere else: rebuilding it would silently restart the progression.
+That, and Garmin sorting by `stepOrder` rather than by array position, is why
+`renumber()` is the whole of how order is expressed.
 
 ## Exercise matching
 

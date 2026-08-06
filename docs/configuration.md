@@ -3,6 +3,13 @@
 `workouts.yaml` is the single source of truth: the routine, the Garmin workout
 ids, and every setting. Nothing is configured anywhere else.
 
+**The file drives the workout, not the other way round.** `update` builds a
+workout Garmin does not have, orders the exercises the way the file does, adds
+and removes them to match, and writes the sets and rests it declares. What it
+does not decide is where each exercise has got to: the target lives in Garmin,
+which is what a session moves. See [what the config
+drives](commands.md#what-the-config-drives).
+
 Start from [workouts.example.yaml](../workouts.example.yaml), which is a
 complete working A/B split annotated field by field, or generate one with
 [`workout import`](commands.md#import).
@@ -61,19 +68,49 @@ workouts:
   - key: Workout A
     garmin_workout_id: "111111111"
     activity_prefixes: ["workout a", "training a"]
+    rest_between_exercises: 60
     exercises:
       - ...
 ```
 
 | Field | Required | Meaning |
 | --- | :---: | --- |
-| `key` | yes | Workout name, must be unique |
-| `garmin_workout_id` | yes | Garmin workout to update; the id in the Connect URL |
+| `key` | yes | Workout name, must be unique. Also the name a created workout is given in Garmin |
+| `garmin_workout_id` | no | Garmin workout to update; the id in the Connect URL. Leave it out and the workout is created, then the id is written back here |
 | `activity_prefixes` | yes | Prefixes that match an activity name to this workout, compared case-insensitively |
+| `rest_between_exercises` | no | Seconds to rest between exercises. Left out, Garmin's own wait for the lap button is kept |
 | `exercises` | yes | List of exercises, below |
 
 List every name your sessions might carry in `activity_prefixes`, including
 other languages - an activity called "Trening A" matches `trening a`.
+
+**The order of `exercises` is the order of the workout.** Move an entry and the
+next run moves the exercise in Garmin; add or delete one and it is added or
+deleted there. See [ordering, adding and
+removing](commands.md#ordering-adding-and-removing).
+
+### A workout Garmin does not have yet
+
+Leave `garmin_workout_id` out and `update --apply` builds the workout, then
+writes the id Garmin issued back into this file:
+
+```yaml
+  - key: Workout C
+    activity_prefixes: ["workout c"]
+    exercises:
+      - name: Front Squat
+        garmin_name: FRONT_SQUAT
+        rep_low: 6
+        rep_high: 10
+        sets: 4
+        load: barbell
+        start_weight: 40      # where a created exercise begins
+```
+
+Every exercise starts at `rep_low` and its `start_weight`, and progression
+takes over from the first session. The only line that changes in the file is
+the one carrying the new id: comments, spacing and ordering are left exactly as
+you wrote them.
 
 ## Exercise fields
 
@@ -96,11 +133,12 @@ other languages - an activity called "Trening A" matches `trening a`.
 | `garmin_category` | no | none | Garmin's category, used when the name does not match |
 | `rep_low` | yes | | Bottom of the range; where each new weight starts |
 | `rep_high` | yes | | Top of the range; clearing it on every set earns a weight jump |
-| `sets` | yes | | Prescribed working sets |
+| `sets` | yes | | Working sets, written to the Garmin workout by `update --apply` |
 | `rep_step` | no | `1` | Reps added when a target is met. Use `2` for exercises counted per side |
 | `load` | yes | | `barbell`, `dumbbell`, `cable`, `machine`, or `bodyweight` |
 | `weight_step` | no | from `load` | kg added when the range is topped out, overriding the load type |
 | `rest` | no | none | Seconds between sets, written to the Garmin workout by `update --apply`. Left out, Garmin's own rest is kept |
+| `start_weight` | no | `0` | kg a **newly created** exercise starts at. Never read again once the step exists; progression owns the weight from then on |
 | `unit` | no | `reps` | `reps`, or `seconds` for timed holds like planks |
 | `video` | no | none | Reference link. Documentation only |
 
@@ -120,6 +158,11 @@ driving progression they are summarised into each Garmin step's notes field, so
 the watch shows the range you are working through. Editing any of them is
 enough to make the next run rewrite those notes. See [step
 notes](commands.md#step-notes).
+
+`sets` and `rest` are written to Garmin rather than merely described by it, so
+changing either of them here changes the workout on your watch after the next
+`update --apply`. A `rest` can only be retimed where Garmin already counts one
+down; see [rest between sets](commands.md#rest-between-sets).
 
 ## Load and weight steps
 
@@ -144,7 +187,9 @@ than half-applied. You get an error naming the file and workout for:
 - `rep_step` below 1
 - `rep_low >= rep_high`
 - a duplicate workout `key`
-- a missing `garmin_workout_id`
+- a negative `rest_between_exercises` or `start_weight`
+- a workout with neither a `garmin_workout_id` nor any exercises, which is
+  nothing to find in Garmin and nothing to build there either
 - a [shared exercise](progression.md#shared-exercises) programmed with
   different rep ranges in different workouts
 
@@ -168,9 +213,14 @@ workout update --dump   # writes dump-workout-*.json and dump-sets-*.json
 ```
 
 Each executable step in the workout dump carries `exerciseName` and `category`;
-copy those into `workouts.yaml`. Anything that does not match is reported as a
-`not in workouts.yaml` or `not found in the activity` warning rather than being
-silently skipped, and [`workout check`](commands.md#check) finds these for you.
+copy those into `workouts.yaml`. [`workout check`](commands.md#check) finds any
+that do not match, and is worth running after editing these by hand.
+
+**Get `garmin_name` wrong and the exercise is treated as two.** The config
+names one Garmin does not have, so it is built; the one Garmin has goes
+unnamed, so it is removed - and the target stored in it goes with it. The
+category bridges the two when it is filled in and unambiguous, which is the
+best reason to fill it in.
 
 Categories are not always the obvious ones. Some real examples:
 
