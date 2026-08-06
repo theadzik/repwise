@@ -66,19 +66,20 @@ Prefixes are matched case-insensitively against the start of the name, so
 
 ```text
 ! Standing Calf Raise: not found in the activity, skipped
-! STANDING_CALF_RAISE: not in workouts.yaml, skipped
 ```
 
-The first means the exercise is in your config and in the Garmin workout, but
-you did not perform it in that session. Harmless if you skipped it.
+The exercise is in your config and in the Garmin workout, but you did not
+perform it in that session. Harmless if you skipped it.
 
-The second means the Garmin workout contains an exercise your config does not
-describe. Add it, or ignore the warning if you do not want it progressed.
-
-Either can also mean the identifiers disagree. Run
+It can also mean the identifiers disagree - the exercise *was* performed, under
+a name neither `garmin_name` nor `garmin_category` matches. Run
 [`workout check`](commands.md#check), which is built for exactly this, and see
 [finding your exercise
 identifiers](configuration.md#finding-your-exercise-identifiers).
+
+An exercise in the Garmin workout that your config does not describe is no
+longer a warning: it is [removed](#an-exercise-disappeared-from-my-workout),
+because the config decides what the workout holds.
 
 Warnings never fail a run silently - a skipped exercise is always reported.
 
@@ -92,11 +93,19 @@ Usually that is what you asked for. When it is not, the cause is almost always
 a `garmin_name` that no longer matches: the config names an exercise Garmin
 does not have, so it is built, and the one Garmin has goes unnamed, so it is
 dropped. A dry run shows both, one `+` line and one `-` line for what should
-have been the same exercise.
+have been the same exercise - and warns when the two look like one movement:
 
-[`workout check`](commands.md#check) reports mismatched names before any of
-that happens, and filling in `garmin_category` bridges them when it is
-unambiguous.
+```text
+  ! Lat Pull-down: added while LAT_PULLDOWN is removed, and the two look like
+    the same exercise. If that is a renamed garmin_name rather than a swap, the
+    target on LAT_PULLDOWN is about to be lost with it
+```
+
+Two things stop it getting that far. Filling in `garmin_category` bridges a
+mistyped name whenever exactly one exercise in the workout claims that
+category, and [`workout check`](commands.md#check) reports the names it is
+rescuing, before the day a second exercise claims the same category and it
+stops being able to.
 
 ## A workout was created twice
 

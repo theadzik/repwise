@@ -121,6 +121,14 @@ class StructureChange:
     #: What a newly built step starts at. Only set when kind is "added".
     spec: ExerciseSpec | None = None
     target: Target | None = None
+    #: Garmin's category for it, kept so that an addition and a removal can be
+    #: recognised as the same movement under two names.
+    category: str | None = None
+
+    @property
+    def garmin_name(self) -> str:
+        """What Garmin calls it, whichever side of the change it came from."""
+        return self.spec.garmin_name if self.spec else self.name
 
 
 @dataclass(frozen=True)
@@ -334,6 +342,47 @@ def _refresh_gaps(workout: Workout, payload: dict[str, Any]) -> GapChange | None
     return GapChange(len(stale), was, wanted)
 
 
+def _same_movement(added: StructureChange, removed: StructureChange) -> bool:
+    """Whether these two look like one exercise under two names.
+
+    Sharing Garmin's category is the strong signal, since that is what survives
+    a rename. Failing that, one name containing the other catches the usual
+    slip - WEIGHTED_LEG_CURL against LEG_CURL, say - which is exactly the shape
+    a hand-typed `garmin_name` goes wrong in.
+    """
+    both = added.category and removed.category
+    if both and normalise(added.category or "") == normalise(removed.category or ""):
+        return True
+
+    new, old = normalise(added.garmin_name), normalise(removed.garmin_name)
+    return bool(new and old and (new in old or old in new))
+
+
+def _renames(structure: list[StructureChange]) -> list[str]:
+    """Warn where a removal and an addition are probably the same exercise.
+
+    Removing one and building another is what a mistyped `garmin_name` looks
+    like from in here, and it is not a cheap mistake: the target lives in the
+    step being dropped, and nothing else remembers it.
+
+    Reported rather than prevented, because it is also what deliberately
+    swapping one movement for a variant of it looks like, and this cannot tell
+    the two apart. The dry run is where the difference gets noticed.
+    """
+    warnings = []
+    for added in [change for change in structure if change.kind == "added"]:
+        for removed in [change for change in structure if change.kind == "removed"]:
+            if not _same_movement(added, removed):
+                continue
+            warnings.append(
+                f"{added.name}: added while {removed.name} is removed, and the "
+                f"two look like the same exercise. If that is a renamed "
+                f"garmin_name rather than a swap, the target on "
+                f"{removed.name} is about to be lost with it"
+            )
+    return warnings
+
+
 def _index_blocks(blocks: list[ExerciseBlock]) -> ExerciseIndex[ExerciseBlock]:
     """The workout's exercises, looked up the way its steps are matched."""
     index: ExerciseIndex[ExerciseBlock] = ExerciseIndex()
@@ -394,6 +443,7 @@ def _reconcile(
         or "?"
         for block in blocks
     }
+    categories = {id(block.outer): step_category(block.step) for block in blocks}
 
     outers: list[dict[str, Any]] = []
     kept: list[int] = []
@@ -408,7 +458,14 @@ def _reconcile(
             outers.append(group)
             added.add(id(group))
             structure.append(
-                StructureChange("added", spec.name, len(outers), spec, target)
+                StructureChange(
+                    "added",
+                    spec.name,
+                    len(outers),
+                    spec,
+                    target,
+                    spec.garmin_category,
+                )
             )
             continue
 
@@ -421,7 +478,13 @@ def _reconcile(
 
     for block in blocks:
         if id(block.outer) not in kept:
-            structure.append(StructureChange("removed", labels[id(block.outer)]))
+            structure.append(
+                StructureChange(
+                    "removed",
+                    labels[id(block.outer)],
+                    category=categories[id(block.outer)],
+                )
+            )
 
     at = {id(outer): position for position, outer in enumerate(outers)}
     for ident in _out_of_order(kept, was):
@@ -514,6 +577,7 @@ def plan_workout(
     added: set[int] = set()
 
     _reconcile(workout, payload, structure, added)
+    warnings.extend(_renames(structure))
     gaps = _refresh_gaps(workout, payload)
 
     for block in iter_exercise_blocks(payload):

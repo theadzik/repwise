@@ -498,6 +498,58 @@ def test_a_workout_with_no_session_behind_it_plans_no_targets():
     assert plan.notes, "but the programming still reaches the steps"
 
 
+# --- a removal that is probably a typo -------------------------------------
+#
+# Removing one exercise and building another is what a mistyped garmin_name
+# looks like from inside the planner, and the target lives in the step being
+# dropped. The warning goes where the damage would be done - in the plan you
+# are about to apply - rather than in a command you may not have run.
+
+
+def test_a_rename_caught_by_the_shared_category_is_warned_about():
+    """A category rescues a mistyped name while only one exercise claims it.
+    Add a second squat and it cannot, and the typo turns destructive."""
+    front = spec(name="Front Squat", garmin_name="FRONT_SQUAT", garmin_category="SQUAT")
+    built = payload(group_of(SQUAT, 7, 20.0), group_of(front, 8, 15.0))
+    typo = replace(SQUAT, garmin_name="BARBELL_BACK_SQUATT")
+
+    plan = plan_workout(a_workout(exercises=[typo, front]), built)
+
+    assert {c.kind for c in plan.structure} == {"added", "removed"}
+    assert any("about to be lost" in w for w in plan.warnings)
+
+
+def test_a_rename_caught_by_the_name_alone_is_warned_about():
+    """No category to bridge them, but one name contains the other."""
+    plain = replace(CALF, garmin_name="LEG_CURL", garmin_category=None)
+    weighted = replace(plain, garmin_name="WEIGHTED_LEG_CURL")
+    built = payload(group_of(plain, 12, 20.0))
+
+    plan = plan_workout(a_workout(exercises=[weighted]), built)
+
+    assert any("about to be lost" in w for w in plan.warnings)
+
+
+def test_swapping_in_a_different_movement_is_not_warned_about():
+    """Nothing links a curl to a squat, so this reads as what it is."""
+    built = payload(group_of(SQUAT, 7, 20.0))
+
+    plan = plan_workout(a_workout(exercises=[CURLS]), built)
+
+    assert {c.kind for c in plan.structure} == {"added", "removed"}
+    assert plan.warnings == []
+
+
+def test_an_exercise_merely_added_is_not_warned_about():
+    """Nothing is being removed, so nothing is at risk."""
+    built = payload(group_of(SQUAT, 7, 20.0))
+
+    plan = plan_workout(a_workout(exercises=[SQUAT, CURLS]), built)
+
+    assert [c.kind for c in plan.structure] == ["added"]
+    assert plan.warnings == []
+
+
 # --- the rest between exercises -------------------------------------------
 
 

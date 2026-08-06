@@ -209,6 +209,21 @@ number is stored. The dry run lists every removal before anything is written,
 which is the moment to check that a `-` line is a decision and not a typo in a
 `garmin_name`.
 
+A plan that removes one exercise and adds another that looks like the same
+movement says so, because that is what a mistyped `garmin_name` produces:
+
+```text
+  ! Lat Pull-down: added while LAT_PULLDOWN is removed, and the two look like
+    the same exercise. If that is a renamed garmin_name rather than a swap, the
+    target on LAT_PULLDOWN is about to be lost with it
+```
+
+It is a warning rather than a refusal, because deliberately swapping a movement
+for a variant of it looks identical from here. Matching a name and matching a
+category both have to fail before it can happen at all, so filling in
+`garmin_category` is what stops most typos ever getting this far -
+[`workout check`](#check) reports the ones it rescues.
+
 Only genuine moves are reported. Adding an exercise at the top shifts the
 position of everything under it without any of that being a move, so those
 lines do not appear.
@@ -379,9 +394,9 @@ Garmin's API has no server-side name search, so `--name` filters locally.
 workout check
 ```
 
-Compares your config against the Garmin workouts and reports where they
-disagree: an exercise renamed in the Garmin app, a set count or rest time
-changed, an exercise present in one but not the other.
+Answers one question: **can the config still name the exercises it thinks it
+is naming?** It does not tell you what `update` would change - that is what
+`update` itself prints, and anything it can fix is not drift to report here.
 
 **Worth running before an `update --apply` you are unsure of**, because a wrong
 `garmin_name` does not fail loudly - matching falls back to `garmin_category`,
@@ -394,23 +409,30 @@ Workout A (111111111)
      name is wrong
 ```
 
-That one matters more than it used to. An exercise the config does not name is
-now removed rather than warned about, so a `garmin_name` with no category to
-bridge it would have `update` drop the exercise and build a new one beside it.
+That matters more than it used to. An exercise the config does not name is now
+**removed** rather than warned about, so a `garmin_name` with nothing to bridge
+it costs you the target stored in that step:
+
+```text
+   !! Face Pull: FACE_PULL is not in the Garmin workout at all, so `update`
+      would build a new step for it and drop the one Garmin has
+```
+
+| Reported | Meaning |
+| --- | --- |
+| `!` | The name is wrong but the category rescued it. Works today, breaks the day a second exercise claims that category |
+| `!!` | Nothing in Garmin answers to it, or the category is ambiguous. `update` would drop a step and build another |
+
 A workout with no `garmin_workout_id` yet is reported as "not in Garmin yet"
 rather than checked, there being nothing to compare it against.
 
-A set count or rest time that disagrees is only a note, because it is not drift
-you have to act on: `update --apply` sets both from the config on the next run.
-The exception is an exercise whose Garmin rest waits for the lap button, which
-nothing can retime for you - also a note, since the workout still runs:
+**Everything it reports needs a hand, so any finding at all exits non-zero.**
+That is what makes it worth putting in a cron job: it goes off when the config
+is wrong, not when you have edited a rest and not yet run `update`.
 
-```text
-   Barbell Back Squat: rest 150s in config, but Garmin waits for the lap
-   button; only you can change that
-```
-
-Exits non-zero when it finds anything beyond a note, so it fits in a cron job.
+Set counts, rests, and exercises the config no longer names are all things
+`update` applies for you, so they are not findings. `update --dry-run` lists
+them, with what each would become.
 
 ## fetch
 
