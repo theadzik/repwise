@@ -7,6 +7,7 @@ import pytest
 from builders import EXAMPLE_CONFIG, FIXTURE
 
 from workout import config as config_module
+from workout import yamlio
 from workout.config import (
     ConfigError,
     load_config,
@@ -102,6 +103,20 @@ def test_start_weight_is_read_per_exercise(write_config):
     assert config["Workout A"].exercises[0].start_weight == 40.0
 
 
+def test_notes_are_free_text(write_config):
+    """Anything the user wants beside the exercise, read verbatim."""
+    text = FIXTURE.replace(
+        "        sets: 4\n",
+        "        sets: 4\n        notes: 'Bar high, sit back. youtu.be/abc'\n",
+    )
+    squat = load_config(write_config(text))["Workout A"].exercises[0]
+    assert squat.notes == "Bar high, sit back. youtu.be/abc"
+
+
+def test_notes_are_optional(write_config):
+    assert load_config(write_config(FIXTURE))["Workout A"].exercises[0].notes is None
+
+
 # --- recording an id Garmin issued ----------------------------------------
 
 
@@ -122,6 +137,7 @@ workouts:
         rep_high: 10
         sets: 4
         load: barbell
+        notes: Knees out, chest up
 
   - key: Workout B
     garmin_workout_id: "222"
@@ -143,19 +159,43 @@ def test_an_id_is_inserted_into_the_workout_that_earned_it(write_config):
     assert load_config(path)["Workout A"].garmin_workout_id == "1234567"
 
 
-def test_recording_an_id_changes_nothing_else_in_the_file(write_config):
-    """The file is written by hand: comments, spacing and quoting are the
-    user's, and a YAML round trip would quietly rearrange all three."""
+def test_recording_an_id_leaves_every_other_value_alone(write_config):
+    """The file is re-dumped, so what must survive is the programming - every
+    workout, every exercise and every number in them."""
+    path = write_config(COMMENTED)
+    before = load_config(path)
+
+    record_workout_id(path, "Workout A", "1234567")
+
+    after = load_config(path)
+    assert list(after.workouts) == list(before.workouts)
+    for key, workout in before.workouts.items():
+        assert after[key].exercises == workout.exercises
+        assert after[key].activity_prefixes == workout.activity_prefixes
+    assert after["Workout B"].garmin_workout_id == "222", "the other id is untouched"
+
+
+def test_a_recorded_id_stays_a_string(write_config):
+    """Dumped bare it would read back as an integer, and Garmin's ids are
+    long enough to be worth keeping as text."""
     path = write_config(COMMENTED)
 
     record_workout_id(path, "Workout A", "1234567")
 
     with open(path) as fh:
-        after = fh.read()
-    assert after == COMMENTED.replace(
-        "  - key: Workout A\n",
-        '  - key: Workout A\n    garmin_workout_id: "1234567"\n',
-    )
+        assert "garmin_workout_id: '1234567'" in fh.read()
+
+
+def test_a_recorded_id_is_written_under_the_key_it_belongs_to(write_config):
+    """Appended at the end of the entry it would land under the exercises,
+    nowhere near the ids the user wrote by hand."""
+    path = write_config(COMMENTED)
+
+    record_workout_id(path, "Workout A", "1234567")
+
+    with open(path) as fh:
+        lines = [line.strip() for line in fh if line.strip()]
+    assert lines[lines.index("- key: Workout A") + 1].startswith("garmin_workout_id:")
 
 
 def test_an_existing_id_is_replaced_rather_than_doubled(write_config):
@@ -167,6 +207,16 @@ def test_an_existing_id_is_replaced_rather_than_doubled(write_config):
         after = fh.read()
     assert after.count("garmin_workout_id") == 1
     assert load_config(path)["Workout B"].garmin_workout_id == "999"
+
+
+def test_the_users_own_notes_survive_a_recorded_id(write_config):
+    """The round trip writes back everything it read, free text included."""
+    path = write_config(COMMENTED)
+
+    record_workout_id(path, "Workout A", "1234567")
+
+    squat = load_config(path)["Workout A"].exercises[0]
+    assert squat.notes == "Knees out, chest up"
 
 
 def test_recording_refuses_a_workout_it_cannot_find(write_config):
@@ -188,7 +238,7 @@ def test_a_write_that_fails_leaves_the_config_exactly_as_it_was(
     def full(*args, **kwargs):
         raise OSError("No space left on device")
 
-    monkeypatch.setattr(config_module.tempfile, "NamedTemporaryFile", full)
+    monkeypatch.setattr(yamlio.tempfile, "NamedTemporaryFile", full)
 
     with pytest.raises(ConfigError, match="could not be written"):
         record_workout_id(path, "Workout A", "1234567")

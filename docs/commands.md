@@ -174,10 +174,11 @@ The workout takes its Garmin name from `key`, every exercise starts at
 `rep_low` and its `start_weight`, and progression takes over from the first
 session you log against it. A dry run prints the same plan and creates nothing.
 
-**Only one line of your config changes** - the one carrying the new id.
-Comments, blank lines, quoting and ordering are left exactly as you wrote them,
-because the file is edited as text rather than re-dumped from a parsed
-document.
+**Your config is rewritten to record it.** It is parsed, the id set under the
+workout's `key`, and the whole document dumped back: every value and every key,
+in the order you wrote them, whether or not this tool understands it. Comments
+and blank lines are not part of the document and do not survive. `notes` is,
+which is why it is there.
 
 If the id cannot be written back - the file is read-only, say - the run stops
 and says which id it could not record. The workout exists in Garmin by then,
@@ -369,7 +370,7 @@ workout import --id 111111111     # only this workout
 | `--id ID` | Only this workout id. Mutually exclusive with `--name` |
 
 **It never modifies a config in place.** Without `--force` it refuses to
-overwrite, so your comments and tuned values are safe.
+overwrite, so a config you have already tuned is safe.
 
 Garmin knows less than this tool needs, so three fields are inferred and want
 checking:
@@ -380,8 +381,13 @@ checking:
 | `rep_high` | A suggestion: `rep_low` plus a few. **Check it** |
 | `load` | Guessed from the exercise name (`BARBELL_*`, `DUMBBELL_*`, `CABLE_*`), else `machine` if loaded and `bodyweight` if not |
 
-`rep_step`, `weight_step`, `start_weight` and `video` have no Garmin equivalent
-at all and are left to you. Everything else - `sets`, `rest`, `unit`,
+Each exercise says what was guessed about it in its own `notes`, since a
+generated file is written by a YAML dumper and has nowhere to put a comment.
+Clear the `notes` once you have checked the entry, or keep your own reminders
+there.
+
+`rep_step`, `weight_step` and `start_weight` have no Garmin equivalent at all
+and are left to you. Everything else - `sets`, `rest`, `unit`,
 `garmin_name`, `garmin_category`, `garmin_workout_id` - is read straight from
 the payload, as is `rest_between_exercises` when every gap in the workout
 agrees on one fixed time.

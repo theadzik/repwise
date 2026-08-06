@@ -10,6 +10,7 @@ from typing import Any
 from ..errors import ActivityNotFound, ExitCode, UsageError
 from ..garmin.client import STRENGTH, GarminSession
 from ..importer import describe_workout, render_config
+from ..yamlio import write
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +64,7 @@ def run_import(session: GarminSession, options: ImportOptions) -> ExitCode:
             f"{options.output} already exists. Pass --force to overwrite it."
         )
 
-    with open(options.output, "w") as fh:
-        fh.write(text)
+    write(options.output, text)
 
     exercises = sum(len(w.exercises) for w in imported)
     logger.info(

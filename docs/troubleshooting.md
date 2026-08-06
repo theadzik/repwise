@@ -125,9 +125,13 @@ whose id is in the file.
 
 ## Known limitations
 
-- `video` is documentation only; it is not written back to Garmin. Rep, time
-  and weight targets, the step note, `sets`, `rest` and
-  `rest_between_exercises` all are.
+- `notes` is yours alone; it is not written back to Garmin, and not to be
+  confused with the step note the watch shows, which this tool composes from
+  the rep range and weight step. Rep, time and weight targets, that step note,
+  `sets`, `rest` and `rest_between_exercises` are all written to Garmin.
+- Recording a workout id rewrites the config file, so comments and blank lines
+  in it are lost the first time a workout is created. Values, ordering and
+  unrecognised keys all survive; put anything worth keeping in `notes`.
 - An exercise's own `rest` can only be retimed where Garmin already counts one
   down; a lap-button rest between sets is reported and left alone.
   `rest_between_exercises` does convert one, that being the point of the key -

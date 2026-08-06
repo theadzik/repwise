@@ -129,10 +129,28 @@ def test_rendered_config_is_valid_and_loadable(tmp_path):
     assert plank.time_based and plank.bodyweight
 
 
-def test_rendered_config_flags_what_was_inferred():
+def test_rendered_config_flags_what_was_inferred(tmp_path):
+    """A dumped document has nowhere to put a comment, so what had to be
+    guessed is said in the exercise's own notes."""
+    path = tmp_path / "workouts.yaml"
+    path.write_text(render_config([describe_workout(payload(SQUAT))]))
+
+    notes = load_config(str(path))["Workout A"].exercises[0].notes
+    assert "TODO: check rep_high" in notes
+    assert "TODO: load guessed from the exercise name" in notes
+
+
+def test_rendered_config_says_what_to_check_that_is_not_per_exercise():
     text = render_config([describe_workout(payload(SQUAT))])
-    assert "TODO: top of your range" in text
-    assert "TODO: guessed from the exercise name" in text
+    assert "activity_prefixes is seeded from" in text
+
+
+def test_a_rendered_workout_id_stays_a_string(tmp_path):
+    """Dumped bare it would read back as an integer."""
+    path = tmp_path / "workouts.yaml"
+    path.write_text(render_config([describe_workout(payload(SQUAT))]))
+
+    assert load_config(str(path))["Workout A"].garmin_workout_id == "987654321"
 
 
 def test_several_workouts_render_together(tmp_path):
