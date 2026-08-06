@@ -66,19 +66,20 @@ Prefixes are matched case-insensitively against the start of the name, so
 
 ```text
 ! Standing Calf Raise: not found in the activity, skipped
-! STANDING_CALF_RAISE: not in workouts.yaml, skipped
 ```
 
-The first means the exercise is in your config and in the Garmin workout, but
-you did not perform it in that session. Harmless if you skipped it.
+The exercise is in your config and in the Garmin workout, but you did not
+perform it in that session. Harmless if you skipped it.
 
-The second means the Garmin workout contains an exercise your config does not
-describe. Add it, or ignore the warning if you do not want it progressed.
-
-Either can also mean the identifiers disagree. Run
+It can also mean the identifiers disagree - the exercise *was* performed, under
+a name neither `garmin_name` nor `garmin_category` matches. Run
 [`workout check`](commands.md#check), which is built for exactly this, and see
 [finding your exercise
 identifiers](configuration.md#finding-your-exercise-identifiers).
+
+An exercise in the Garmin workout that your config does not describe is no
+longer a warning: it is [removed](#an-exercise-disappeared-from-my-workout),
+because the config decides what the workout holds.
 
 Warnings never fail a run silently - a skipped exercise is always reported.
 

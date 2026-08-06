@@ -43,43 +43,41 @@ def test_an_exercise_missing_from_garmin_is_an_error():
     assert "not in the Garmin workout" in findings[0].detail
 
 
-def test_an_exercise_missing_from_the_config_is_reported():
-    curls = repeat(rep_step("DUMBBELL_BICEPS_CURL", "CURL", 10, 8.0), sets=3)
-    findings = check_workout(configured(SQUAT_SPEC), payload(SQUAT_GROUP, curls))
-    assert len(findings) == 1
-    assert "in the Garmin workout but not in the config" in findings[0].detail
-
-
-def test_a_set_count_mismatch_is_reported():
-    """A note, not a warning: `update --apply` sets it from the config, so it
-    is drift that corrects itself rather than something to go and fix."""
-    findings = check_workout(configured(spec(sets=3, rest=120)), payload(SQUAT_GROUP))
-
-    assert "3 sets in config, 4 in Garmin" in findings[0].detail
-    assert [f.severity for f in findings] == ["note"]
-
-
-def test_a_rest_mismatch_is_only_a_note():
-    """`update` corrects it, so it should not fail a check on its own."""
-    findings = check_workout(configured(spec(sets=4, rest=90)), payload(SQUAT_GROUP))
-    assert [f.severity for f in findings] == ["note"]
-    assert "rest 90s in config, 120s in Garmin" in findings[0].detail
-    assert "update --apply will set it" in findings[0].detail
-
-
-def test_a_configured_rest_against_a_lap_button_one_is_reported():
-    """The one rest drift `update` cannot correct, so it says who must."""
-    button = repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0), sets=4)
-    button["workoutSteps"][1] = rest_step()
-    findings = check_workout(configured(SQUAT_SPEC), payload(button))
-
-    assert [f.severity for f in findings] == ["note"]
-    assert "waits for the lap button" in findings[0].detail
-
-
 def test_an_ambiguous_category_is_an_error():
     """Two exercises share the category, so it cannot disambiguate."""
     front = repeat(rep_step("FRONT_SQUAT", "SQUAT", 8, 20.0), sets=3)
     wrong = spec(garmin_name="NOT_IN_GARMIN", garmin_category="SQUAT", sets=4)
     findings = check_workout(configured(wrong), payload(SQUAT_GROUP, front))
     assert any("ambiguous" in f.detail for f in findings)
+
+
+# --- what `update` owns, and this no longer repeats ------------------------
+#
+# All of it used to be reported here, back when `update` only moved targets and
+# these really were drift. Now the config decides them and `update` applies
+# them, so repeating them would be telling the user off for not having run it.
+
+
+def test_a_set_count_the_config_will_set_is_not_a_finding():
+    findings = check_workout(configured(spec(sets=3, rest=120)), payload(SQUAT_GROUP))
+    assert findings == []
+
+
+def test_a_rest_the_config_will_set_is_not_a_finding():
+    findings = check_workout(configured(spec(sets=4, rest=90)), payload(SQUAT_GROUP))
+    assert findings == []
+
+
+def test_a_lap_button_rest_between_sets_is_not_a_finding():
+    """`update` reports this one itself, at the moment it declines to change it."""
+    button = repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0), sets=4)
+    button["workoutSteps"][1] = rest_step()
+
+    assert check_workout(configured(SQUAT_SPEC), payload(button)) == []
+
+
+def test_an_exercise_the_config_dropped_is_not_a_finding():
+    """It is a removal `update` will make and report, not a mistake."""
+    curls = repeat(rep_step("DUMBBELL_BICEPS_CURL", "CURL", 10, 8.0), sets=3)
+
+    assert check_workout(configured(SQUAT_SPEC), payload(SQUAT_GROUP, curls)) == []

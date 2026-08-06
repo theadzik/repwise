@@ -168,11 +168,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     check = sub.add_parser(
         "check",
-        help="compare your config against Garmin",
-        description="Report where workouts.yaml and the Garmin workouts "
-        "disagree: wrong exercise names, differing set counts and rest times, "
-        "and exercises present in one but not the other. Read-only, and exits "
-        "non-zero if anything worse than a note is found.",
+        help="check that your config still names the exercises Garmin holds",
+        description="Answer one question: can workouts.yaml still name the "
+        "exercises it thinks it is naming? A garmin_name that matches nothing, "
+        "or that only matches by falling back to the category, is a mistake "
+        "worth knowing about before `update` acts on it - an exercise the "
+        "config cannot name is dropped and rebuilt, which costs the target "
+        "stored in it. What `update` would change is `update`'s own business "
+        "and is not repeated here. Read-only, and exits non-zero on any "
+        "finding at all.",
     )
     add_verbose(check)
 

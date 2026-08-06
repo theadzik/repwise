@@ -24,11 +24,12 @@ from ..planner import (
 logger = logging.getLogger(__name__)
 
 #: How `check` shows a finding: the marker that survives a plain run, and the
-#: level it is logged at, so severity outlives a redirect of stdout too.
+#: level it is logged at, so severity outlives a redirect of stdout too. Both
+#: levels are things to go and fix - an error stops the exercise working at
+#: all, a warning means it works by luck - and both fail the command.
 SEVERITY = {
     "error": ("!!", logging.ERROR),
     "warning": (" !", logging.WARNING),
-    "note": ("  ", logging.INFO),
 }
 
 

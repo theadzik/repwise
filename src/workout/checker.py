@@ -1,9 +1,14 @@
-"""Compare a config against what Garmin actually holds.
+"""Is the config talking about the exercises it thinks it is?
 
-Config and Garmin drift: an exercise gets swapped in the Garmin app, a set
-count changes, or a `garmin_name` was copied from an activity rather than from
-the workout. Matching falls back to the category, so drift can go unnoticed
-until the fallback stops working too.
+One question, and not the one `update` answers. `update --dry-run` already
+says what would change and then changes it; anything it can fix is not drift to
+report. What it cannot fix is a `garmin_name` that no longer names anything, or
+names something only by luck - and since the config now drives the workout,
+that mistake is expensive: the exercise Garmin holds goes unnamed and is
+removed, taking the target stored in it, while a new step is built beside it.
+
+So this checks identity, and leaves sets, rests and the exercise list to the
+command that owns them.
 
 Pure: takes a config and payloads, returns findings.
 """
@@ -24,7 +29,11 @@ from .garmin.payloads import (
 
 @dataclass(frozen=True)
 class Finding:
-    """Something about a workout that does not line up."""
+    """Something about a workout that does not line up.
+
+    Everything reported is worth fixing by hand, which is what lets `check`
+    exit non-zero on any finding at all and mean something by it.
+    """
 
     workout: str
     detail: str
@@ -35,82 +44,46 @@ class Finding:
 
 
 def check_workout(workout: Workout, payload: dict) -> list[Finding]:
-    """Compare one configured workout against its Garmin definition."""
+    """Look for exercises the config cannot name properly."""
     findings: list[Finding] = []
 
     def note(detail: str, severity: str = "warning") -> None:
         findings.append(Finding(workout.key, detail, severity))
 
-    blocks = list(iter_exercise_blocks(payload))
     index: ExerciseIndex[ExerciseBlock] = ExerciseIndex()
-    for entry in blocks:
+    for entry in iter_exercise_blocks(payload):
         index.add(
             entry,
             name=step_exercise_name(entry.step),
             category=step_category(entry.step),
         )
 
-    seen = set()
     for spec in workout.exercises:
         # Only the name here, not the full lookup: falling back to the category
         # silently is exactly the drift this command exists to report.
-        block = index.by_name(spec.garmin_name)
-
-        if block is None:
-            candidates = index.claiming(spec.garmin_category)
-            if len(candidates) == 1:
-                block = candidates[0]
-                actual = step_exercise_name(block.step)
-                note(
-                    f"{spec.name}: config says {spec.garmin_name}, Garmin says "
-                    f"{actual}. Matched by category {spec.garmin_category}, so "
-                    f"it works, but the name is wrong"
-                )
-            elif len(candidates) > 1:
-                note(
-                    f"{spec.name}: {spec.garmin_name} not in Garmin, and "
-                    f"category {spec.garmin_category} is ambiguous there",
-                    "error",
-                )
-                continue
-            else:
-                note(
-                    f"{spec.name}: {spec.garmin_name} is not in the Garmin "
-                    f"workout at all",
-                    "error",
-                )
-                continue
-
-        seen.add(id(block))
-
-        if block.sets != spec.sets:
-            # A note rather than a warning: `update --apply` sets it from the
-            # config, so it is drift that corrects itself on the next run.
-            note(
-                f"{spec.name}: {spec.sets} sets in config, {block.sets} in "
-                f"Garmin (update --apply will set it)",
-                "note",
-            )
-        if spec.rest and block.rest is None:
-            # Nothing to correct automatically: `update` can retime a rest, but
-            # not turn a lap.button one into a countdown. A note either way,
-            # since the workout still runs.
-            note(
-                f"{spec.name}: rest {spec.rest}s in config, but Garmin waits "
-                f"for the lap button; only you can change that",
-                "note",
-            )
-        elif block.rest is not None and spec.rest and block.rest != spec.rest:
-            note(
-                f"{spec.name}: rest {spec.rest}s in config, {block.rest}s in "
-                f"Garmin (update --apply will set it)",
-                "note",
-            )
-
-    for block in blocks:
-        if id(block) in seen:
+        if index.by_name(spec.garmin_name) is not None:
             continue
-        label = step_exercise_name(block.step) or step_category(block.step)
-        note(f"{label} is in the Garmin workout but not in the config")
+
+        candidates = index.claiming(spec.garmin_category)
+        if len(candidates) == 1:
+            actual = step_exercise_name(candidates[0].step)
+            note(
+                f"{spec.name}: config says {spec.garmin_name}, Garmin says "
+                f"{actual}. Matched by category {spec.garmin_category}, so "
+                f"it works, but the name is wrong"
+            )
+        elif len(candidates) > 1:
+            note(
+                f"{spec.name}: {spec.garmin_name} not in Garmin, and "
+                f"category {spec.garmin_category} is ambiguous there",
+                "error",
+            )
+        else:
+            note(
+                f"{spec.name}: {spec.garmin_name} is not in the Garmin "
+                f"workout at all, so `update` would build a new step for it "
+                f"and drop the one Garmin has",
+                "error",
+            )
 
     return findings

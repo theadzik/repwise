@@ -44,6 +44,9 @@ def run_check(session: GarminSession, config: Config) -> ExitCode:
         logger.info("")
         findings.extend(found)
 
-    serious = [f for f in findings if f.severity != "note"]
-    logger.info(f"{len(serious)} issue(s) across {len(config.workouts)} workout(s)")
-    return ExitCode.NOTHING_USABLE if serious else ExitCode.OK
+    # Everything reported here needs a hand, so any finding at all fails the
+    # command. That is what makes it worth putting in a cron job: it goes off
+    # when the config is wrong, not when you have edited a rest and not yet
+    # run `update`.
+    logger.info(f"{len(findings)} issue(s) across {len(config.workouts)} workout(s)")
+    return ExitCode.NOTHING_USABLE if findings else ExitCode.OK
