@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import tempfile
 
 import yaml
 
@@ -162,10 +164,39 @@ def record_workout_id(path: str, key: str, workout_id: str) -> None:
     else:
         lines.insert(start + 1, written)
 
+    _replace(path, lines)
+
+
+def _replace(path: str, lines: list[str]) -> None:
+    """Put these lines in the file, or leave the file exactly as it was.
+
+    Written beside the original and moved onto it, rather than opening the
+    original for writing - which truncates it before a byte is written, and
+    would leave a hand-written config in pieces if the run died in between.
+
+    That matters here more than the odds suggest: the only caller writes an id
+    Garmin has just issued, so a half-written config would cost the routine and
+    the id that stops the next run creating the workout a second time.
+    """
+    directory = os.path.dirname(path) or "."
+    temporary = None
     try:
-        with open(path, "w") as fh:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=directory,  # the same filesystem, or the move would not be atomic
+            prefix=f".{os.path.basename(path)}.",
+            delete=False,
+        ) as fh:
+            temporary = fh.name
             fh.writelines(lines)
+            fh.flush()
+            os.fsync(fh.fileno())  # on disk before the move, not just written
+
+        shutil.copymode(path, temporary)  # keep whatever permissions it had
+        os.replace(temporary, path)
     except OSError as exc:
+        if temporary and os.path.exists(temporary):
+            os.unlink(temporary)
         raise ConfigError(f"{path} could not be written: {exc}") from exc
 
 

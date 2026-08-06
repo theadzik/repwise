@@ -1,5 +1,6 @@
 """Loading and validating workouts.yaml."""
 
+import os
 import re
 
 import pytest
@@ -174,6 +175,34 @@ def test_recording_refuses_a_workout_it_cannot_find(write_config):
 
     with pytest.raises(ConfigError, match="cannot find the workout entry"):
         record_workout_id(path, "Workout C", "1234567")
+
+
+def test_a_write_that_fails_leaves_the_config_exactly_as_it_was(
+    write_config, monkeypatch
+):
+    """Opening the file for writing would truncate it first. A run that died
+    in between would cost the routine, and the id that stops the workout being
+    created all over again."""
+    path = write_config(COMMENTED)
+
+    def full(*args, **kwargs):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(config_module.tempfile, "NamedTemporaryFile", full)
+
+    with pytest.raises(ConfigError, match="could not be written"):
+        record_workout_id(path, "Workout A", "1234567")
+
+    with open(path) as fh:
+        assert fh.read() == COMMENTED, "not a byte of it lost"
+
+
+def test_recording_leaves_no_working_file_behind(write_config, tmp_path):
+    path = write_config(COMMENTED)
+
+    record_workout_id(path, "Workout A", "1234567")
+
+    assert [each.name for each in tmp_path.iterdir()] == [os.path.basename(path)]
 
 
 def test_garmin_settings_have_defaults(write_config):
