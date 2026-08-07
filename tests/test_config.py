@@ -555,3 +555,37 @@ def test_nothing_found_suggests_import_when_there_is_no_example(nowhere):
     """An installed copy ships no example, so point at the command instead."""
     with pytest.raises(ConfigError, match="workout import -o"):
         resolve_config()
+
+
+# --- how light a load can go ----------------------------------------------
+
+
+def test_min_weights_come_from_the_load_type(write_config):
+    text = FIXTURE.replace(
+        "  weight_steps:",
+        "  min_weights:\n    barbell: 12.0\n\n  weight_steps:",
+    )
+    config = load_config(write_config(text))
+    assert config["Workout A"].exercises[0].min_weight == 12.0
+
+
+def test_an_exercise_can_set_its_own_min_weight(write_config):
+    text = FIXTURE.replace(
+        "        load: barbell", "        load: barbell\n        min_weight: 20.0"
+    )
+    config = load_config(write_config(text))
+    assert config["Workout A"].exercises[0].min_weight == 20.0
+
+
+def test_no_min_weights_at_all_means_no_floor(write_config):
+    """A config written before deloads existed keeps loading."""
+    config = load_config(write_config(FIXTURE))
+    assert config["Workout A"].exercises[0].min_weight == 0.0
+
+
+def test_a_negative_min_weight_is_rejected(write_config):
+    text = FIXTURE.replace(
+        "        load: barbell", "        load: barbell\n        min_weight: -5"
+    )
+    with pytest.raises(ConfigError, match="negative min_weight"):
+        load_config(write_config(text))

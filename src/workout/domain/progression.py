@@ -154,6 +154,108 @@ def miss_streak(spec: ExerciseSpec, history: list[Session], weight: float) -> in
     return streak
 
 
+#: How many sessions must have missed *before* this one for it to count as a
+#: stall rather than a bad day. One, so the target eases on the second miss in
+#: a row - and, because easing has to bottom out in the range before the load
+#: moves, the weight does not come off until the third. That is the shape the
+#: linear-progression programmes settled on, arrived at from the other side:
+#: they wait three failures because they have no rep range to give first.
+STALLED_AFTER = 1
+
+
+def _ladder(spec: ExerciseSpec, target: Target) -> int:
+    """Where a target sits on the ladder, so two of them can be compared.
+
+    Rungs are counted rather than measured: `lead` is a fraction of a rep
+    spread across the sets, so a plain rep count could not order `9,9,8,8`
+    against `9,8,8,8`.
+    """
+    return target.reps * spec.sets + min(target.lead, spec.sets - 1)
+
+
+def _one_rung_down(spec: ExerciseSpec, target: Target) -> Target:
+    """The target one set easier: the exact inverse of a single advance."""
+    if target.lead:
+        return Target(target.reps, target.weight, target.lead - 1)
+    return Target(target.reps - spec.rep_step, target.weight, spec.sets - 1)
+
+
+def _achieved(spec: ExerciseSpec, weight: float, reps: list[int]) -> Target:
+    """The session itself, written as the target it would have been.
+
+    The base is what every set reached and the lead is how many beat it, which
+    is the same reading `block_target` gives a workout. A set that beat it by
+    more than one step is counted once: the ladder has no rung for the rest,
+    and asking for less than was managed is the safe direction to round.
+    """
+    floor = min(reps)
+    higher = floor + spec.rep_step
+    beat = sum(1 for done in reps if done >= higher)
+    return Target(floor, weight, min(beat, spec.sets - 1))
+
+
+def _missed(spec: ExerciseSpec, current: Target, floor: int) -> str:
+    """Why a session that fell short leaves the target where it was."""
+    if current.lead:
+        asked = current.spread(spec.sets, spec.rep_step)
+        return f"missed target ({floor} on worst set vs {asked}), repeat"
+    return f"missed target ({floor}/{current.reps} on worst set), repeat"
+
+
+def _deload(
+    spec: ExerciseSpec, current: Target, weight: float, reps: list[int]
+) -> tuple[Target, str]:
+    """Give something back, having now missed the same target twice.
+
+    Reps first, load second. The rep range is what a double progression has to
+    give, and spending it is nearly free: the target eases to where the session
+    actually landed and climbs back from there. Only once the range is spent -
+    `rep_low` on every set, and still short - is the load the only thing left,
+    and then it comes off a step and the range is climbed again from the
+    bottom.
+
+    Deliberately *not* a reset to the top of the range at a lighter load. That
+    reads as the mirror of rule 3 but behaves badly: one good session at
+    `rep_high` earns the weight straight back under rule 3, returning to the
+    target that just failed, and for any exercise whose step is small next to
+    its rep range the lighter top of the range is harder than the heavier
+    bottom it replaced. Climbing from `rep_low` is what makes the lighter load
+    into an accumulation block rather than a bounce.
+    """
+    bottom = Target(spec.rep_low, weight)
+
+    if _ladder(spec, current) <= _ladder(spec, bottom):
+        stalled = f"stalled at {spec.rep_low} on every set"
+        if spec.bodyweight or spec.weight_step <= 0:
+            return current, f"{stalled}, and there is no load to take off"
+        lighter = weight - spec.weight_step
+        if lighter < spec.min_weight:
+            return (
+                current,
+                f"{stalled}, already at the {spec.min_weight:g} kg minimum",
+            )
+        return (
+            Target(spec.rep_low, lighter),
+            f"{stalled}, -{spec.weight_step:g} kg to {lighter:g} kg "
+            f"and climb the range again",
+        )
+
+    # At least one rung down, and no higher than the session managed: a near
+    # miss eases by one, and a bad miss drops straight to where you actually
+    # are rather than spending sessions crawling down to it.
+    down = _one_rung_down(spec, current)
+    did = _achieved(spec, weight, reps)
+    eased = down if _ladder(spec, down) <= _ladder(spec, did) else did
+    if _ladder(spec, eased) < _ladder(spec, bottom):
+        eased = bottom  # the range has a floor, and this is it
+
+    return (
+        eased,
+        f"missed {current.spread(spec.sets, spec.rep_step)} twice, ease to "
+        f"{eased.spread(spec.sets, spec.rep_step)}",
+    )
+
+
 def _advance(
     spec: ExerciseSpec,
     current: Target,
@@ -297,9 +399,8 @@ def next_target(
     # Rule 4: every prescribed set must meet what was asked of it to count as a
     # match. Only meaningful while the load is unchanged.
     if not rebased and not hit(spec, current, at_weight):
-        asked = current.spread(spec.sets, spec.rep_step)
-        if current.lead:
-            return current, f"missed target ({floor} on worst set vs {asked}), repeat"
-        return current, f"missed target ({floor}/{current.reps} on worst set), repeat"
+        if streak >= STALLED_AFTER:
+            return _deload(spec, current, weight, at_weight)
+        return current, _missed(spec, current, floor)
 
     return _advance(spec, current, weight, floor, streak)

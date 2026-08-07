@@ -245,6 +245,36 @@ def _logged_for(
     return logged if logged else logged_for(spec, performed)
 
 
+def _moved_on(
+    spec: ExerciseSpec, current: Target, asked: dict[str, Target] | None
+) -> bool:
+    """Whether the stored target is no longer the one this session was given.
+
+    Everything the rules decide is relative to what the session was actually
+    asked for, and until now that was taken to be whatever the workout holds
+    now. It stops being true the moment anything moves the target - above all
+    this tool's own `--apply`, after which the same activity is still the
+    latest one and would be judged a second time against the target it just
+    earned. Every set would read as short of a figure nobody was aiming at, and
+    a second miss on the record is what deloading acts on: running twice would
+    walk targets backwards.
+
+    Weights are not compared, only the reps: Garmin's record of an executed
+    workout carries no load (see docs/garmin-api.md). A weight change always
+    resets the reps with it, so it is caught anyway.
+
+    A hand edit in Connect reads the same way, and gets the same answer for the
+    same reason: the session predates the target, so it is not evidence about
+    it, and the figure typed in stands.
+    """
+    if not asked:
+        return False
+    was = asked.get(normalise(spec.garmin_name))
+    if was is None:
+        return False  # nothing recorded for it, so no reason to doubt the step
+    return (was.reps, was.lead) != (current.reps, current.lead)
+
+
 def _relay(
     layout: list[list[dict[str, Any]]], position: int, now: list[dict[str, Any]]
 ) -> bool:
@@ -647,6 +677,7 @@ def plan_workout(
     payload: dict[str, Any],
     performed: Performed | None = None,
     history: History | None = None,
+    asked: dict[str, Target] | None = None,
 ) -> Plan:
     """Bring a workout in line with the config, and advance what was trained.
 
@@ -660,6 +691,10 @@ def plan_workout(
     badly each exercise had been stalling is read. Without it every exercise is
     treated as having hit last time, which is the smooth case and the behaviour
     this tool had before granular progression existed.
+
+    `asked` is what this session itself was performed against. Without it the
+    stored target is assumed to be that, which is only true until something
+    moves it - this run's own `--apply`, most of all. See `_moved_on`.
     """
     specs = index_specs(workout.exercises)
 
@@ -707,6 +742,12 @@ def plan_workout(
         if performed is None or id(block.outer) in added:
             # Either no session to learn from, or a step this run has just
             # built, which already holds exactly what the config asks for.
+            continue
+
+        if current is not None and _moved_on(spec, current, asked):
+            # Already learned from, or overtaken by a hand edit. Either way this
+            # session has nothing left to say about a target it never saw.
+            changes.append(Change(spec, current, current, "up to date"))
             continue
 
         if current is None:

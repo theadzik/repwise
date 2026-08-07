@@ -466,12 +466,18 @@ def advance_trained(
             continue
         usable = True
 
+        # What this session was actually asked for, which is not necessarily
+        # what the workout holds now: a previous run may already have advanced
+        # it, and judging the same activity against the target it earned would
+        # read as a miss on every set.
+        asked = executed_targets(workout, session.executed_workout(activity_id))
+
         # How long each exercise had been stalling, which is what decides how
         # far a session that hit moves it. Read back from the sessions before
         # this one, and only as far as one of them is still unsettled.
         history = gather_history(session, workout, trained.earlier, performed)
 
-        plan = plan_workout(workout, payload, performed, history)
+        plan = plan_workout(workout, payload, performed, history, asked)
         report_plan(plan)
         plans.append(plan)
 

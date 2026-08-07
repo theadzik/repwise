@@ -84,6 +84,17 @@ settings:
     cable: 5.0
     machine: 5.0
 
+  # The lightest each load type can go, in kg. A deload stops here rather than
+  # prescribing a weight you have no way to make up: the smallest bar on the
+  # rack, the lightest pair of dumbbells, the top plate of a stack. Omit a load
+  # type and it has no floor. An exercise can override this with its own
+  # min_weight.
+  min_weights:
+    barbell: 12.0
+    dumbbell: 1.0
+    cable: 5.0
+    machine: 5.0
+
 workouts:
   - key: Workout A
     garmin_workout_id: "111111111"

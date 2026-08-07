@@ -5,6 +5,7 @@ expect, the answer is here.
 
 - [The five rules](#the-five-rules)
 - [Coming back from a stall](#coming-back-from-a-stall)
+- [Deloading](#deloading)
 - [Progress is judged by the weakest set](#progress-is-judged-by-the-weakest-set)
 - [Working weight](#working-weight)
 - [A load has to be earned](#a-load-has-to-be-earned)
@@ -23,7 +24,8 @@ Double progression: reps go up first, weight second.
 2. Each workout, add a rep to every set: `7-7-7`, then `8-8-8` - or to only
    some of them, when you are coming back from a stall.
 3. Once every set reaches the upper end, add weight and reset to the lower end.
-4. If you didn't match the previous result, repeat it unchanged.
+4. If you didn't match the previous result, repeat it unchanged - and if you
+   miss the same target twice, give something back.
 5. A load is only adopted once it can be carried for `rep_low`. Lift something
    other than what was prescribed and fall short of the range and the previous
    target stands.
@@ -78,6 +80,77 @@ workout Garmin keeps beside each activity - what the watch actually ran. See
 Only sessions that could still change the answer are fetched. A smoothly
 progressing exercise settles after one, and the walk stops at `sets - 1` misses
 because the advance is pinned at its minimum from there on.
+
+## Deloading
+
+Rule 4 repeats a missed target, which is right the first time: you may simply
+have had a bad day, and the same weight goes up next session on better sleep.
+It is wrong forever. **Missing the same target twice in a row is a stall**, and
+something has to give.
+
+Two things can, in this order:
+
+1. **The rep range.** The target eases to where the session actually landed -
+   at least one set easier, and no higher than what you managed. This is nearly
+   free, which is why it goes first: a double progression's rep range exists to
+   be spent, and the [granular advance](#coming-back-from-a-stall) climbs back
+   through it gently.
+2. **The load.** Only once the range is gone - `rep_low` on every set and still
+   short - does weight come off, one `weight_step`, and the range is climbed
+   again from the bottom.
+
+Because easing has to bottom out in the range before the load moves, weight
+does not come off until the third failure at the earliest. That is where
+StrongLifts and Starting Strength land too, arrived at from the other side:
+they wait three failures because they have no rep range to spend first.
+
+A worked stall, squat 6-10 x 3 sets, 2.5 kg step:
+
+| Session | Target | Performed | Next | Why |
+| --- | --- | --- | --- | --- |
+| 1 | `9` | 9,9,8 | `9` | First miss, bad day, repeat |
+| 2 | `9` | 9,9,8 | `9,9,8` | Missed twice, ease one set |
+| 3 | `9,9,8` | 9,9,8 | `9` | Hit it, levels up |
+
+And a stall that runs out of range:
+
+| Session | Target | Performed | Next | Why |
+| --- | --- | --- | --- | --- |
+| 1 | `6` x 20 | 5,5,5 | `6` x 20 | First miss, repeat |
+| 2 | `6` x 20 | 5,5,5 | `6` x 17.5 | Nothing left in the range, -2.5 kg |
+
+A bad miss skips the crawl: four reps short of a target of 10 eases straight to
+where you are rather than spending four sessions stepping down to it. It never
+eases below `rep_low`, since that is the bottom of what you programmed.
+
+### Why not reset to the top of the range
+
+The tempting mirror of rule 3 - drop a weight step, reset to `rep_high` - reads
+as symmetric and behaves badly:
+
+- **It bounces.** One good session at `rep_high` tops out the range, so rule 3
+  hands the weight straight back and puts you at `rep_low` on the load that
+  just failed. Fail, deload, succeed, fail, deload.
+- **It is often harder than what it replaces.** `rep_high` at one step down
+  only beats `rep_low` at the old weight when the step is larger than the whole
+  rep range is worth, roughly `step/weight > (rep_high - rep_low)/(30 +
+  rep_high)`. A 2.5 kg step on a 20 kg press over an 8-14 range is 12% against
+  the 14% it needs, so the "deload" is a harder session. It also gets worse as
+  you get stronger, because the step shrinks as a share of the load.
+
+Climbing from `rep_low` instead makes the lighter load an accumulation block -
+several sessions of real work - rather than a bounce.
+
+### How light it can go
+
+A deload stops at `min_weight`: the smallest bar on the rack, the lightest pair
+of dumbbells, the top plate of a stack. Declared per load type in
+[`settings.min_weights`](configuration.md#settings), or per exercise. Reaching
+it is reported rather than silently held, because an exercise pinned at the
+bottom needs a change this tool cannot make - a different variation, more
+sleep, fewer sets.
+
+Bodyweight exercises have no load to take off, so a stall there says so.
 
 ## Progress is judged by the weakest set
 
@@ -143,7 +216,8 @@ actually performed:
 | 1 | No sets logged | Unchanged |
 | 2 | Weight changed, floor below `rep_low` | Unchanged (rule 5) |
 | 3 | Fewer than `sets` at the working weight | Bank the weight, consolidate reps |
-| 4 | Same weight, any set short of what it was asked | Repeat unchanged (rule 4) |
+| 4 | Same weight, any set short, first miss | Repeat unchanged (rule 4) |
+| 4b | Same weight, any set short, missed before | Ease the target, or take weight off at the bottom of the range |
 | 5 | Floor at or above `rep_high` | `rep_low` at weight + step (rule 3) |
 | 6 | Otherwise | Advance `sets - misses` of the sets (rule 2) |
 
@@ -258,3 +332,23 @@ the activity holds what was performed - together they answer everything.
 
 That is why you can edit a target by hand in Garmin Connect and the next run
 simply picks up from there.
+
+There is a third thing, which is what keeps a run repeatable: **the workout
+each activity was performed against**, which Garmin keeps beside the activity.
+The stored target is only what a session was aiming at until something moves
+it, and `--apply` moves it - after which that activity is still the most recent
+one and would be judged all over again, against the target it had just earned.
+Every set would read as short of a figure nobody was aiming at, and a second
+miss on the record is what deloading acts on, so running twice would walk
+targets backwards.
+
+So a session is only judged while the stored target is still the one it was
+given. Once it is not, the session is spent, and the run says so:
+
+```text
+  Barbell Deadlift    9 x 35 kg  ->  9 x 35 kg  (up to date)
+```
+
+A target typed in by hand reads the same way, and gets the same answer for the
+same reason: the session predates it, so it is not evidence about it, and what
+you typed stands until the next session is trained against it.

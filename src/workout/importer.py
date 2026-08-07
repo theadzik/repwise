@@ -202,6 +202,12 @@ DEFAULT_SETTINGS: dict = {
         "cable": 5.0,
         "machine": 5.0,
     },
+    "min_weights": {
+        "barbell": 12.0,
+        "dumbbell": 1.0,
+        "cable": 5.0,
+        "machine": 5.0,
+    },
 }
 
 

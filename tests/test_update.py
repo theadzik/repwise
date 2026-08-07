@@ -719,3 +719,36 @@ def test_an_account_with_no_executed_record_progresses_as_it_always_did(stalling
         if group.get("workoutSteps")
     ]
     assert asked == [9.0]
+
+
+# --- running twice ---------------------------------------------------------
+
+
+def test_running_twice_writes_nothing_the_second_time(stalling):
+    """The same activity is still the latest one after --apply."""
+    run_update(stalling, only_a(), args(apply=True))
+    assert stalling.saved, "the first run had something to write"
+
+    stalling.saved.clear()
+    run_update(stalling, only_a(), args(apply=True))
+    assert stalling.saved == []
+
+
+def test_a_second_run_does_not_deload_what_the_first_one_earned(stalling):
+    """Judged twice, the session reads as a miss and then as a stall."""
+    run_update(stalling, only_a(), args(apply=True))
+    after_one = [
+        (g["numberOfIterations"], g["workoutSteps"][0]["endConditionValue"])
+        for g in stalling.workouts["111"]["workoutSegments"][0]["workoutSteps"]
+        if g.get("workoutSteps")
+    ]
+
+    run_update(stalling, only_a(), args(apply=True))
+    after_two = [
+        (g["numberOfIterations"], g["workoutSteps"][0]["endConditionValue"])
+        for g in stalling.workouts["111"]["workoutSegments"][0]["workoutSteps"]
+        if g.get("workoutSteps")
+    ]
+
+    assert after_one == [(1, 9.0), (2, 8.0)], "eased up by one set"
+    assert after_two == after_one, "and stayed there"

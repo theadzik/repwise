@@ -52,14 +52,21 @@ settings:
     dumbbell: 1.0      # per dumbbell
     cable: 5.0
     machine: 5.0
+
+  min_weights:         # the lightest each load type can go, by load type
+    barbell: 12.0      # the smallest bar on the rack, not the standard 20 kg
+    dumbbell: 1.0
+    cable: 5.0
+    machine: 5.0
 ```
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `garmin.token_store` | `~/.garminconnect` | Where OAuth tokens are cached. Delete the directory to force a fresh login |
-| `garmin.activity_search_limit` | `25` | How many recent activities to scan for a name match |
+| `garmin.activity_search_limit` | `50` | How many recent activities to scan for a name match, and for the sessions behind it |
 | `garmin.dump_dir` | `.` | Where `--dump` and `fetch` write JSON |
 | `weight_steps` | - | kg added per load type when a rep range is topped out |
+| `min_weights` | none | The lightest each load type can go. A [deload](progression.md#deloading) stops here rather than prescribing a weight you cannot make up. A load type left out has no floor |
 
 ## Workout fields
 
@@ -142,6 +149,7 @@ they are not part of the document. Keep anything worth saying in an exercise's
 | `rep_step` | no | `1` | Reps added when a target is met. Use `2` for exercises counted per side |
 | `load` | yes | | `barbell`, `dumbbell`, `cable`, `machine`, or `bodyweight` |
 | `weight_step` | no | from `load` | kg added when the range is topped out, overriding the load type |
+| `min_weight` | no | from `load` | The lightest this exercise can be loaded, overriding the load type |
 | `rest` | no | none | Seconds between sets, written to the Garmin workout by `update --apply`. Left out, Garmin's own rest is kept |
 | `start_weight` | no | `0` | kg a **newly created** exercise starts at. Never read again once the step exists; progression owns the weight from then on |
 | `unit` | no | `reps` | `reps`, or `seconds` for timed holds like planks |
@@ -180,6 +188,17 @@ A per-exercise `weight_step` overrides the load type. A deadlift is the usual
 case: it recruits far more musculature than the other barbell lifts, so novice
 programs step it by 5 kg where a bench or curl gets 2.5 kg. Drop it back once
 5 kg jumps start failing.
+
+`min_weights` works the same way and answers a different question: how light a
+[deload](progression.md#deloading) may go. It is a fact about your equipment
+rather than about the exercise - the smallest bar on the rack, the lightest
+pair of dumbbells, the top plate of a stack - so it is usually enough to
+declare it per load type and never again. A load type left out has no floor,
+which is why a config written before deloads existed still loads.
+
+Override it per exercise where the equipment differs: a machine whose stack
+starts at 15 kg, or a barbell lift you would not perform with less than the
+20 kg bar even though a 12 kg one exists.
 
 ## Validation
 

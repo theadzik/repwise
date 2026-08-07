@@ -517,3 +517,126 @@ def test_a_ramped_target_is_judged_as_a_ramp_when_counting_the_streak():
     """8,8,8,8 against 9,9,8,8 is a miss, and has to read as one here too."""
     history = [Session(Target(8, 20.0, lead=2), [P(8, 20.0)] * 4)]
     assert miss_streak(FOUR_SET_SQUAT, history, 20.0) == 1
+
+
+# --- deloading ------------------------------------------------------------
+#
+# Missing once is a bad day and repeats. Missing the same target twice is a
+# stall, and something has to give: the rep range first, because that is what a
+# double progression has to spend, and the load only once the range is gone.
+
+BARBELL_SQUAT = spec(sets=3, weight_step=2.5, min_weight=12.0)
+LIGHT_RAISE = spec(
+    name="Dumbbell Lateral Raise",
+    garmin_name="DUMBBELL_LATERAL_RAISE",
+    garmin_category="LATERAL_RAISE",
+    rep_low=12,
+    rep_high=20,
+    sets=3,
+    load="dumbbell",
+    weight_step=1.0,
+    min_weight=1.0,
+)
+
+
+def test_the_first_miss_is_a_bad_day_and_repeats():
+    target, why = next_target(BARBELL_SQUAT, Target(9, 20.0), [P(8, 20.0)] * 3)
+    assert target == Target(9, 20.0), why
+    assert "repeat" in why
+
+
+def test_the_second_miss_in_a_row_eases_the_target():
+    """9,9,9 missed twice becomes 9,9,8 - one set easier, where you landed."""
+    target, why = next_target(
+        BARBELL_SQUAT, Target(9, 20.0), [P(9, 20.0), P(9, 20.0), P(8, 20.0)], streak=1
+    )
+    assert target == Target(8, 20.0, lead=2), why
+    assert target.spread(3) == "9,9,8"
+    assert "ease" in why
+
+
+def test_a_ramped_target_eases_by_one_rung_too():
+    four = spec(sets=4, weight_step=2.5)
+    target, _ = next_target(
+        four,
+        Target(8, 20.0, lead=2),
+        [P(9, 20.0), P(8, 20.0), P(8, 20.0), P(8, 20.0)],
+        streak=1,
+    )
+    assert target.per_set(4) == [9, 8, 8, 8]
+
+
+def test_a_bad_miss_drops_straight_to_what_the_session_managed():
+    """No point crawling down a rung a session when you are four short."""
+    target, why = next_target(
+        BARBELL_SQUAT, Target(10, 20.0), [P(7, 20.0)] * 3, streak=1
+    )
+    assert target == Target(7, 20.0), why
+
+
+def test_easing_never_goes_below_the_bottom_of_the_range():
+    target, _ = next_target(BARBELL_SQUAT, Target(7, 20.0), [P(3, 20.0)] * 3, streak=1)
+    assert target == Target(6, 20.0), "rep_low, not the 3 that was managed"
+
+
+def test_at_the_bottom_of_the_range_the_weight_comes_off():
+    target, why = next_target(
+        BARBELL_SQUAT, Target(6, 20.0), [P(5, 20.0)] * 3, streak=1
+    )
+    assert target == Target(6, 17.5), why
+    assert "-2.5 kg" in why
+
+
+def test_a_deload_climbs_the_range_again_rather_than_starting_at_the_top():
+    """Not rep_high: one good session there would earn the weight straight back."""
+    target, _ = next_target(BARBELL_SQUAT, Target(6, 20.0), [P(5, 20.0)] * 3, streak=1)
+    assert target.reps == BARBELL_SQUAT.rep_low
+    assert target.lead == 0
+
+
+def test_the_weight_never_goes_below_the_minimum():
+    """A 1 kg step off a 1 kg dumbbell is a weight that does not exist."""
+    target, why = next_target(LIGHT_RAISE, Target(12, 1.0), [P(10, 1.0)] * 3, streak=1)
+    assert target == Target(12, 1.0), why
+    assert "already at the 1 kg minimum" in why
+
+
+def test_a_bodyweight_stall_has_nothing_to_take_off():
+    target, why = next_target(PLANK, Target(30, 0.0), held(28, 28, 28), streak=1)
+    assert target == Target(30, 0.0), why
+    assert "no load to take off" in why
+
+
+def test_a_stall_at_a_different_load_is_not_a_deload():
+    """A miss at a weight you were not prescribed is rule 5's business."""
+    target, why = next_target(LIGHT_RAISE, Target(13, 3.0), [P(8, 4.0)] * 3, streak=1)
+    assert target == Target(13, 3.0), why
+    assert "below the 12-20 range" in why
+
+
+def test_a_short_session_consolidates_rather_than_deloading():
+    _, why = next_target(
+        BARBELL_SQUAT, Target(9, 20.0), [P(8, 20.0), P(8, 20.0)], streak=1
+    )
+    assert "consolidate" in why
+
+
+def test_easing_steps_by_rep_step():
+    """Per-side counting eases 20,20,20,20 to 20,20,20,18, both sides even."""
+    target, _ = next_target(
+        LUNGE_DOUBLED, Target(20, 4.0), [P(20, 4.0)] * 3 + [P(18, 4.0)], streak=1
+    )
+    assert target.per_set(4, rep_step=2) == [20, 20, 20, 18]
+
+
+def test_a_deload_and_the_climb_back_are_the_same_ladder():
+    """Ease down, then hit it: the granular advance takes it straight back."""
+    eased, _ = next_target(
+        BARBELL_SQUAT, Target(9, 20.0), [P(9, 20.0), P(9, 20.0), P(8, 20.0)], streak=1
+    )
+    assert eased.spread(3) == "9,9,8"
+
+    back, _ = next_target(
+        BARBELL_SQUAT, eased, [P(9, 20.0), P(9, 20.0), P(8, 20.0)], streak=0
+    )
+    assert back == Target(9, 20.0), "levelled up, flat again"
