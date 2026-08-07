@@ -64,7 +64,7 @@ repos:
         # Deliberately not the mirrors-mypy hook: type checking is only useful
         # with the project's own dependencies importable, and an isolated hook
         # environment has neither garminconnect nor this package installed.
-        entry: mypy
+        entry: mypy --check-untyped-defs
         language: system
         types: [python]
         # Which paths to check comes from [tool.mypy], not from the staged set;
