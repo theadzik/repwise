@@ -9,7 +9,7 @@ description = "Advance Garmin strength workout targets using double progression"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 keywords = ["garmin", "strength-training", "progressive-overload"]
 # Pinned to exact versions. This is an application rather than a library, so a
 # reproducible install matters more than being co-installable, and Dependabot
@@ -64,7 +64,7 @@ template = ".cz/CHANGELOG.md.j2"
 # same section, so they cannot disagree.
 [tool.ruff]
 line-length = 88
-target-version = "py312"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = [
@@ -98,7 +98,7 @@ ignore = [
 
 [tool.mypy]
 files = ["src", "tests"]
-python_version = "3.12"
+python_version = "3.14"
 
 # garminconnect ships no type information. garmin/client.py is the only module
 # that imports it, which is what keeping the adapter in one place buys.

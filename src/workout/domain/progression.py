@@ -24,8 +24,6 @@ performed, and each past activity carries the workout as it was executed, which
 is where a miss streak is read from.
 """
 
-from __future__ import annotations
-
 from collections import Counter
 from dataclasses import dataclass, field
 

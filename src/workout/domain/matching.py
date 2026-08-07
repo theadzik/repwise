@@ -12,8 +12,6 @@ steps with it and the checker matches them to exercise blocks, which is why it
 is written once.
 """
 
-from __future__ import annotations
-
 import re
 from collections.abc import Iterable
 

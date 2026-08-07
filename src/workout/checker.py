@@ -13,8 +13,6 @@ command that owns them.
 Pure: takes a config and payloads, returns findings.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from .domain.matching import ExerciseIndex

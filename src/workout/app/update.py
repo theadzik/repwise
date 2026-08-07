@@ -6,8 +6,6 @@ replayed oldest first, and a target that moves propagated into every other
 workout containing that exercise.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import os

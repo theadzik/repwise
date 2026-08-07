@@ -6,8 +6,6 @@ the options a use case declares - so that nothing in `app/` has to reach for a
 dependency of its own or know what a command line is.
 """
 
-from __future__ import annotations
-
 import argparse
 import logging
 import sys

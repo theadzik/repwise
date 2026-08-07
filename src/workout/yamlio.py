@@ -11,8 +11,6 @@ the comments a YAML round trip discards; that bought careful text handling in
 two modules, and the comments go now.
 """
 
-from __future__ import annotations
-
 import os
 import shutil
 import tempfile

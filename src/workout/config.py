@@ -8,8 +8,6 @@ Where that file is depends on how the tool was installed, so it is searched
 for rather than computed from this module's location - see `search_path()`.
 """
 
-from __future__ import annotations
-
 import os
 from dataclasses import dataclass, field
 

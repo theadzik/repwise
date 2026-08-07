@@ -14,8 +14,6 @@ Two things about Garmin's payloads are easy to get wrong:
   which exercise a name refers to is `domain/matching.py`, not this module.
 """
 
-from __future__ import annotations
-
 import re
 from collections import defaultdict
 from collections.abc import Iterator
