@@ -1,0 +1,35 @@
+{# Commitizen's stock Markdown changelog template, with the commit link added.
+
+   The only difference from the built-in template is the trailing link on each
+   entry. Commitizen puts sha1, parents, author and author_email into every
+   change alongside the parsed message, so reaching the commit needs no plugin
+   and no Python - just this file and `template` in pyproject.toml.
+
+   The repository URL is written out rather than passed through Commitizen's
+   `extras`, because `[tool.commitizen.extras]` opens a TOML subtable: every
+   bare key after it, changelog_start_rev and major_version_zero among them,
+   would quietly become part of extras and stop being read.
+
+   Pull request numbers are already in the text, carried over from the squashed
+   pull request title. They are not links: GitHub only autolinks "#15" in
+   issues, pull requests, commit messages and release bodies, never in a
+   Markdown file rendered from the repository. See docs/releasing.md. #}
+{% for entry in tree %}
+
+## {{ entry.version }}{% if entry.date %} ({{ entry.date }}){% endif %}
+
+{% for change_key, changes in entry.changes.items() %}
+
+{% if change_key %}
+### {{ change_key }}
+{% endif %}
+
+{% for change in changes %}
+{% if change.scope %}
+- **{{ change.scope }}**: {{ change.message }} ([{{ change.sha1[:7] }}](https://github.com/theadzik/workout/commit/{{ change.sha1 }}))
+{% elif change.message %}
+- {{ change.message }} ([{{ change.sha1[:7] }}](https://github.com/theadzik/workout/commit/{{ change.sha1 }}))
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% endfor %}
