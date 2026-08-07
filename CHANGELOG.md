@@ -1,3 +1,13 @@
+## 0.5.0 (2026-08-07)
+
+### Feat
+
+- granular progression and deloading (#7)
+- simplify interactions with config (#6)
+- narrow check (#5)
+- config drives workout (#4)
+- update rest time (#3)
+
 ## 0.4.0 (2026-07-29)
 
 ### Feat
