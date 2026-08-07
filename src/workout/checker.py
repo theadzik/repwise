@@ -1,24 +1,36 @@
-"""Is the config talking about the exercises it thinks it is?
+"""Two questions `update` does not answer.
 
-One question, and not the one `update` answers. `update --dry-run` already
-says what would change and then changes it; anything it can fix is not drift to
-report. What it cannot fix is a `garmin_name` that no longer names anything, or
-names something only by luck - and since the config now drives the workout,
-that mistake is expensive: the exercise Garmin holds goes unnamed and is
-removed, taking the target stored in it, while a new step is built beside it.
+`update --dry-run` already says what would change and then changes it; anything
+it can fix is not drift to report. What is left is what it cannot:
 
-So this checks identity, and leaves sets, rests and the exercise list to the
-command that owns them.
+**Identity.** A `garmin_name` that no longer names anything, or names something
+only by luck. Since the config drives the workout, that mistake is expensive:
+the exercise Garmin holds goes unnamed and is removed, taking the target stored
+in it, while a new step is built beside it.
+
+**Programming.** A rep range too wide for what its weight step is really worth,
+which `update` will carry out faithfully forever because every individual
+decision it makes is correct. Only the shape of the range is wrong, and that is
+visible only once the load is counted properly - see `domain/effort.py`.
+
+Sets, rests and the exercise list are left to the command that owns them.
 
 Pure: takes a config and payloads, returns findings.
 """
 
 from dataclasses import dataclass
 
+from .domain.effort import (
+    TOLERATED_DROP,
+    effective_load,
+    reset_drop,
+    widest_rep_high,
+)
 from .domain.matching import ExerciseIndex
 from .domain.models import Workout
 from .garmin.payloads import (
     ExerciseBlock,
+    block_target,
     iter_exercise_blocks,
     step_category,
     step_exercise_name,
@@ -80,5 +92,78 @@ def check_workout(workout: Workout, payload: dict) -> list[Finding]:
                 f"and drop the one Garmin has",
                 "error",
             )
+
+    return findings
+
+
+def check_programming(
+    workout: Workout, payload: dict, bodyweight: float | None = None
+) -> list[Finding]:
+    """Look for rep ranges too wide for what their weight step is really worth.
+
+    Judged at the weight the exercise is actually loaded to today, read out of
+    the Garmin workout rather than guessed from the config, because the answer
+    moves as you get stronger: a step is a shrinking share of the load, so a
+    range that was fine at 20 kg can stop being fine at 40 kg. That is the
+    point of checking it every run rather than once when it is written.
+
+    Exercises Garmin does not hold are skipped in silence - `check_workout`
+    reports those, and reporting them twice for different reasons would only
+    bury its answer.
+    """
+    findings: list[Finding] = []
+
+    index: ExerciseIndex[ExerciseBlock] = ExerciseIndex()
+    for entry in iter_exercise_blocks(payload):
+        index.add(
+            entry,
+            name=step_exercise_name(entry.step),
+            category=step_category(entry.step),
+        )
+
+    for spec in workout.exercises:
+        if spec.bodyweight_factor and bodyweight is None:
+            findings.append(
+                Finding(
+                    workout.key,
+                    f"{spec.name}: carries {spec.bodyweight_factor:g} of your "
+                    f"bodyweight, but no weigh-in was found and "
+                    f"settings.bodyweight is unset, so its range was not checked",
+                )
+            )
+            continue
+
+        block = index.find(spec.garmin_name, spec.garmin_category)
+        if block is None:
+            continue
+        target = block_target(block, spec)
+        if target is None or target.weight <= 0:
+            continue
+
+        carried = bodyweight or 0.0
+        drop = reset_drop(spec, target.weight, carried)
+        if drop is None or drop <= TOLERATED_DROP:
+            continue
+
+        load = effective_load(spec, target.weight, carried)
+        widest = widest_rep_high(spec, target.weight, carried)
+        # Say what to change, not only that something is wrong. Narrowing the
+        # range is nearly always the practical fix: the step is a property of
+        # the rack, and making it bigger is the option you do not have.
+        fix = (
+            f"narrow to {spec.rep_low}-{widest}"
+            if widest
+            else "raise weight_step, or widen the gap another way"
+        )
+        findings.append(
+            Finding(
+                workout.key,
+                f"{spec.name}: +{spec.weight_step:g} kg on {load:g} kg is "
+                f"{spec.weight_step / load:.1%}, "
+                f"but resetting {spec.rep_high}->{spec.rep_low} reps needs more, "
+                f"so the weight increase is a {drop:.0%} drop in effort "
+                f"({fix}, or accept the sawtooth)",
+            )
+        )
 
     return findings

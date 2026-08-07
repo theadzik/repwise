@@ -1,0 +1,150 @@
+"""Reading a stored weight as the load it actually is."""
+
+from builders import spec
+
+from workout.domain.effort import (
+    TOLERATED_DROP,
+    effective_load,
+    reset_drop,
+    widest_rep_high,
+    worked_reps,
+)
+
+#: The exercise this module exists for: 12-20 reps, 5 kg step, and 80 kg of
+#: lifter riding on top of a 20 kg stack.
+CALF = spec(
+    name="Weighted Standing Calf Raise",
+    garmin_name="WEIGHTED_STANDING_CALF_RAISE",
+    garmin_category="CALF_RAISE",
+    rep_low=12,
+    rep_high=20,
+    sets=3,
+    load="machine",
+    weight_step=5.0,
+    bodyweight_factor=1.0,
+)
+
+#: A pair of dumbbells, entered as the weight of the pair and stepping by the
+#: pair, which is what makes any notion of "how many implements" unnecessary.
+LUNGE = spec(
+    name="Alternating Dumbbell Lunge",
+    garmin_name="ALTERNATING_DUMBBELL_LUNGE",
+    rep_low=16,
+    rep_high=24,
+    rep_step=2,
+    sets=4,
+    load="dumbbell",
+    weight_step=2.0,
+    bodyweight_factor=0.85,
+)
+
+
+def test_a_plain_exercise_is_its_stored_weight():
+    """The default has to be a no-op, or every barbell lift changes meaning."""
+    pulldown = spec(load="cable", weight_step=5.0)
+    assert effective_load(pulldown, 45.0, bodyweight=80.0) == 45.0
+
+
+def test_bodyweight_is_added_at_its_factor():
+    assert effective_load(CALF, 20.0, bodyweight=80.0) == 100.0
+
+
+def test_bodyweight_is_added_on_top_of_a_pair_entered_whole():
+    # 24 kg of dumbbell as entered, plus 0.85 of an 80 kg lifter.
+    assert effective_load(LUNGE, 24.0, bodyweight=80.0) == 24.0 + 68.0
+
+
+def test_the_calf_raise_weight_jump_is_a_large_step_backwards():
+    """20 reps at 100 kg -> 12 reps at 105 kg, which is easier, not harder."""
+    drop = reset_drop(CALF, 20.0, bodyweight=80.0)
+    assert drop is not None
+    assert 0.11 < drop < 0.13
+    assert drop > TOLERATED_DROP
+
+
+def test_ignoring_bodyweight_hides_the_problem_entirely():
+    """Why the field has to exist: on the stack alone the range looks fine."""
+    blind = reset_drop(CALF, 20.0, bodyweight=0.0)
+    assert blind is not None
+    assert blind < 0  # 5 kg on 20 kg is a real 25% jump, and pays for itself
+
+
+def test_a_narrower_range_pays_for_its_own_reset():
+    narrowed = spec(**{**CALF.__dict__, "rep_low": 15, "rep_high": 18})
+    drop = reset_drop(narrowed, 20.0, bodyweight=80.0)
+    assert drop is not None
+    assert abs(drop) < 0.02
+
+
+def test_an_ordinary_barbell_lift_stays_under_the_tolerance():
+    """The sawtooth is inherent, so a sane range must not be reported."""
+    squat = spec(rep_low=6, rep_high=10, load="barbell", weight_step=2.5)
+    drop = reset_drop(squat, 60.0)
+    assert drop is not None
+    assert 0 < drop <= TOLERATED_DROP
+
+
+def test_bodyweight_and_timed_exercises_have_no_weight_jump_to_judge():
+    assert reset_drop(spec(load="bodyweight", weight_step=0.0), 0.0) is None
+    assert reset_drop(spec(unit="seconds"), 30.0) is None
+
+
+def test_an_unloaded_exercise_is_not_divided_by_zero():
+    assert reset_drop(CALF, 0.0, bodyweight=0.0) is None
+
+
+def test_the_suggested_range_is_one_the_step_can_pay_for():
+    widest = widest_rep_high(CALF, 20.0, bodyweight=80.0)
+    assert widest is not None
+    assert CALF.rep_low < widest < CALF.rep_high
+
+    narrowed = spec(**{**CALF.__dict__, "rep_high": widest})
+    drop = reset_drop(narrowed, 20.0, bodyweight=80.0)
+    assert drop is not None and drop <= TOLERATED_DROP
+
+
+def test_even_a_trivial_step_can_afford_some_range():
+    """Narrowing helps whatever the step is, because the reset is the cost."""
+    trivial = spec(**{**CALF.__dict__, "weight_step": 0.1})
+    widest = widest_rep_high(trivial, 20.0, bodyweight=80.0)
+    assert widest is not None and widest < CALF.rep_high
+
+
+def test_no_range_is_suggested_when_nothing_meets_the_tolerance():
+    """Reachable only by demanding a reset that costs literally nothing."""
+    trivial = spec(**{**CALF.__dict__, "weight_step": 0.1})
+    assert widest_rep_high(trivial, 20.0, bodyweight=80.0, tolerance=0.0) is None
+
+
+# --- exercises the watch counts per side -----------------------------------
+
+
+def test_alternating_reps_are_halved_before_epley_sees_them():
+    """A 16-24 range is 8-12 for the leg doing the work."""
+    assert worked_reps(LUNGE, 24) == 12
+    assert worked_reps(LUNGE, 16) == 8
+
+
+def test_an_ordinary_exercise_works_the_reps_it_is_programmed():
+    assert worked_reps(CALF, 20) == 20
+
+
+def test_counting_both_legs_would_invent_a_finding():
+    """The bug this exists to stop: 5 kg dumbbells, a range that is fine."""
+    drop = reset_drop(LUNGE, 10.0, bodyweight=81.0)
+    assert drop is not None
+    assert drop < TOLERATED_DROP
+
+    # Read in the watch's units instead, the same exercise looks broken.
+    doubled = spec(**{**LUNGE.__dict__, "rep_step": 1})
+    naive = reset_drop(doubled, 10.0, bodyweight=81.0)
+    assert naive is not None and naive > TOLERATED_DROP
+
+
+def test_a_suggested_range_lands_on_a_rung_the_ladder_reaches():
+    """Narrowing 16-24 to 21 would straddle the top and never earn the jump."""
+    wide = spec(**{**LUNGE.__dict__, "rep_low": 10, "rep_high": 30})
+    widest = widest_rep_high(wide, 10.0, bodyweight=81.0)
+
+    assert widest is not None
+    assert (widest - wide.rep_low) % wide.rep_step == 0

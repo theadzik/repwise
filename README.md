@@ -104,7 +104,7 @@ keeping an exercise in sync when it appears in more than one workout.
 | `workout update --apply --push` | Write all of that to Garmin and send it to your watch |
 | `workout list` | Show your Garmin workouts and their ids |
 | `workout import` | Build a `workouts.yaml` from your Garmin workouts |
-| `workout check` | Check that your config still names the exercises Garmin holds |
+| `workout check` | Check that your config still names the exercises Garmin holds, and that no rep range is too wide for what its weight step is really worth |
 | `workout fetch` | Download raw workout JSON |
 
 Any command takes `-v` to show debug output as well. Full flags and output for

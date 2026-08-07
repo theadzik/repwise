@@ -38,6 +38,12 @@ class ExerciseSpec:
     #: the lightest pair of dumbbells, the top plate of the stack. A deload
     #: stops here rather than prescribing a weight that does not exist.
     min_weight: float = 0.0
+    #: The share of your bodyweight this movement carries: 1.0 for a calf raise
+    #: or a weighted pull-up, 0 for anything you lie or sit down to do. Never
+    #: guessed from the category - a lat pull-down is categorised `PULL_UP` and
+    #: carries none of you - so the default is to count only the stored weight.
+    #: Read by `check` alone; see `domain/effort.py`.
+    bodyweight_factor: float = 0.0
 
     @property
     def bodyweight(self) -> bool:
@@ -107,6 +113,11 @@ class Config:
 
     workouts: dict[str, Workout]
     garmin: GarminSettings = field(default_factory=GarminSettings)
+    #: Your weight in kg, when you would rather state it than have it read from
+    #: your Garmin weigh-ins. Unset - the normal case - means ask Garmin, which
+    #: keeps it current without anyone editing a file. Only ever an input to
+    #: `check`; no target depends on it.
+    bodyweight: float | None = None
     #: The file this was read from. Carried so that a use case which learns
     #: something the file should record - a workout id Garmin has just issued -
     #: can write it back without the CLI having to pass the path separately.

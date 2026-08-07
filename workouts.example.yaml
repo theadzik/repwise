@@ -95,6 +95,11 @@ settings:
     cable: 5.0
     machine: 5.0
 
+  # Your weight in kg. Normally left out: `check` reads it from your Garmin
+  # weigh-ins, averaged over 30 days, so it stays current on its own. State it
+  # here if you do not weigh in, and it wins over anything Garmin has.
+  # bodyweight: 81.0
+
 workouts:
   - key: Workout A
     garmin_workout_id: "111111111"
@@ -165,14 +170,21 @@ workouts:
       # Appears in both workouts. A target earned in either one is synced to
       # the other, so the two copies cannot drift apart. Shared exercises must
       # be programmed identically everywhere; the config is rejected otherwise.
+      #
+      # bodyweight_factor says all of you rides on the stack, so `check` reads
+      # a 20 kg setting as 100 kg of load and can see that a 5 kg step is a 5%
+      # jump, not the 25% it looks like. That is what keeps the range narrow:
+      # 15-18 is about what a 5% step pays for, where 12-20 would make every
+      # weight increase a large step backwards.
       - name: Standing Calf Raise
         garmin_name: WEIGHTED_STANDING_CALF_RAISE
         garmin_category: CALF_RAISE
-        rep_low: 12
-        rep_high: 20
+        rep_low: 15
+        rep_high: 18
         sets: 3
         rest: 60
         load: machine
+        bodyweight_factor: 1.0
 
       # A timed hold: the range is seconds, and it progresses one second at a
       # time rather than gaining load.
@@ -205,6 +217,12 @@ workouts:
       # The watch counts each lunge separately, one per leg, so this is
       # programmed in the watch's units: double the usual 8-12 per leg, and
       # stepping by 2 keeps both legs even at 16, 18, 20, 22, 24.
+      #
+      # A pair of dumbbells, entered as the weight of the pair rather than of
+      # one of them - so the step is 2 kg, and the floor is the lightest pair.
+      # That keeps the stored weight the whole load, which is the one thing
+      # `check` needs to judge the range. Most of you is on the working leg
+      # too, and that part it cannot see, so bodyweight_factor says so.
       - name: Alternating Dumbbell Lunge
         garmin_name: ALTERNATING_DUMBBELL_LUNGE
         garmin_category: LUNGE
@@ -214,8 +232,14 @@ workouts:
         sets: 4
         rest: 90
         load: dumbbell
+        weight_step: 2.0
+        min_weight: 2.0
+        bodyweight_factor: 0.85
 
-      # Note the category: Garmin files pulldowns under PULL_UP.
+      # Note the category: Garmin files pulldowns under PULL_UP. Which is also
+      # why bodyweight_factor is never inferred from the category - the machine
+      # holds you down, so none of your weight is on this one, and the stored
+      # weight is the whole load. No bodyweight_factor is the right answer here.
       - name: Lat Pull-down
         garmin_name: LAT_PULLDOWN
         garmin_category: PULL_UP
@@ -257,11 +281,12 @@ workouts:
       - name: Standing Calf Raise
         garmin_name: WEIGHTED_STANDING_CALF_RAISE
         garmin_category: CALF_RAISE
-        rep_low: 12
-        rep_high: 20
+        rep_low: 15
+        rep_high: 18
         sets: 3
         rest: 60
         load: machine
+        bodyweight_factor: 1.0
 
       - name: Sit-up
         garmin_name: SIT_UP

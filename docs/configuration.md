@@ -19,6 +19,7 @@ complete working A/B split annotated field by field, or generate one with
 - [Workout fields](#workout-fields)
 - [Exercise fields](#exercise-fields)
 - [Load and weight steps](#load-and-weight-steps)
+- [Is the range too wide for the step](#is-the-range-too-wide-for-the-step)
 - [Validation](#validation)
 - [Finding your exercise identifiers](#finding-your-exercise-identifiers)
 
@@ -58,6 +59,8 @@ settings:
     dumbbell: 1.0
     cable: 5.0
     machine: 5.0
+
+  # bodyweight: 81.0   # normally read from your Garmin weigh-ins
 ```
 
 | Setting | Default | Meaning |
@@ -67,6 +70,7 @@ settings:
 | `garmin.dump_dir` | `.` | Where `--dump` and `fetch` write JSON |
 | `weight_steps` | - | kg added per load type when a rep range is topped out |
 | `min_weights` | none | The lightest each load type can go. A [deload](progression.md#deloading) stops here rather than prescribing a weight you cannot make up. A load type left out has no floor |
+| `bodyweight` | your Garmin weigh-ins | Your weight in kg, when you would rather state it than have it read. Only ever an input to [`check`](#is-the-range-too-wide-for-the-step); no target depends on it |
 
 ## Workout fields
 
@@ -153,6 +157,7 @@ they are not part of the document. Keep anything worth saying in an exercise's
 | `rest` | no | none | Seconds between sets, written to the Garmin workout by `update --apply`. Left out, Garmin's own rest is kept |
 | `start_weight` | no | `0` | kg a **newly created** exercise starts at. Never read again once the step exists; progression owns the weight from then on |
 | `unit` | no | `reps` | `reps`, or `seconds` for timed holds like planks |
+| `bodyweight_factor` | no | `0` | The share of **you** this movement carries, 0 to 1. Read only by [`check`](#is-the-range-too-wide-for-the-step) |
 | `notes` | no | none | Free text: a cue, a link, a reminder. Read by nobody - not this tool, not Garmin |
 
 `garmin_category` is worth filling in even though it is optional: Garmin
@@ -200,6 +205,87 @@ Override it per exercise where the equipment differs: a machine whose stack
 starts at 15 kg, or a barbell lift you would not perform with less than the
 20 kg bar even though a 12 kg one exists.
 
+## Is the range too wide for the step
+
+Everything above works in the units Garmin stores. For most exercises that is
+the load: put 60 kg on the bar and you are lifting 60 kg. For one kind of
+exercise it is not, and the gap is large enough to make a rep range that reads
+perfectly well behave badly.
+
+**You are part of the load.** A standing calf raise moves all of you plus the
+stack. Set `bodyweight_factor` to the share of you the movement carries:
+
+| Exercise | `bodyweight_factor` |
+| --- | --- |
+| Standing calf raise, weighted pull-up, weighted dip | `1.0` |
+| Back squat, front squat, lunge, split squat, step-up | `0.85` |
+| Push-up | `0.65` |
+| Deadlift, row, overhead press - the bar moves, you do not | leave it out |
+| Anything you lie or sit down to do | leave it out |
+
+`0.85` is the figure strength coaching conventionally uses for a squat: your
+shanks and feet barely rise, so roughly everything above the knee is what the
+movement actually lifts, on top of the bar.
+
+It is never guessed. A lat pull-down is categorised `PULL_UP` and carries none
+of your bodyweight, so inferring from the category would be wrong on the first
+exercise that needed it. The default of none means "the stored weight is the
+load", which is what every barbell, cable and dumbbell movement wants.
+
+**Everything else is a matter of what you type into the watch.** An exercise
+carrying a pair of dumbbells has no field of its own: enter the weight of the
+pair rather than of one of them, and set a `weight_step` and `min_weight` to
+match. 2 x 5 kg stepping by 1 kg is 10 kg stepping by 2 - the same ladder,
+written so the stored weight is the whole load.
+
+### What it is for
+
+[Rule 3](progression.md#the-five-rules) tops out the range, adds a step, and
+resets to `rep_low`. That trade only works if the step is worth more than the
+reps just given back. A calf raise programmed 12-20 with a 5 kg step looks like
+a 25% jump on a 20 kg stack - ample. With 80 kg of lifter on top it is a 5%
+jump, nowhere near enough to pay for dropping 20 reps to 12, and the "weight
+increase" leaves the exercise about 12% *easier* than it was. You then spend
+six sessions climbing back to ground you already held.
+
+`check` reports it, at the weight the exercise is loaded to today:
+
+```text
+Workout A (1631254436)
+ ! Weighted Standing Calf Raise: +5 kg on 101 kg is 5.0%, but resetting
+   20->12 reps needs more, so the weight increase is a 12% drop in effort
+   (narrow to 12-18, or accept the sawtooth)
+```
+
+Judged per run rather than once, because the answer moves: a step is a
+shrinking share of a growing load, so a range that was fine at 20 kg stops
+being fine at 40 kg.
+
+Ranges counted per side are read per side. An [alternating
+exercise](progression.md#alternating-exercises) is programmed in the watch's
+units with `rep_step` set to the number of sides, so a 16-24 range is 8-12 for
+the leg doing the work, and that is what the reset is measured against. Taking
+it at face value would overstate the cost of every such reset and invent
+findings on exercises that are programmed perfectly well.
+
+Some drop is inherent - climbing the range again always gives back part of what
+the load gained - so only exercises past **10%** are reported. A well-programmed
+barbell lift sits at a few percent and stays quiet.
+
+Nothing here changes a target. It is a fact about how you wrote the range, and
+the fix is to edit the range.
+
+### Where your bodyweight comes from
+
+Your Garmin weigh-ins, averaged over the last 30 days - so it stays current
+without anyone editing a file, and one heavy breakfast does not move a
+threshold. Nothing is written to Garmin, and the request is only made when some
+exercise actually declares a `bodyweight_factor`.
+
+Set `settings.bodyweight` to state it yourself instead. That wins outright, and
+is the answer for an account with no weigh-ins. Without either, exercises that
+needed it say they were skipped rather than being silently passed.
+
 ## Validation
 
 The config is validated on load, and a bad file is rejected outright rather
@@ -212,6 +298,7 @@ than half-applied. You get an error naming the file and workout for:
 - `rep_low >= rep_high`
 - a duplicate workout `key`
 - a negative `rest_between_exercises` or `start_weight`
+- a `bodyweight_factor` outside 0 to 1
 - a workout with neither a `garmin_workout_id` nor any exercises, which is
   nothing to find in Garmin and nothing to build there either
 - a [shared exercise](progression.md#shared-exercises) programmed with

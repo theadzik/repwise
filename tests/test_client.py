@@ -198,3 +198,47 @@ def test_refusing_to_prompt_is_a_garmin_error(tmp_path):
 
     with pytest.raises(GarminError, match="No usable Garmin session"):
         connect(settings, prompt=False)
+
+
+# --- weigh-ins ------------------------------------------------------------
+
+
+class ScaleStub:
+    """Body composition, in the shape and units Garmin really returns it."""
+
+    def __init__(self, body):
+        self.body = body
+        self.asked: list[tuple[str, str]] = []
+
+    def get_body_composition(self, startdate, enddate):
+        self.asked.append((startdate, enddate))
+        return self.body
+
+
+def weighing(body) -> tuple[GarminSession, ScaleStub]:
+    api = ScaleStub(body)
+    return GarminSession(api, GarminSettings()), api
+
+
+def test_the_window_average_is_preferred_and_converted_from_grams():
+    """A single weigh-in carries a kilo of noise; the average does not."""
+    s, api = weighing({"totalAverage": {"weight": 81000.0}})
+
+    assert s.bodyweight() == 81.0
+    start, end = api.asked[0]
+    assert start < end
+
+
+def test_a_weigh_in_outside_the_window_is_better_than_nothing():
+    s, _ = weighing(
+        {"totalAverage": {"weight": None}, "dateWeightList": [{"weight": 79500.0}]}
+    )
+
+    assert s.bodyweight() == 79.5
+
+
+def test_an_account_that_has_never_weighed_in_reads_as_unknown():
+    """Not a failure: it just means the range checks cannot run."""
+    s, _ = weighing({"totalAverage": {"weight": None}, "dateWeightList": []})
+
+    assert s.bodyweight() is None

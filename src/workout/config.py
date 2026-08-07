@@ -193,6 +193,28 @@ class Problems:
         raise ConfigError(f"{len(self.found)} problems:\n{listed}")
 
 
+def _bodyweight_factor(raw: dict, where: str, problems: Problems) -> float:
+    """The share of the lifter this exercise carries, if it says.
+
+    Opt-in and defaulting to none, so every config written before it existed
+    keeps its meaning exactly. Never inferred from the category: a lat
+    pull-down is filed under `PULL_UP` and carries none of you, and guessing
+    would be wrong on the first one that mattered.
+
+    Read only by `check` - see `domain/effort.py`.
+    """
+    factor = float(raw.get("bodyweight_factor") or 0.0)
+    if not 0.0 <= factor <= 1.0:
+        problems.add(
+            f"{where}: {raw['name']!r} has a bodyweight_factor of {factor:g}; "
+            f"it is the share of you that the movement carries, so it belongs "
+            f"between 0 and 1"
+        )
+        factor = 0.0
+
+    return factor
+
+
 def _build_exercise(
     raw: dict, loads: LoadRules, where: str, problems: Problems
 ) -> ExerciseSpec | None:
@@ -250,6 +272,8 @@ def _build_exercise(
         problems.add(f"{where}: {raw['name']!r} has a negative min_weight")
         min_weight = 0.0
 
+    bodyweight_factor = _bodyweight_factor(raw, where, problems)
+
     return ExerciseSpec(
         name=raw["name"],
         garmin_name=raw["garmin_name"],
@@ -266,6 +290,7 @@ def _build_exercise(
         notes=raw.get("notes"),
         start_weight=start_weight,
         min_weight=min_weight,
+        bodyweight_factor=bodyweight_factor,
     )
 
 
@@ -369,6 +394,12 @@ def load_config(path: str | None = None) -> Config:
         dump_dir=os.path.expanduser(garmin_raw.get("dump_dir") or defaults.dump_dir),
     )
 
+    # Unset means "ask Garmin", which is the better answer for anyone who
+    # weighs in: it stays current on its own. Stating it here is for accounts
+    # with no weigh-ins, and for tests that should not need a network.
+    declared_bodyweight = settings.get("bodyweight")
+    bodyweight = None if declared_bodyweight is None else float(declared_bodyweight)
+
     problems = Problems()
     workouts: dict[str, Workout] = {}
     for entry in data["workouts"]:
@@ -385,7 +416,11 @@ def load_config(path: str | None = None) -> Config:
     if not workouts and not problems:
         problems.add(f"{path}: no workouts defined")
 
-    config = Config(workouts=workouts, garmin=garmin, path=path)
+    if bodyweight is not None and bodyweight <= 0:
+        problems.add(f"{path}: settings.bodyweight is {bodyweight:g}")
+        bodyweight = None
+
+    config = Config(workouts=workouts, garmin=garmin, path=path, bodyweight=bodyweight)
     _check_shared(config, path, problems)
 
     problems.raise_any()
