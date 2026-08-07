@@ -142,7 +142,7 @@ work, `11 reps` for bodyweight, `47 s` for timed holds.
 The closing line counts everything else the run would touch:
 
 ```text
-Dry run: 8 step(s) would change, 2 exercise(s) would be added, removed or moved, 1 set count(s) would change, 1 rest time(s) would change, 17 note(s) would be refreshed. Re-run with --apply.
+Dry run: 8 step(s) would change, 2 exercise(s) would be added, removed or moved, 1 set count(s) would change, 1 rest time(s) would change, 1 step(s) would stop skipping their last rest, 17 note(s) would be refreshed. Re-run with --apply.
 ```
 
 Each clause appears only when it applies. See [ordering, adding and
@@ -271,8 +271,22 @@ reported and left alone:
 ```
 
 Set that step to a timed rest in Garmin Connect if you want the config to drive
-it. The rest *between exercises* is a separate step that this tool does not
-touch at all.
+it. The rest *between exercises* is a separate step, driven by
+[`rest_between_exercises`](#rest-between-exercises) and otherwise left alone.
+
+**Every set gets its rest, including the last.** Connect can be told to drop
+the rest that follows a repeat group's final set, which leaves one exercise
+behaving unlike the others in the same workout. An exercise's `rest` means
+every set of it, so a group set to skip is put back:
+
+```text
+* Weighted Standing Calf Raise  no last rest  ->  rest after every set  (was skipping the last rest)
+```
+
+Applied to every exercise, whether or not it declares a `rest`: how long to
+rest is the config's to say, but whether the last set gets one at all is not a
+setting this tool offers. Turn it back on in Connect and the next run undoes
+it.
 
 ### Step notes
 

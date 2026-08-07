@@ -136,6 +136,10 @@ whose id is in the file.
   down; a lap-button rest between sets is reported and left alone.
   `rest_between_exercises` does convert one, that being the point of the key -
   see [rest between exercises](commands.md#rest-between-exercises).
+- Connect's switch for dropping the rest after a repeat group's last set is
+  turned back off on every run, and there is no config key to keep it on: an
+  exercise's `rest` is meant for every set of it. See [rest between
+  sets](commands.md#rest-between-sets).
 - An exercise Garmin holds outside a repeat group has nowhere to keep a set
   count, so a `sets` above 1 is reported and left alone. Connect builds a group
   even for a single set, so this is unlikely to come up.

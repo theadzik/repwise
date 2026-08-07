@@ -351,6 +351,88 @@ def test_rests_reach_a_workout_that_only_receives_a_sync():
     assert rest_of(built) == 90
 
 
+# --- the rest after the last set ------------------------------------------
+#
+# Connect can drop it per repeat group, which leaves one exercise resting after
+# every set but its last. The config gives an exercise one rest and means all
+# of them, so a group set to skip is put back.
+
+
+def skipping(built, skip=True):
+    """Turn Connect's switch on for every repeat group in a workout."""
+    for group in built["workoutSegments"][0]["workoutSteps"]:
+        if group["type"] == "RepeatGroupDTO":
+            group["skipLastRestStep"] = skip
+    return built
+
+
+def skips_of(built):
+    return [
+        group.get("skipLastRestStep")
+        for group in built["workoutSegments"][0]["workoutSteps"]
+        if group["type"] == "RepeatGroupDTO"
+    ]
+
+
+def test_a_group_skipping_its_last_rest_is_put_back():
+    built = skipping(squat_group(rest=150.0))
+    plan = plan_workout(a_workout(exercises=[RESTED]), built, ({}, {}))
+
+    assert skips_of(built) == [False]
+    assert [c.spec.name for c in plan.skips] == [RESTED.name]
+    assert plan.writable, "the last rest alone is worth writing"
+
+
+def test_the_last_rest_is_restored_without_a_configured_rest():
+    """`rest` says how long; whether the last set gets one is not its call."""
+    built = skipping(squat_group(rest=120.0))
+    plan = plan_workout(a_workout(exercises=[SQUAT]), built, ({}, {}))
+
+    assert skips_of(built) == [False]
+    assert [c.spec.name for c in plan.skips] == [SQUAT.name]
+    assert plan.rests == [], "the interval itself was not the config's to move"
+
+
+@pytest.mark.parametrize("stored", [False, None])
+def test_a_group_that_already_rests_is_left_alone(stored):
+    """Idempotent, and null reads as not skipping, which is how Garmin has it."""
+    step = rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0)
+    step["description"] = RESTED.note  # so only the last rest could be a reason
+    built = skipping(workout(repeat(step, sets=3, rest=150.0)), skip=stored)
+
+    plan = plan_workout(a_workout(exercises=[RESTED]), built, ({}, {}))
+
+    assert plan.skips == []
+    assert not plan.writable
+
+
+def test_both_halves_of_a_ramp_stop_skipping_but_count_once():
+    """Two groups, one exercise: it rests the same after every set of it."""
+    ramped = replace(RESTED, sets=4)
+    built = skipping(
+        payload(
+            repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 20.0), 2, 150.0),
+            repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0), 2, 150.0),
+        )
+    )
+
+    plan = plan_workout(a_workout(exercises=[ramped]), built, ({}, {}))
+
+    assert skips_of(built) == [False, False]
+    assert [c.spec.name for c in plan.skips] == [ramped.name]
+
+
+def test_the_last_rest_is_restored_in_a_workout_that_only_receives_a_sync():
+    step = rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 12, 0.0)
+    built = skipping(workout(repeat(step, sets=3, rest=60.0)))
+    targets = {"weightedstandingcalfraise": Target(12, 20.0)}
+
+    plan = plan_sync(a_workout("Workout B", "2", [CALF]), built, targets, "Workout A")
+
+    assert skips_of(built) == [False]
+    assert [c.spec.name for c in plan.skips] == [CALF.name]
+
+
 # --- the shape of the workout ---------------------------------------------
 #
 # The config decides which exercises a workout holds and in what order. Garmin

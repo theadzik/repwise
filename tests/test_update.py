@@ -514,6 +514,40 @@ def test_a_rest_alone_is_reason_enough_to_write(rested):
     assert saved_rest(rested.saved, "111") == 150.0
 
 
+def saved_skip(saved, workout_id):
+    """Whether the written workout still drops the squat's last rest."""
+    payload = next(p for wid, p in saved if wid == workout_id)
+    return payload["workoutSegments"][0]["workoutSteps"][0]["skipLastRestStep"]
+
+
+def test_a_group_skipping_its_last_rest_is_written_back_resting(rested, caplog):
+    """Connect's switch is the one place a set ends without its rest."""
+    rested.workouts["111"]["workoutSegments"][0]["workoutSteps"][0][
+        "skipLastRestStep"
+    ] = True
+    config = config_ab(a_exercises=(SQUAT, CALF))
+
+    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+        code = run(rested, config, apply=True)
+
+    assert code == ExitCode.OK
+    assert saved_skip(rested.saved, "111") is False
+    assert "Restored the last rest on 1 step(s)." in caplog.text
+
+
+def test_a_dry_run_only_says_the_last_rest_would_come_back(rested, caplog):
+    rested.workouts["111"]["workoutSegments"][0]["workoutSteps"][0][
+        "skipLastRestStep"
+    ] = True
+    config = config_ab(a_exercises=(SQUAT, CALF))
+
+    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+        run(rested, config)
+
+    assert rested.saved == []
+    assert "1 step(s) would stop skipping their last rest" in caplog.text
+
+
 def test_nothing_is_pushed_without_apply(account):
     run(account)
     assert account.pushed == []

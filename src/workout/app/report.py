@@ -18,6 +18,7 @@ from ..planner import (
     Plan,
     RestChange,
     SetChange,
+    SkipChange,
     StructureChange,
 )
 
@@ -89,6 +90,16 @@ def report_sets(change: SetChange) -> None:
     )
 
 
+def report_skips(change: SkipChange) -> None:
+    """A group that had been dropping the rest after its final set."""
+    report_prescribed(
+        change.spec.name,
+        "no last rest",
+        "rest after every set",
+        "was skipping the last rest",
+    )
+
+
 def report_gaps(change: GapChange) -> None:
     """The rest between exercises: one line for the workout, not one per gap."""
     report_prescribed(
@@ -130,6 +141,8 @@ def report_plan(plan: Plan, force_flag: str | None = None) -> None:
         report_sets(count)
     for rest in plan.rests:
         report_rest(rest)
+    for skip in plan.skips:
+        report_skips(skip)
     if plan.gaps:
         report_gaps(plan.gaps)
     # Notes only move when workouts.yaml does, so they are a footnote to a

@@ -26,6 +26,7 @@ from .garmin.payloads import (
     GENERATED_NOTE,
     ExerciseBlock,
     apply_block,
+    apply_last_rest,
     apply_note,
     apply_rest,
     apply_sets,
@@ -37,6 +38,7 @@ from .garmin.payloads import (
     new_group,
     new_rest,
     set_exercise_steps,
+    skips_last_rest,
     step_category,
     step_exercise_name,
     step_note,
@@ -88,6 +90,17 @@ class SetChange:
     spec: ExerciseSpec
     old: int
     new: int
+
+
+@dataclass(frozen=True)
+class SkipChange:
+    """One exercise that was dropping the rest after its final set.
+
+    Only ever recorded in one direction: every set gets its rest, so there is
+    no old and new value to hold, just which exercise had been the exception.
+    """
+
+    spec: ExerciseSpec
 
 
 @dataclass(frozen=True)
@@ -159,6 +172,8 @@ class Plan:
     rests: list[RestChange] = field(default_factory=list)
     #: Exercises whose repeat group now prescribes a different number of sets.
     sets: list[SetChange] = field(default_factory=list)
+    #: Exercises whose repeat group was skipping the rest after its final set.
+    skips: list[SkipChange] = field(default_factory=list)
     #: Exercises added, removed or moved. Config-driven again, and the only
     #: kind of change that alters what the workout is rather than what it asks.
     structure: list[StructureChange] = field(default_factory=list)
@@ -178,6 +193,7 @@ class Plan:
             or self.notes
             or self.rests
             or self.sets
+            or self.skips
             or self.structure
             or self.gaps
         )
@@ -349,6 +365,7 @@ def _refresh_rest(
     block: ExerciseBlock,
     spec: ExerciseSpec,
     rests: list[RestChange],
+    skips: list[SkipChange],
     warnings: list[str],
 ) -> None:
     """Keep the repeat group's rest step showing the configured interval.
@@ -362,7 +379,14 @@ def _refresh_rest(
     is a prompt to press the button rather than an interval, and turning one
     into a countdown would change how the workout is performed rather than
     correct a value, so it is reported and left alone.
+
+    Whether the last set gets its rest at all is settled first, and for every
+    exercise: that is a property of the group rather than of the step, and an
+    exercise declaring no `rest` still means the one Garmin holds to be the
+    rest after each of its sets.
     """
+    _refresh_skips(block, spec, skips)
+
     if not spec.rest:
         return
 
@@ -383,6 +407,65 @@ def _refresh_rest(
     for step in stale:
         apply_rest(step, spec.rest)
     rests.append(RestChange(spec, current, spec.rest))
+
+
+def _refresh_skips(
+    block: ExerciseBlock, spec: ExerciseSpec, skips: list[SkipChange]
+) -> None:
+    """Keep the rest after the final set, which Connect can be told to drop.
+
+    `skipLastRestStep` is a switch on the repeat group, and the one place a set
+    can end without the rest the config prescribes for it. An exercise's `rest`
+    means every set, so a group set to skip is put back rather than reported:
+    this tool builds groups that do not skip, and leaving one that does would
+    make the same exercise behave differently in two workouts.
+
+    A ramped exercise is cleared on both of its groups but recorded once, since
+    above this module it is one exercise with one rest.
+    """
+    skipping = [group for group in block.groups if skips_last_rest(group)]
+    if not skipping:
+        return
+
+    for group in skipping:
+        apply_last_rest(group)
+    skips.append(SkipChange(spec))
+
+
+@dataclass
+class _Shaping:
+    """What the config changed while a workout was being shaped.
+
+    The four lists a `Plan` carries for it, kept together because they are
+    filled together: every exercise passes through the same refreshes, and a
+    caller that wanted one of them wants all four.
+    """
+
+    notes: list[str] = field(default_factory=list)
+    rests: list[RestChange] = field(default_factory=list)
+    sets: list[SetChange] = field(default_factory=list)
+    skips: list[SkipChange] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+def _refresh_block(
+    block: ExerciseBlock,
+    spec: ExerciseSpec,
+    current: Target | None,
+    shaped: _Shaping,
+) -> list[dict[str, Any]] | None:
+    """Write everything workouts.yaml decides about one exercise.
+
+    The note, the rest and the set count describe the programming rather than
+    the progress, so they are applied whether or not a session moved anything -
+    which is why both planners start an exercise here.
+
+    Returns what `_refresh_sets` returned: the steps the exercise now occupies
+    when its count was rewritten, and None when it was not.
+    """
+    _refresh_note(block, spec, shaped.notes, shaped.warnings)
+    _refresh_rest(block, spec, shaped.rests, shaped.skips, shaped.warnings)
+    return _refresh_sets(block, spec, current, shaped.sets, shaped.warnings)
 
 
 def _refresh_sets(
@@ -699,15 +782,12 @@ def plan_workout(
     specs = index_specs(workout.exercises)
 
     changes: list[Change] = []
-    warnings: list[str] = []
-    notes: list[str] = []
-    rests: list[RestChange] = []
-    sets: list[SetChange] = []
+    shaped = _Shaping()
     structure: list[StructureChange] = []
     added: set[int] = set()
 
     _reconcile(workout, payload, structure, added)
-    warnings.extend(_renames(structure))
+    shaped.warnings.extend(_renames(structure))
     gaps = _refresh_gaps(workout, payload)
 
     # Where each exercise sits, so that one which gains or loses a group as its
@@ -725,17 +805,14 @@ def plan_workout(
         if spec is None:
             # Unreachable after reconciling, which keeps only what the config
             # names, but a step that matched nothing is not one to write to.
-            warnings.append(f"{label}: not in workouts.yaml, skipped")
+            shaped.warnings.append(f"{label}: not in workouts.yaml, skipped")
             continue
 
         current = block_target(block, spec)
 
-        # Before the target checks below: the note, the rest and the set count
-        # describe the programming, so they belong on the step whether or not
-        # this session moved anything.
-        _refresh_note(block, spec, notes, warnings)
-        _refresh_rest(block, spec, rests, warnings)
-        recounted = _refresh_sets(block, spec, current, sets, warnings)
+        # Before the target checks below: what the config says about this
+        # exercise holds whether or not this session moved anything.
+        recounted = _refresh_block(block, spec, current, shaped)
         if recounted is not None:
             reshaped |= _relay(layout, position, recounted)
 
@@ -752,12 +829,12 @@ def plan_workout(
 
         if current is None:
             kind = "time" if spec.time_based else "rep"
-            warnings.append(f"{label}: step has no {kind} target, skipped")
+            shaped.warnings.append(f"{label}: step has no {kind} target, skipped")
             continue
 
         logged = _logged_for(spec, step, performed)
         if not logged:
-            warnings.append(f"{spec.name}: not found in the activity, skipped")
+            shaped.warnings.append(f"{spec.name}: not found in the activity, skipped")
             continue
 
         if spec.time_based:
@@ -779,10 +856,11 @@ def plan_workout(
         workout,
         payload,
         changes,
-        warnings,
-        notes,
-        rests,
-        sets=sets,
+        shaped.warnings,
+        shaped.notes,
+        shaped.rests,
+        sets=shaped.sets,
+        skips=shaped.skips,
         structure=structure,
         gaps=gaps,
     )
@@ -803,10 +881,7 @@ def plan_sync(
     specs = index_specs(workout.exercises)
 
     changes: list[Change] = []
-    warnings: list[str] = []
-    notes: list[str] = []
-    rests: list[RestChange] = []
-    sets: list[SetChange] = []
+    shaped = _Shaping()
 
     blocks = list(iter_exercise_blocks(payload))
     layout = [block.outers for block in blocks]
@@ -821,9 +896,7 @@ def plan_sync(
 
         current = block_target(block, spec)
 
-        _refresh_note(block, spec, notes, warnings)
-        _refresh_rest(block, spec, rests, warnings)
-        recounted = _refresh_sets(block, spec, current, sets, warnings)
+        recounted = _refresh_block(block, spec, current, shaped)
         if recounted is not None:
             reshaped |= _relay(layout, position, recounted)
 
@@ -837,7 +910,7 @@ def plan_sync(
         # load_config rejects mismatched ranges, but a hand-edited Garmin
         # workout can still be out of step, so say so rather than hide it.
         if not spec.rep_low <= new.reps <= spec.rep_high:
-            warnings.append(
+            shaped.warnings.append(
                 f"{spec.name}: synced target {new.reps} is outside this "
                 f"workout's {spec.rep_low}-{spec.rep_high} range"
             )
@@ -852,7 +925,16 @@ def plan_sync(
             payload, layout, _gaps_for(layout, spare, workout.rest_between)
         )
 
-    return Plan(workout, payload, changes, warnings, notes, rests, sets=sets)
+    return Plan(
+        workout,
+        payload,
+        changes,
+        shaped.warnings,
+        shaped.notes,
+        shaped.rests,
+        sets=shaped.sets,
+        skips=shaped.skips,
+    )
 
 
 def executed_targets(

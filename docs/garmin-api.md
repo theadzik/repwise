@@ -111,6 +111,13 @@ Note which rest that is. The step **inside** the repeat group is the rest
 between sets; Connect also emits a `lap.button` rest **after** each group,
 which is the pause between exercises.
 
+Whether the final set gets that rest at all is a third thing, held on the group
+rather than on either step: `skipLastRestStep`. Connect sets it per group, and
+Garmin returns it as `true`, `false` or `null` - the last two both meaning the
+rest is performed. A workout can therefore hold one exercise that skips and
+seven that do not, with nothing in the steps to show for it, which is why
+`update` writes it back to `false` everywhere.
+
 ### One exercise can need two groups
 
 A group repeats one step identically, so a target that asks more of the leading
