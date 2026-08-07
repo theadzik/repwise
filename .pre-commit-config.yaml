@@ -90,6 +90,9 @@ repos:
       # check-yaml proves dependabot.yml parses; this proves GitHub will accept
       # it, which is otherwise only discovered by pushing and waiting.
       - id: check-dependabot
+      # The same, for release.yml. A workflow that GitHub rejects does not fail
+      # - it silently never runs, and a release quietly stops happening.
+      - id: check-github-workflows
 
   # --- spelling -------------------------------------------------------------
   - repo: https://github.com/codespell-project/codespell
