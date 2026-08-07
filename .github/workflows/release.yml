@@ -76,9 +76,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # `cz bump` reads every commit back to the last tag. A shallow clone
-          # has neither the tag nor the commits, and it would compute the wrong
-          # version rather than fail.
+          # `cz bump` reads every commit back to the last tag.
+          # zizmor: ignore[artipacked] - this job pushes the release branch
           fetch-depth: 0
 
       - name: Install commitizen

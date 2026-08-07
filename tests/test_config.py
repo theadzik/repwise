@@ -420,6 +420,7 @@ def test_example_config_is_valid():
     assert set(config.workouts) == {"Workout A", "Workout B"}
 
     for workout in config:
+        assert workout.garmin_workout_id is not None
         assert workout.garmin_workout_id.isdigit()
         assert workout.activity_prefixes
         assert len(workout.exercises) >= 8

@@ -136,6 +136,7 @@ def test_rendered_config_flags_what_was_inferred(tmp_path):
     path.write_text(render_config([describe_workout(payload(SQUAT))]))
 
     notes = load_config(str(path))["Workout A"].exercises[0].notes
+    assert notes is not None
     assert "TODO: check rep_high" in notes
     assert "TODO: load guessed from the exercise name" in notes
 

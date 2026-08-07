@@ -657,6 +657,7 @@ def test_the_configured_gap_replaces_a_lap_button_wait():
     plan = plan_workout(resting(45), built)
 
     assert gaps_of(built) == [45]
+    assert plan.gaps is not None
     assert (plan.gaps.gaps, plan.gaps.was, plan.gaps.new) == (1, (None,), 45)
     assert plan.gaps.before == "lap button"
 
@@ -669,6 +670,7 @@ def test_the_configured_gap_retimes_an_existing_countdown():
     plan = plan_workout(resting(45), built)
 
     assert gaps_of(built) == [45]
+    assert plan.gaps is not None
     assert plan.gaps.before == "90 s rest"
 
 

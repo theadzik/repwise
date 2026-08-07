@@ -64,7 +64,7 @@ repos:
         # Deliberately not the mirrors-mypy hook: type checking is only useful
         # with the project's own dependencies importable, and an isolated hook
         # environment has neither garminconnect nor this package installed.
-        entry: mypy
+        entry: mypy --check-untyped-defs
         language: system
         types: [python]
         # Which paths to check comes from [tool.mypy], not from the staged set;
@@ -93,6 +93,17 @@ repos:
       # The same, for release.yml. A workflow that GitHub rejects does not fail
       # - it silently never runs, and a release quietly stops happening.
       - id: check-github-workflows
+
+  # --- workflow security ----------------------------------------------------
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.29.0
+    hooks:
+      # The hooks above ask whether GitHub will accept a workflow. This asks
+      # what the workflow can be made to do: release.yml runs with contents:
+      # write and pull-requests: write and enables auto-merge on what it opens,
+      # so an injection there is not a CI annoyance. Offline, so it neither
+      # needs a token nor changes its mind between runs.
+      - id: zizmor
 
   # --- spelling -------------------------------------------------------------
   - repo: https://github.com/codespell-project/codespell

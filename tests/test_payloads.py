@@ -205,6 +205,7 @@ def test_a_written_rest_reads_back_through_the_block():
         }
     )
     block = next(iter(iter_exercise_blocks(payload)))
+    assert block.rest_step is not None
     apply_rest(block.rest_step, 120)
 
     assert block.rest == 120

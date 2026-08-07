@@ -1,35 +1,18 @@
-# The checks that decide whether a pull request may merge.
-#
-# These are the same three tools the pre-commit hooks run locally, invoked
-# directly rather than through pre-commit. Their rules live in pyproject.toml
-# and their versions in its dev extra, so a local run and this one cannot
-# disagree about what passes - only about when it runs: per commit and per push
-# locally, over the whole tree here.
-#
-# Make this a required status check on `main`. release.yml enables auto-merge on
-# the version bump pull request, and a required check is the only thing that
-# makes that wait - without one, the bump merges the moment it is opened. See
-# docs/releasing.md.
 name: CI
 
 on:
   pull_request:
-  # Also on `main`, so the default branch has a run of its own saying it is
-  # green, rather than only ever being checked before a merge.
   push:
     branches: [main]
 
 permissions:
   contents: read
 
-# A force-push to a pull request makes the run already in flight irrelevant.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Named for how it reads in the ruleset's required-checks list, so keep the
-  # job id and the required check in step if either is renamed.
   checks:
     runs-on: ubuntu-latest
     steps:
@@ -39,39 +22,32 @@ jobs:
           persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        id: python
         with:
-          # The floor in requires-python, and what [tool.ruff]'s target-version
-          # and [tool.mypy]'s python_version both name. Checking the oldest
-          # supported Python is the useful direction: a newer one is already
-          # what the development machine runs. The floor is this project's own
-          # since 3.14 - the source uses PEP 649 annotations and argparse's
-          # colour and did-you-mean output - rather than garminconnect's, which
-          # is still >=3.12. All four move together when it moves.
           python-version: "3.14"
           cache: pip
           cache-dependency-path: pyproject.toml
 
       - name: Install the project and its dev tooling
-        # The dev extra pins ruff, mypy and pytest, so this runs the versions
-        # those pins name rather than whatever is newest today. Editable,
-        # because [tool.pytest.ini_options] puts src on the path and mypy wants
-        # the package importable.
         run: python -m pip install --quiet -e ".[dev]"
 
-      - name: ruff
-        # --output-format=github puts each finding on the diff rather than only
-        # in the log.
-        run: |
-          ruff check --output-format=github
-          ruff format --check
+      # The hook environments, keyed on the two things that decide them: the
+      # revs pinned in the config, and the interpreter the Python hooks are
+      # built against. Without this every run reinstalls six remote
+      # repositories, node included. The version is read back from the step
+      # above rather than repeated, so it cannot drift from python-version.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: >-
+            pre-commit-${{ runner.os }}-py${{ steps.python.outputs.python-version }}-${{
+            hashFiles('.pre-commit-config.yaml') }}
 
-      # `!cancelled()` rather than the default, so one failing tool does not
-      # hide the other two and a red run lists everything that is wrong at once.
-      - name: mypy
-        if: ${{ !cancelled() }}
-        # Paths come from [tool.mypy], which already names src and tests.
-        run: mypy
+      - name: pre-commit hooks
+        env:
+          RUFF_OUTPUT_FORMAT: github
+        run: pre-commit run --all-files --show-diff-on-failure --hook-stage pre-commit
 
-      - name: pytest
+      - name: pre-push hooks
         if: ${{ !cancelled() }}
-        run: pytest
+        run: pre-commit run --all-files --hook-stage pre-push
