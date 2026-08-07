@@ -38,7 +38,8 @@ python3 -m venv .venv
 That gives you a `workout` command inside the virtualenv. Everything also works
 as `python -m workout` if you would rather not install.
 
-Python 3.11 or newer is required.
+Python 3.12 or newer is required. That floor comes from `garminconnect`, which
+declares `>=3.12` itself, so it is not a choice this project makes on its own.
 
 ## 3. Create your config
 

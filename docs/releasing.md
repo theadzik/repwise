@@ -251,6 +251,14 @@ request is still where a human decides that a release happens.
 - **The changelog starts at 0.1.0.** `changelog_start_rev` is set, because
   history before that tag predates conventional commits and there is nothing to
   generate from.
+- **Rewriting history after a release orphans the tags.** Amending or rebasing
+  a commit that is already tagged leaves the tag on the old commit, which is
+  then on no branch at all. `cz` matches tags to commits by sha, so it stops
+  seeing those releases: it falls back to an older tag, re-aggregates commits
+  that were released long ago, and proposes a version built from them. The
+  changelog it writes looks duplicated because it is. Move the tags to the
+  rewritten commits - `git tag -f <version> <new sha>` and a force-push -
+  before letting the workflow run again.
 - **Do not regenerate the whole changelog.** `cz changelog` rewrites the file
   from the commits, and released sections have been edited since they were
   written - a typo fixed in an entry is a typo still present in the commit it

@@ -16,9 +16,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from typing import Generic, TypeVar
-
-Item = TypeVar("Item")
 
 
 def normalise(name: str) -> str:
@@ -26,7 +23,7 @@ def normalise(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
-class ExerciseIndex(Generic[Item]):
+class ExerciseIndex[Item]:
     """Items found by exercise name, with the category as a fallback.
 
     A category identifies an item only while exactly one claims it: two

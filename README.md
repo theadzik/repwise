@@ -21,7 +21,7 @@ Dry run: 2 step(s) would change. Re-run with --apply.
 
 ## Quick start
 
-You need workouts already built in Garmin Connect, and Python 3.11 or newer.
+You need workouts already built in Garmin Connect, and Python 3.12 or newer.
 
 ```bash
 git clone https://github.com/theadzik/workout.git
