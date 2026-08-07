@@ -1,3 +1,9 @@
+## 0.7.0 (2026-08-07)
+
+### Feat
+
+- bump python to 3.14 (#20) ([15fa729](https://github.com/theadzik/workout/commit/15fa7298b484e1dd8fd731722ef69c3bd6e0ba80))
+
 ## 0.6.1 (2026-08-07)
 
 ### Refactor
