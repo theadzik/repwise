@@ -2,7 +2,7 @@
 
 from builders import payload, rep_step, repeat, rest_step, spec
 
-from workout.checker import check_workout
+from workout.checker import check_programming, check_workout
 from workout.domain.models import Workout
 
 SQUAT_GROUP = repeat(
@@ -81,3 +81,102 @@ def test_an_exercise_the_config_dropped_is_not_a_finding():
     curls = repeat(rep_step("DUMBBELL_BICEPS_CURL", "CURL", 10, 8.0), sets=3)
 
     assert check_workout(configured(SQUAT_SPEC), payload(SQUAT_GROUP, curls)) == []
+
+
+# --- ranges too wide for what their step is really worth --------------------
+
+
+CALF_GROUP = repeat(
+    rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 20, 20.0), sets=3
+)
+
+CALF_SPEC = spec(
+    name="Weighted Standing Calf Raise",
+    garmin_name="WEIGHTED_STANDING_CALF_RAISE",
+    garmin_category="CALF_RAISE",
+    rep_low=12,
+    rep_high=20,
+    sets=3,
+    load="machine",
+    weight_step=5.0,
+    bodyweight_factor=1.0,
+)
+
+
+def test_a_range_too_wide_for_its_real_step_is_reported():
+    findings = check_programming(
+        configured(CALF_SPEC), payload(CALF_GROUP), bodyweight=80.0
+    )
+
+    assert len(findings) == 1
+    detail = findings[0].detail
+    assert "100 kg" in detail  # the stack plus the lifter, not the stack
+    assert "drop in effort" in detail
+    assert "make it 12-18" in detail
+
+
+def test_the_same_range_is_fine_once_bodyweight_is_not_claimed():
+    """A lat pull-down is categorised PULL_UP and carries none of you."""
+    seated = spec(**{**CALF_SPEC.__dict__, "bodyweight_factor": 0.0})
+
+    assert check_programming(configured(seated), payload(CALF_GROUP), 80.0) == []
+
+
+def test_an_ordinary_barbell_range_is_not_reported():
+    """The sawtooth is inherent to double progression; only excess is news."""
+    assert check_programming(configured(SQUAT_SPEC), payload(SQUAT_GROUP), 80.0) == []
+
+
+def test_without_a_bodyweight_the_exercise_says_it_was_skipped():
+    findings = check_programming(
+        configured(CALF_SPEC), payload(CALF_GROUP), bodyweight=None
+    )
+
+    assert len(findings) == 1
+    assert "not checked" in findings[0].detail
+
+
+def test_an_exercise_garmin_does_not_hold_is_left_to_the_other_check():
+    """Reporting it twice would bury the finding that matters."""
+    absent = spec(**{**CALF_SPEC.__dict__, "garmin_name": "NOT_IN_GARMIN"})
+    absent = spec(**{**absent.__dict__, "garmin_category": "NOT_A_CATEGORY"})
+
+    assert check_programming(configured(absent), payload(SQUAT_GROUP), 80.0) == []
+
+
+LUNGE_GROUP = repeat(rep_step("ALTERNATING_DUMBBELL_LUNGE", "LUNGE", 24, 24.0), sets=4)
+
+LUNGE_SPEC = spec(
+    name="Alternating Dumbbell Lunge",
+    garmin_name="ALTERNATING_DUMBBELL_LUNGE",
+    garmin_category="LUNGE",
+    rep_low=16,
+    rep_high=24,
+    rep_step=2,
+    sets=4,
+    load="dumbbell",
+    weight_step=2.0,
+    bodyweight_factor=0.85,
+)
+
+
+def test_a_range_counted_per_side_is_judged_per_side():
+    """8-12 per leg, which a 2 kg step pays for. Read as 16-24 it looks broken."""
+    findings = check_programming(
+        configured(LUNGE_SPEC), payload(LUNGE_GROUP), bodyweight=80.0
+    )
+
+    assert findings == []
+
+
+def test_the_pair_is_read_as_entered():
+    """No implement counting: what the watch holds is the load, whole."""
+    wide = spec(**{**LUNGE_SPEC.__dict__, "rep_high": 40})
+
+    findings = check_programming(
+        configured(wide), payload(LUNGE_GROUP), bodyweight=80.0
+    )
+
+    assert len(findings) == 1
+    # 24 kg of dumbbell as entered, plus 0.85 of 80 kg.
+    assert "+2 kg on 92 kg" in findings[0].detail

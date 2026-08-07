@@ -590,3 +590,37 @@ def test_a_negative_min_weight_is_rejected(write_config):
     )
     with pytest.raises(ConfigError, match="negative min_weight"):
         load_config(write_config(text))
+
+
+# --- reading a stored weight as a real load --------------------------------
+
+
+def test_the_load_reads_as_the_stored_weight_by_default(write_config):
+    """Nothing is inferred, so every existing config keeps its meaning."""
+    squat = load_config(write_config(FIXTURE))["Workout A"].exercises[0]
+    assert squat.bodyweight_factor == 0.0
+
+
+def test_bodyweight_factor_is_read_per_exercise(write_config):
+    text = FIXTURE.replace(
+        "        sets: 4\n", "        sets: 4\n        bodyweight_factor: 0.85\n"
+    )
+    squat = load_config(write_config(text))["Workout A"].exercises[0]
+    assert squat.bodyweight_factor == 0.85
+
+
+def test_a_bodyweight_factor_above_one_is_rejected(write_config):
+    text = FIXTURE.replace(
+        "        sets: 4\n", "        sets: 4\n        bodyweight_factor: 80\n"
+    )
+    with pytest.raises(ConfigError, match="between 0 and 1"):
+        load_config(write_config(text))
+
+
+def test_bodyweight_is_unset_so_that_garmin_is_asked(write_config):
+    assert load_config(write_config(FIXTURE)).bodyweight is None
+
+
+def test_bodyweight_can_be_stated_instead(write_config):
+    text = FIXTURE.replace("settings:\n", "settings:\n  bodyweight: 81.5\n")
+    assert load_config(write_config(text)).bodyweight == 81.5

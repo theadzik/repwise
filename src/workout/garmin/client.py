@@ -11,6 +11,7 @@ import functools
 import logging
 import os
 from collections.abc import Callable
+from datetime import date, timedelta
 from getpass import getpass
 from typing import Any
 
@@ -18,6 +19,7 @@ from garminconnect import Garmin, GarminConnectTooManyRequestsError
 
 from ..domain.models import GarminSettings
 from ..errors import GarminError, NoTerminal, RateLimited
+from .payloads import GRAMS_PER_KG
 
 __all__ = ["GarminSession", "connect", "STRENGTH"]
 
@@ -120,6 +122,33 @@ class GarminSession:
             if len(page) < page_size:
                 return found
             start += page_size
+
+    @_reporting("read your weigh-ins")
+    def bodyweight(self, days: int = 30) -> float | None:
+        """Your weight in kg, averaged over the last `days`, or None if unknown.
+
+        Averaged rather than taken from the latest weigh-in: day-to-day noise
+        runs to a kilogram or more, and the only thing this number does is set
+        the threshold for a `check` warning, which should not depend on whether
+        you stepped on the scale before or after breakfast.
+
+        Garmin reports grams here, as it does for an activity's sets, and gives
+        no average at all for a window with nothing in it - which is not a
+        failure but an account that has never weighed in, so it reads as None
+        and the checks that wanted it say they were skipped.
+        """
+        end = date.today()
+        start = end - timedelta(days=days)
+        body = self._api.get_body_composition(start.isoformat(), end.isoformat()) or {}
+
+        grams = (body.get("totalAverage") or {}).get("weight")
+        if not grams:
+            # No average over the window, but possibly a weigh-in older than
+            # it. Better a stale figure than declining to check at all.
+            entries = body.get("dateWeightList") or []
+            grams = next((e.get("weight") for e in entries if e.get("weight")), None)
+
+        return float(grams) / GRAMS_PER_KG if grams else None
 
     @_reporting("read the device message queue")
     def pending_messages(self) -> list[dict[str, Any]]:
