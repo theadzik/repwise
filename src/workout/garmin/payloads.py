@@ -342,6 +342,25 @@ def apply_sets(group: dict[str, Any], sets: int) -> None:
     group["endConditionValue"] = float(sets)
 
 
+def skips_last_rest(group: dict[str, Any]) -> bool:
+    """Whether a repeat group drops the rest that follows its final set.
+
+    Connect's own switch, set per group and stored nowhere else. Absent and
+    null both read as not skipping, which is how Garmin treats them: only the
+    groups Connect has had the switch turned on for carry it as true.
+    """
+    return bool(group.get("skipLastRestStep"))
+
+
+def apply_last_rest(group: dict[str, Any]) -> None:
+    """Make a repeat group rest after its final set, in place.
+
+    Written as a value rather than by removing the key, so that a group Garmin
+    returned without one says what it means once it comes back.
+    """
+    group["skipLastRestStep"] = False
+
+
 def apply_rest(step: dict[str, Any], seconds: int) -> None:
     """Write an interval onto a rest step, in place.
 
