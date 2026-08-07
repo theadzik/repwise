@@ -72,7 +72,7 @@ settings:
     # Where OAuth tokens are cached after the first interactive login.
     token_store: ~/.garminconnect
     # How many recent activities to scan when looking for the last session.
-    activity_search_limit: 25
+    activity_search_limit: 50
     # Where --dump and `fetch` write their JSON.
     dump_dir: .
 
@@ -80,6 +80,17 @@ settings:
   # exercise can override this with its own weight_step.
   weight_steps:
     barbell: 2.5
+    dumbbell: 1.0
+    cable: 5.0
+    machine: 5.0
+
+  # The lightest each load type can go, in kg. A deload stops here rather than
+  # prescribing a weight you have no way to make up: the smallest bar on the
+  # rack, the lightest pair of dumbbells, the top plate of a stack. Omit a load
+  # type and it has no floor. An exercise can override this with its own
+  # min_weight.
+  min_weights:
+    barbell: 12.0
     dumbbell: 1.0
     cable: 5.0
     machine: 5.0

@@ -11,6 +11,7 @@ for rather than computed from this module's location - see `search_path()`.
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass, field
 
 from .domain.models import BODYWEIGHT, Config, ExerciseSpec, GarminSettings, Workout
 from .errors import ConfigError
@@ -36,6 +37,21 @@ _CHECKOUT_ROOT = os.path.dirname(
 )
 
 _REQUIRED = ("name", "garmin_name", "rep_low", "rep_high", "sets", "load")
+
+
+@dataclass(frozen=True)
+class LoadRules:
+    """What a load type does: how big its steps are, and how light it can go.
+
+    Both are properties of the equipment rather than of any one exercise - a
+    dumbbell rack goes up in ones and starts at one - so they are declared once
+    per load type and only overridden where an exercise really differs.
+    """
+
+    steps: dict[str, float] = field(default_factory=dict)
+    #: Missing entries mean no floor, so a config written before deloads
+    #: existed keeps loading and simply never stops a deload.
+    minimums: dict[str, float] = field(default_factory=dict)
 
 
 def _xdg_config_home() -> str:
@@ -180,7 +196,7 @@ class Problems:
 
 
 def _build_exercise(
-    raw: dict, steps: dict[str, float], where: str, problems: Problems
+    raw: dict, loads: LoadRules, where: str, problems: Problems
 ) -> ExerciseSpec | None:
     missing = [key for key in _REQUIRED if raw.get(key) is None]
     if missing:
@@ -193,12 +209,12 @@ def _build_exercise(
     # than the other barbell lifts. Otherwise the load type decides.
     declared_step = raw.get("weight_step")
     if declared_step is None:
-        if load != BODYWEIGHT and load not in steps:
+        if load != BODYWEIGHT and load not in loads.steps:
             problems.add(
                 f"{where}: exercise {raw['name']!r} has load {load!r}, "
                 f"which has no entry in settings.weight_steps"
             )
-        weight_step = float(steps.get(load, 0.0))
+        weight_step = float(loads.steps.get(load, 0.0))
     else:
         weight_step = float(declared_step)
         if weight_step <= 0 and load != BODYWEIGHT:
@@ -224,6 +240,18 @@ def _build_exercise(
         problems.add(f"{where}: {raw['name']!r} has a negative start_weight")
         start_weight = 0.0
 
+    # The lightest this can be loaded. Unset is no floor rather than an error:
+    # a config predating deloads should keep working, and zero is the honest
+    # answer for anything lifted with no equipment of its own.
+    declared_minimum = raw.get("min_weight")
+    if declared_minimum is None:
+        min_weight = float(loads.minimums.get(load, 0.0))
+    else:
+        min_weight = float(declared_minimum)
+    if min_weight < 0:
+        problems.add(f"{where}: {raw['name']!r} has a negative min_weight")
+        min_weight = 0.0
+
     return ExerciseSpec(
         name=raw["name"],
         garmin_name=raw["garmin_name"],
@@ -239,11 +267,12 @@ def _build_exercise(
         unit=raw.get("unit", "reps"),
         notes=raw.get("notes"),
         start_weight=start_weight,
+        min_weight=min_weight,
     )
 
 
 def _build_workout(
-    entry: dict, steps: dict[str, float], path: str, problems: Problems
+    entry: dict, loads: LoadRules, path: str, problems: Problems
 ) -> Workout | None:
     key = entry.get("key")
     if not key:
@@ -256,7 +285,7 @@ def _build_workout(
 
     exercises = []
     for raw in entry.get("exercises") or []:
-        spec = _build_exercise(raw, steps, f"{path}:{key}", problems)
+        spec = _build_exercise(raw, loads, f"{path}:{key}", problems)
         if spec is not None:
             exercises.append(spec)
 
@@ -326,7 +355,10 @@ def load_config(path: str | None = None) -> Config:
         raise ConfigError(f"{path}: 'workouts' should be a list of workouts")
 
     settings = data.get("settings") or {}
-    steps = settings.get("weight_steps") or {}
+    loads = LoadRules(
+        steps=settings.get("weight_steps") or {},
+        minimums=settings.get("min_weights") or {},
+    )
     garmin_raw = settings.get("garmin") or {}
     defaults = GarminSettings()
     garmin = GarminSettings(
@@ -342,7 +374,7 @@ def load_config(path: str | None = None) -> Config:
     problems = Problems()
     workouts: dict[str, Workout] = {}
     for entry in data["workouts"]:
-        workout = _build_workout(entry, steps, path, problems)
+        workout = _build_workout(entry, loads, path, problems)
         if workout is None:
             continue
         if workout.key in workouts:

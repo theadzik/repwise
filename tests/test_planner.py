@@ -742,3 +742,82 @@ def test_decided_targets_only_reports_what_moved():
 
     # The squat advanced; the curls missed their target and did not.
     assert set(decided_targets(plan)) == {"barbellbacksquat"}
+
+
+# --- a session the target has already moved past --------------------------
+#
+# The rules judge a session against what it was asked for. That is only the
+# stored target until something moves it, and this tool moving it is the usual
+# case: after `--apply` the same activity is still the latest one.
+
+
+def a_squat_session(reps=8):
+    return performed_sets(
+        {"exerciseSets": [active("BARBELL_BACK_SQUAT", "SQUAT", reps, 20000.0)] * 3}
+    )
+
+
+def test_a_session_the_target_has_moved_past_is_left_alone():
+    """Stored 9 because this very session earned it; it was performed at 8."""
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 9, 20.0))
+    plan = plan_workout(
+        a_workout(),
+        payload,
+        a_squat_session(8),
+        asked={"barbellbacksquat": Target(8, 0.0)},
+    )
+
+    assert not plan.moved, "nothing to learn from it twice"
+    assert plan.changes[0].reason == "up to date"
+
+
+def test_a_session_still_aimed_at_the_stored_target_is_judged_normally():
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 20.0))
+    plan = plan_workout(
+        a_workout(),
+        payload,
+        a_squat_session(8),
+        asked={"barbellbacksquat": Target(8, 0.0)},
+    )
+
+    assert [c.new for c in plan.changes] == [Target(9, 20.0)]
+
+
+def test_a_ramp_the_session_never_saw_counts_as_moved_past():
+    """Same base figure, but the session was not asked for the leading set."""
+    payload = workout(
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 9, 20.0), sets=1),
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 20.0), sets=2),
+    )
+    plan = plan_workout(
+        a_workout(),
+        payload,
+        a_squat_session(8),
+        asked={"barbellbacksquat": Target(8, 0.0)},
+    )
+
+    assert not plan.moved
+
+
+def test_a_hand_edited_target_is_respected_rather_than_judged():
+    """You can still set a target by hand; the last session is not evidence."""
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 20.0))
+    plan = plan_workout(
+        a_workout(),
+        payload,
+        a_squat_session(8),
+        asked={"barbellbacksquat": Target(8, 0.0)},
+    )
+
+    assert not plan.moved
+    assert step_target(next(iter(payload["workoutSegments"][0]["workoutSteps"]))) == (
+        Target(6, 20.0)
+    )
+
+
+def test_without_an_executed_record_the_stored_target_is_still_assumed():
+    """An account that answers nothing degrades to the old behaviour."""
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 20.0))
+    plan = plan_workout(a_workout(), payload, a_squat_session(8), asked={})
+
+    assert [c.new for c in plan.changes] == [Target(9, 20.0)]

@@ -36,6 +36,10 @@ class ExerciseSpec:
     #: read for an exercise Garmin does not hold yet; progression owns the
     #: weight from the first session onward.
     start_weight: float = 0.0
+    #: The lightest this exercise can be loaded: the smallest bar on the rack,
+    #: the lightest pair of dumbbells, the top plate of the stack. A deload
+    #: stops here rather than prescribing a weight that does not exist.
+    min_weight: float = 0.0
 
     @property
     def bodyweight(self) -> bool:
@@ -86,7 +90,7 @@ class GarminSettings:
     """Everything about talking to Garmin that a user might want to change."""
 
     token_store: str = "~/.garminconnect"
-    activity_search_limit: int = 25
+    activity_search_limit: int = 50
     dump_dir: str = "."
 
 
