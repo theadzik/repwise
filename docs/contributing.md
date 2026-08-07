@@ -36,15 +36,20 @@ the message format on `commit-msg`, and the test suite on push.
 | `markdownlint --fix` | Markdown, using `.markdownlint.json` |
 | `codespell` | Typos, in prose and code alike |
 | `check-yaml`, `check-toml` | The config files parse |
-| `check-dependabot` | GitHub will actually accept `dependabot.yml` |
+| `check-dependabot`, `check-github-workflows` | GitHub will actually accept `dependabot.yml` and the workflows |
 | `detect-private-key`, `check-added-large-files` | Accidents |
 | `forbid-private-files` | Refuses to commit `workouts.yaml` or a raw dump, which `.gitignore` covers but `git add -f` does not |
 | `commitizen` | The commit message is conventional. See [releasing](releasing.md) |
 | `pytest` | On push only, so a failing test does not block saving work in progress |
 
 Every tool reads its settings from `pyproject.toml`, so a bare `ruff check`,
-`mypy` or `pytest` behaves exactly as the hook does. Run the lot without
-committing:
+`mypy` or `pytest` behaves exactly as the hook does - which is also how
+`.github/workflows/ci.yml` runs them on a pull request, over the whole tree
+rather than the staged files. That run is a required check, so it is what
+decides whether a pull request can merge; the hooks are the same checks moved
+earlier, where they are cheaper to act on.
+
+Run the lot without committing:
 
 ```bash
 .venv/bin/pre-commit run --all-files
