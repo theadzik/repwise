@@ -94,6 +94,17 @@ repos:
       # - it silently never runs, and a release quietly stops happening.
       - id: check-github-workflows
 
+  # --- workflow security ----------------------------------------------------
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.29.0
+    hooks:
+      # The hooks above ask whether GitHub will accept a workflow. This asks
+      # what the workflow can be made to do: release.yml runs with contents:
+      # write and pull-requests: write and enables auto-merge on what it opens,
+      # so an injection there is not a CI annoyance. Offline, so it neither
+      # needs a token nor changes its mind between runs.
+      - id: zizmor
+
   # --- spelling -------------------------------------------------------------
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.3
