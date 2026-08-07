@@ -2,7 +2,7 @@
 
 ### Feat
 
-- correct skipLastRest after excercise (#13)
+- correct skipLastRest after exercise (#13)
 
 ## 0.5.0 (2026-08-07)
 

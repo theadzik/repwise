@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Callable, Hashable, Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -141,8 +142,7 @@ def pick_sessions(
         if workout.garmin_workout_id is None:
             continue  # not in Garmin yet, so there is no definition to advance
         for position, activity in enumerate(activities):
-            name = (activity.get("activityName") or "").lower()
-            if any(name.startswith(prefix) for prefix in workout.activity_prefixes):
+            if workout.claims(activity.get("activityName") or ""):
                 found.append((position, workout, activity))
                 break
 
@@ -171,10 +171,7 @@ def matching_activities(
     return [
         activity
         for activity in activities
-        if any(
-            (activity.get("activityName") or "").lower().startswith(prefix)
-            for prefix in workout.activity_prefixes
-        )
+        if workout.claims(activity.get("activityName") or "")
     ]
 
 
@@ -309,57 +306,17 @@ def changed_steps(plans: list[Plan]) -> set[tuple[str, str]]:
     }
 
 
-def noted_steps(plans: list[Plan]) -> set[tuple[str, str]]:
-    """Which steps had their notes rewritten, counted once per step.
+def counted(plans: list[Plan], keys: Callable[[Plan], Iterable[Hashable]]) -> int:
+    """Distinct (workout, key) pairs across every plan.
 
-    A shared exercise is refreshed in each workout it appears in, and those
-    are genuinely different steps, so they count separately.
+    The same deduplication `changed_steps` applies, for everything else a
+    summary counts: a shared exercise refreshed in two workouts is two
+    genuinely different steps and counts twice, while two plans touching the
+    same step of one workout count it once.
     """
-    return {(counted_as(plan.workout), name) for plan in plans for name in plan.notes}
-
-
-def rested_steps(plans: list[Plan]) -> set[tuple[str, str]]:
-    """Which steps had their rest rewritten, counted once per step."""
-    return {
-        (counted_as(plan.workout), change.spec.garmin_name)
-        for plan in plans
-        for change in plan.rests
-    }
-
-
-def recounted_steps(plans: list[Plan]) -> set[tuple[str, str]]:
-    """Which steps had their set count rewritten, counted once per step."""
-    return {
-        (counted_as(plan.workout), change.spec.garmin_name)
-        for plan in plans
-        for change in plan.sets
-    }
-
-
-def unskipped_steps(plans: list[Plan]) -> set[tuple[str, str]]:
-    """Which steps stopped skipping their last rest, counted once per step."""
-    return {
-        (counted_as(plan.workout), change.spec.garmin_name)
-        for plan in plans
-        for change in plan.skips
-    }
-
-
-def regapped(plans: list[Plan]) -> set[str]:
-    """Which workouts had the rest between their exercises rewritten.
-
-    One per workout however many steps it touched: the config says it once.
-    """
-    return {counted_as(plan.workout) for plan in plans if plan.gaps}
-
-
-def restructured(plans: list[Plan]) -> set[tuple[str, str, str]]:
-    """Which exercises were added, removed or moved, counted once each."""
-    return {
-        (counted_as(plan.workout), change.kind, change.name)
-        for plan in plans
-        for change in plan.structure
-    }
+    return len(
+        {(counted_as(plan.workout), key) for plan in plans for key in keys(plan)}
+    )
 
 
 def sync_other_workouts(
@@ -570,12 +527,13 @@ def run_update(
         logger.info(f"{untrained} Shaping the workouts from the config regardless.")
 
     updated = len(changed_steps(plans))
-    noted = len(noted_steps(plans))
-    rested = len(rested_steps(plans))
-    recounted = len(recounted_steps(plans))
-    unskipped = len(unskipped_steps(plans))
-    regaps = len(regapped(plans))
-    shaped = len(restructured(plans))
+    noted = counted(plans, lambda plan: plan.notes)
+    rested = counted(plans, lambda plan: (c.spec.garmin_name for c in plan.rests))
+    recounted = counted(plans, lambda plan: (c.spec.garmin_name for c in plan.sets))
+    unskipped = counted(plans, lambda plan: (c.spec.garmin_name for c in plan.skips))
+    # One per workout however many gap steps it touched: the config says it once.
+    regaps = len({counted_as(plan.workout) for plan in plans if plan.gaps})
+    shaped = counted(plans, lambda plan: ((c.kind, c.name) for c in plan.structure))
     structure = (
         f", {shaped} exercise(s) would be added, removed or moved" if shaped else ""
     )
