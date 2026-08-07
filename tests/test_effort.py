@@ -3,10 +3,10 @@
 from builders import spec
 
 from workout.domain.effort import (
-    TOLERATED_DROP,
+    TOLERATED_SHIFT,
     effective_load,
+    fitting_rep_high,
     reset_drop,
-    widest_rep_high,
     worked_reps,
 )
 
@@ -59,7 +59,7 @@ def test_the_calf_raise_weight_jump_is_a_large_step_backwards():
     drop = reset_drop(CALF, 20.0, bodyweight=80.0)
     assert drop is not None
     assert 0.11 < drop < 0.13
-    assert drop > TOLERATED_DROP
+    assert drop > TOLERATED_SHIFT
 
 
 def test_ignoring_bodyweight_hides_the_problem_entirely():
@@ -81,7 +81,7 @@ def test_an_ordinary_barbell_lift_stays_under_the_tolerance():
     squat = spec(rep_low=6, rep_high=10, load="barbell", weight_step=2.5)
     drop = reset_drop(squat, 60.0)
     assert drop is not None
-    assert 0 < drop <= TOLERATED_DROP
+    assert 0 < drop <= TOLERATED_SHIFT
 
 
 def test_bodyweight_and_timed_exercises_have_no_weight_jump_to_judge():
@@ -94,26 +94,26 @@ def test_an_unloaded_exercise_is_not_divided_by_zero():
 
 
 def test_the_suggested_range_is_one_the_step_can_pay_for():
-    widest = widest_rep_high(CALF, 20.0, bodyweight=80.0)
+    widest = fitting_rep_high(CALF, 20.0, bodyweight=80.0)
     assert widest is not None
     assert CALF.rep_low < widest < CALF.rep_high
 
     narrowed = spec(**{**CALF.__dict__, "rep_high": widest})
     drop = reset_drop(narrowed, 20.0, bodyweight=80.0)
-    assert drop is not None and drop <= TOLERATED_DROP
+    assert drop is not None and drop <= TOLERATED_SHIFT
 
 
 def test_even_a_trivial_step_can_afford_some_range():
     """Narrowing helps whatever the step is, because the reset is the cost."""
     trivial = spec(**{**CALF.__dict__, "weight_step": 0.1})
-    widest = widest_rep_high(trivial, 20.0, bodyweight=80.0)
+    widest = fitting_rep_high(trivial, 20.0, bodyweight=80.0)
     assert widest is not None and widest < CALF.rep_high
 
 
 def test_no_range_is_suggested_when_nothing_meets_the_tolerance():
     """Reachable only by demanding a reset that costs literally nothing."""
     trivial = spec(**{**CALF.__dict__, "weight_step": 0.1})
-    assert widest_rep_high(trivial, 20.0, bodyweight=80.0, tolerance=0.0) is None
+    assert fitting_rep_high(trivial, 20.0, bodyweight=80.0, tolerance=0.0) is None
 
 
 # --- exercises the watch counts per side -----------------------------------
@@ -133,18 +133,69 @@ def test_counting_both_legs_would_invent_a_finding():
     """The bug this exists to stop: 5 kg dumbbells, a range that is fine."""
     drop = reset_drop(LUNGE, 10.0, bodyweight=81.0)
     assert drop is not None
-    assert drop < TOLERATED_DROP
+    assert drop < TOLERATED_SHIFT
 
     # Read in the watch's units instead, the same exercise looks broken.
     doubled = spec(**{**LUNGE.__dict__, "rep_step": 1})
     naive = reset_drop(doubled, 10.0, bodyweight=81.0)
-    assert naive is not None and naive > TOLERATED_DROP
+    assert naive is not None and naive > TOLERATED_SHIFT
 
 
 def test_a_suggested_range_lands_on_a_rung_the_ladder_reaches():
     """Narrowing 16-24 to 21 would straddle the top and never earn the jump."""
     wide = spec(**{**LUNGE.__dict__, "rep_low": 10, "rep_high": 30})
-    widest = widest_rep_high(wide, 10.0, bodyweight=81.0)
+    widest = fitting_rep_high(wide, 10.0, bodyweight=81.0)
 
     assert widest is not None
     assert (widest - wide.rep_low) % wide.rep_step == 0
+
+
+# --- ranges too narrow for their step --------------------------------------
+
+
+#: A 1 kg step on a 3 kg dumbbell is a 33% jump, which a 12-20 range cannot
+#: absorb: the "reset" to 12 reps is harder than the 20 that earned it.
+RAISE = spec(
+    name="Dumbbell Lateral Raise",
+    garmin_name="DUMBBELL_LATERAL_RAISE",
+    rep_low=12,
+    rep_high=20,
+    sets=3,
+    load="dumbbell",
+    weight_step=1.0,
+)
+
+
+def test_a_step_too_big_for_its_range_reads_as_a_negative_shift():
+    shift = reset_drop(RAISE, 3.0)
+    assert shift is not None
+    assert shift < -TOLERATED_SHIFT
+
+
+def test_the_same_exercise_is_fine_once_the_dumbbells_are_heavier():
+    """The wall is the step as a share of the load, not the range alone."""
+    shift = reset_drop(RAISE, 12.0)
+    assert shift is not None
+    assert abs(shift) <= TOLERATED_SHIFT
+
+
+def test_a_narrow_range_is_fixed_by_widening_it():
+    fitted = fitting_rep_high(RAISE, 3.0)
+    assert fitted is not None
+    assert fitted > RAISE.rep_high  # widened, not narrowed
+
+    widened = spec(**{**RAISE.__dict__, "rep_high": fitted})
+    shift = reset_drop(widened, 3.0)
+    assert shift is not None and abs(shift) <= TOLERATED_SHIFT
+
+
+def test_a_wide_range_is_still_fixed_by_narrowing_it():
+    """Both directions from one search, decided by the sign alone."""
+    fitted = fitting_rep_high(CALF, 20.0, bodyweight=80.0)
+    assert fitted is not None
+    assert fitted < CALF.rep_high
+
+
+def test_micro_loading_fixes_what_no_range_can():
+    """A 1 kg step on 1 kg is a 100% jump; no rep range absorbs that."""
+    assert fitting_rep_high(RAISE, 1.0) is None

@@ -112,7 +112,7 @@ def test_a_range_too_wide_for_its_real_step_is_reported():
     detail = findings[0].detail
     assert "100 kg" in detail  # the stack plus the lifter, not the stack
     assert "drop in effort" in detail
-    assert "narrow to 12-" in detail
+    assert "make it 12-18" in detail
 
 
 def test_the_same_range_is_fine_once_bodyweight_is_not_claimed():

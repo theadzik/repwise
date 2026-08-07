@@ -19,7 +19,7 @@ complete working A/B split annotated field by field, or generate one with
 - [Workout fields](#workout-fields)
 - [Exercise fields](#exercise-fields)
 - [Load and weight steps](#load-and-weight-steps)
-- [Is the range too wide for the step](#is-the-range-too-wide-for-the-step)
+- [Does the range fit the step](#does-the-range-fit-the-step)
 - [Validation](#validation)
 - [Finding your exercise identifiers](#finding-your-exercise-identifiers)
 
@@ -70,7 +70,7 @@ settings:
 | `garmin.dump_dir` | `.` | Where `--dump` and `fetch` write JSON |
 | `weight_steps` | - | kg added per load type when a rep range is topped out |
 | `min_weights` | none | The lightest each load type can go. A [deload](progression.md#deloading) stops here rather than prescribing a weight you cannot make up. A load type left out has no floor |
-| `bodyweight` | your Garmin weigh-ins | Your weight in kg, when you would rather state it than have it read. Only ever an input to [`check`](#is-the-range-too-wide-for-the-step); no target depends on it |
+| `bodyweight` | your Garmin weigh-ins | Your weight in kg, when you would rather state it than have it read. Only ever an input to [`check`](#does-the-range-fit-the-step); no target depends on it |
 
 ## Workout fields
 
@@ -157,7 +157,7 @@ they are not part of the document. Keep anything worth saying in an exercise's
 | `rest` | no | none | Seconds between sets, written to the Garmin workout by `update --apply`. Left out, Garmin's own rest is kept |
 | `start_weight` | no | `0` | kg a **newly created** exercise starts at. Never read again once the step exists; progression owns the weight from then on |
 | `unit` | no | `reps` | `reps`, or `seconds` for timed holds like planks |
-| `bodyweight_factor` | no | `0` | The share of **you** this movement carries, 0 to 1. Read only by [`check`](#is-the-range-too-wide-for-the-step) |
+| `bodyweight_factor` | no | `0` | The share of **you** this movement carries, 0 to 1. Read only by [`check`](#does-the-range-fit-the-step) |
 | `notes` | no | none | Free text: a cue, a link, a reminder. Read by nobody - not this tool, not Garmin |
 
 `garmin_category` is worth filling in even though it is optional: Garmin
@@ -205,7 +205,7 @@ Override it per exercise where the equipment differs: a machine whose stack
 starts at 15 kg, or a barbell lift you would not perform with less than the
 20 kg bar even though a 12 kg one exists.
 
-## Is the range too wide for the step
+## Does the range fit the step
 
 Everything above works in the units Garmin stores. For most exercises that is
 the load: put 60 kg on the bar and you are lifting 60 kg. For one kind of
@@ -248,18 +248,36 @@ jump, nowhere near enough to pay for dropping 20 reps to 12, and the "weight
 increase" leaves the exercise about 12% *easier* than it was. You then spend
 six sessions climbing back to ground you already held.
 
-`check` reports it, at the weight the exercise is loaded to today:
+The mirror image is just as wrong. A lateral raise programmed 12-20 at 3 kg
+steps by 1 kg, which is a 33% jump - so the reset to 12 reps is about 12%
+*harder* than the 20 reps that earned it. That is a wall rather than a
+progression, and because [rule 5](progression.md#a-load-has-to-be-earned)
+refuses a load you cannot carry for `rep_low`, it becomes a loop: climb the
+range, fail the jump, deload, climb it again.
+
+Both are the same number with opposite signs, so `check` reports both, at the
+weight the exercise is loaded to today:
 
 ```text
 Workout A (1631254436)
  ! Weighted Standing Calf Raise: +5 kg on 101 kg is 5.0%, but resetting
-   20->12 reps needs more, so the weight increase is a 12% drop in effort
-   (narrow to 12-18, or accept the sawtooth)
+   20->12 reps gives back more, so the weight increase is a 12% drop in
+   effort (make it 12-18, or accept the sawtooth)
+
+Workout B (1641921176)
+ ! Dumbbell Lateral Raise: +1 kg on 3 kg is 33.3%, but resetting 20->12
+   reps gives back less, so the weight increase is a 12% jump in effort
+   (make it 12-21, or micro-load)
 ```
+
+| Sign | Meaning | Costs you | Fix |
+| --- | --- | --- | --- |
+| Positive | Range too **wide** for the step | Sessions spent re-treading ground | Narrow the range |
+| Negative | Range too **narrow** for the step | A wall at every weight jump | Widen the range, or micro-load |
 
 Judged per run rather than once, because the answer moves: a step is a
 shrinking share of a growing load, so a range that was fine at 20 kg stops
-being fine at 40 kg.
+being fine at 40 kg - and one that was a wall at 3 kg stops being one at 12 kg.
 
 Ranges counted per side are read per side. An [alternating
 exercise](progression.md#alternating-exercises) is programmed in the watch's
@@ -268,9 +286,19 @@ the leg doing the work, and that is what the reset is measured against. Taking
 it at face value would overstate the cost of every such reset and invent
 findings on exercises that are programmed perfectly well.
 
-Some drop is inherent - climbing the range again always gives back part of what
-the load gained - so only exercises past **10%** are reported. A well-programmed
-barbell lift sits at a few percent and stays quiet.
+Some movement is inherent - climbing the range again always gives back part of
+what the load gained - so only exercises past **10% either way** are reported.
+A well-programmed lift sits within a few percent of zero and stays quiet.
+
+One threshold serves both signs, which is a simplification rather than a claim
+that they are equally bad: a wide range only wastes sessions, where a narrow one
+stops progress dead. If the narrow side ever proves too quiet, split
+`TOLERATED_SHIFT` in two rather than moving it.
+
+No suggestion is offered past 30 reps. A 1 kg step on a 1 kg dumbbell is a 100%
+jump that no rep range absorbs, and answering it with `12-47` would be
+arithmetic rather than advice - so the finding says to change `weight_step`
+instead.
 
 Nothing here changes a target. It is a fact about how you wrote the range, and
 the fix is to edit the range.

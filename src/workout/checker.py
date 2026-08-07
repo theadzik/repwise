@@ -8,8 +8,9 @@ only by luck. Since the config drives the workout, that mistake is expensive:
 the exercise Garmin holds goes unnamed and is removed, taking the target stored
 in it, while a new step is built beside it.
 
-**Programming.** A rep range too wide for what its weight step is really worth,
-which `update` will carry out faithfully forever because every individual
+**Programming.** A rep range that does not fit its weight step - too wide and
+every weight increase is a step backwards, too narrow and each one is a wall -
+both of which `update` carries out faithfully forever, because every individual
 decision it makes is correct. Only the shape of the range is wrong, and that is
 visible only once the load is counted properly - see `domain/effort.py`.
 
@@ -21,10 +22,10 @@ Pure: takes a config and payloads, returns findings.
 from dataclasses import dataclass
 
 from .domain.effort import (
-    TOLERATED_DROP,
+    TOLERATED_SHIFT,
     effective_load,
+    fitting_rep_high,
     reset_drop,
-    widest_rep_high,
 )
 from .domain.matching import ExerciseIndex
 from .domain.models import Workout
@@ -99,7 +100,7 @@ def check_workout(workout: Workout, payload: dict) -> list[Finding]:
 def check_programming(
     workout: Workout, payload: dict, bodyweight: float | None = None
 ) -> list[Finding]:
-    """Look for rep ranges too wide for what their weight step is really worth.
+    """Look for rep ranges that do not fit what their weight step is worth.
 
     Judged at the weight the exercise is actually loaded to today, read out of
     the Garmin workout rather than guessed from the config, because the answer
@@ -141,28 +142,33 @@ def check_programming(
             continue
 
         carried = bodyweight or 0.0
-        drop = reset_drop(spec, target.weight, carried)
-        if drop is None or drop <= TOLERATED_DROP:
+        shift = reset_drop(spec, target.weight, carried)
+        if shift is None or abs(shift) <= TOLERATED_SHIFT:
             continue
 
         load = effective_load(spec, target.weight, carried)
-        widest = widest_rep_high(spec, target.weight, carried)
-        # Say what to change, not only that something is wrong. Narrowing the
-        # range is nearly always the practical fix: the step is a property of
-        # the rack, and making it bigger is the option you do not have.
+        fitted = fitting_rep_high(spec, target.weight, carried)
+        # The sign is the whole diagnosis, so it decides every word that
+        # follows: which way the range is wrong, which way to move it, and
+        # what it costs you to leave it alone.
+        if shift > 0:
+            gives, costs = "gives back more", f"{shift:.0%} drop in effort"
+            settle = "accept the sawtooth"
+        else:
+            gives, costs = "gives back less", f"{-shift:.0%} jump in effort"
+            settle = "micro-load"
         fix = (
-            f"narrow to {spec.rep_low}-{widest}"
-            if widest
-            else "raise weight_step, or widen the gap another way"
+            f"make it {spec.rep_low}-{fitted}"
+            if fitted
+            else f"change weight_step from {spec.weight_step:g} kg"
         )
         findings.append(
             Finding(
                 workout.key,
                 f"{spec.name}: +{spec.weight_step:g} kg on {load:g} kg is "
-                f"{spec.weight_step / load:.1%}, "
-                f"but resetting {spec.rep_high}->{spec.rep_low} reps needs more, "
-                f"so the weight increase is a {drop:.0%} drop in effort "
-                f"({fix}, or accept the sawtooth)",
+                f"{spec.weight_step / load:.1%}, but resetting "
+                f"{spec.rep_high}->{spec.rep_low} reps {gives}, so the weight "
+                f"increase is a {costs} ({fix}, or {settle})",
             )
         )
 
