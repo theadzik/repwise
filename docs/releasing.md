@@ -10,7 +10,7 @@ The work is split in two, deliberately:
 | When | What runs | What it does |
 | --- | --- | --- |
 | Every commit | `cz check`, via pre-commit's `commit-msg` hook | Rejects a message that is not conventional |
-| Every push to `main` | `cz bump`, via `.github/workflows/release.yml` | Tags the release that just landed, then reads every commit since that tag and opens a pull request carrying the next one |
+| Every push to `main` | `cz bump`, via `.github/workflows/release.yml` | Tags the release that just landed, then reads every commit since that tag and opens a self-merging pull request carrying the next one |
 
 A normal commit never changes the version. That is not a limitation of the
 tooling - see [why not bump on every
@@ -100,22 +100,33 @@ While the version is below 1.0.0, `major_version_zero = true` in
 
 ## Cutting a release
 
-Merge the open pull request titled `bump: version 0.4.0 → 0.5.0`, leaving its
-title alone. That is the whole procedure; the tag appears a minute later.
+Nothing, on a good day. Merging anything that earns a release to `main` is
+enough: a pull request titled `bump: version 0.4.0 → 0.5.0` opens by itself,
+merges itself once CI is green, and the tag follows a minute later.
 
-That pull request is kept up to date by `.github/workflows/release.yml`, which
-runs on every push to `main` and does two things in order:
+What to do is therefore mostly *not* doing something. Close the bump pull
+request if this is not a release you want yet; it will be reopened, retitled to
+whatever the accumulated commits then deserve, on the next push to `main`.
+
+The machinery is `.github/workflows/release.yml`, which runs on every push to
+`main` and does two things in order:
 
 1. **`tag`** - if the version in `pyproject.toml` has no tag yet, it tags the
    head commit. This is what closes the release that has just merged.
 2. **`release-pr`** - it runs `cz bump --version-files-only`, which writes the
    version files and the changelog and stops there, making no commit and no
-   tag. It commits that itself, force-pushes the `release` branch and opens or
-   retitles the pull request.
+   tag. It commits that itself, force-pushes the `release` branch, opens or
+   retitles the pull request, and enables auto-merge on it.
 
 The two are one workflow rather than two so that they cannot race: the tag has
 to exist before `cz bump` runs, or the next version would be computed from
 commits that were already released.
+
+Auto-merge is what makes CI, not a click, the thing that gates a release - so
+`ci.yml` must be a **required status check** on `main` for any of this to be
+safe. GitHub refuses to enable auto-merge on a pull request that is already
+mergeable, so if the required check is ever removed the `release-pr` job fails
+loudly rather than merging an ungated bump.
 
 `cz bump` cannot simply be run against `main`, which is why the work is split
 this way. It writes the version files, commits and tags in one step, and the
@@ -220,6 +231,13 @@ request is still where a human decides that a release happens.
   pull requests". Without it the `release-pr` job fails with *GitHub Actions is
   not permitted to create or approve pull requests*, and only the bump PR is
   lost - tagging is unaffected, and the bump can still be prepared by hand.
+- **Releases are only as good as the required check.** With `ci.yml` required,
+  a red run stops the bump merging. Drop that requirement and auto-merge stops
+  being possible at all, which is the intended failure: the job goes red rather
+  than quietly releasing whatever was pushed.
+- **A release you do not want is closed, not reverted.** The bump pull request
+  is rebuilt from `main` on every push, so closing it costs nothing and the
+  next push proposes the release again, with whatever has accumulated since.
 - **A tag pushed by CI starts no further workflow.** Refs created with the
   built-in `GITHUB_TOKEN` deliberately do not trigger runs, so a workflow
   keyed on `push: tags` would never fire. Anything that should happen on a
