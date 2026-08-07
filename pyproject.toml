@@ -55,6 +55,10 @@ changelog_start_rev = "0.1.0"
 # Pre-1.0: a breaking change bumps the minor, not the major. Drop this line
 # when releasing 1.0.0, after which "!" means a major bump.
 major_version_zero = true
+# Commitizen's own Markdown template with a commit link on each entry. The path
+# is resolved against the working directory, so `cz` has to run from the
+# repository root - which is where both the hook and the workflow run it.
+template = ".cz/CHANGELOG.md.j2"
 
 # Linting and formatting. The pre-commit hook and a bare `ruff check` read this
 # same section, so they cannot disagree.

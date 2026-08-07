@@ -158,7 +158,7 @@ One bump touches four things:
 | --- | --- |
 | `[project].version` in `pyproject.toml` | `version_provider = "pep621"`, so this is the single source of truth |
 | `__version__` in `src/workout/__init__.py` | Listed in `version_files`, kept in step |
-| `CHANGELOG.md` | Prepended, grouped by type |
+| `CHANGELOG.md` | Prepended, grouped by type, each entry linked to its commit |
 | A commit and a tag | `bump: version 0.1.0 → 0.2.0`, tagged `0.2.0` - the commit on the `release` branch, the tag once it has merged |
 
 Tags carry no `v` prefix - `0.2.0`, not `v0.2.0`. That is Commitizen's default
@@ -251,6 +251,20 @@ request is still where a human decides that a release happens.
 - **The changelog starts at 0.1.0.** `changelog_start_rev` is set, because
   history before that tag predates conventional commits and there is nothing to
   generate from.
+- **Do not regenerate the whole changelog.** `cz changelog` rewrites the file
+  from the commits, and released sections have been edited since they were
+  written - a typo fixed in an entry is a typo still present in the commit it
+  came from, so regenerating reintroduces it and `codespell` then fails. `cz
+  bump` only prepends the new section, which is why it is safe and this is not.
+- **Pull request numbers are not links.** `(#15)` reaches the changelog because
+  a squash merge puts the pull request title in the commit message, but GitHub
+  only autolinks that form in issues, pull requests, commit messages and
+  release bodies - never in a Markdown file rendered from the repository. The
+  commit link beside each entry is the way through; the commit page names the
+  pull request it came from. Linking the number itself would need a
+  `changelog_message_builder_hook`, which is a Python callable on the
+  Commitizen class and so means shipping a plugin - `cz_customize` does not
+  expose it.
 - **Two pins to keep in step.** `rev:` in `.pre-commit-config.yaml` and the
   `commitizen` pin in `pyproject.toml` should name the same version, so the
   rules the hook enforces are the rules `cz bump` reads.
