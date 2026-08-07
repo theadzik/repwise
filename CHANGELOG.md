@@ -1,3 +1,13 @@
+## 0.7.0 (2026-08-07)
+
+### Feat
+
+- correct skipLastRest after exercise (#13)
+
+### Refactor
+
+- cleanup dead code (#15)
+
 ## 0.6.1 (2026-08-07)
 
 ### Refactor
