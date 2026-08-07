@@ -519,6 +519,24 @@ def apply_block(
     return groups
 
 
+def steps_between(
+    payload: dict[str, Any], blocks: list[ExerciseBlock]
+) -> list[dict[str, Any]]:
+    """The top-level steps belonging to no exercise: rests, and anything else.
+
+    Kept and put back rather than rebuilt, so that a run which changes nothing
+    leaves the between-exercise rests exactly as Garmin stored them - down to
+    the value a lap-button rest carries and ignores.
+    """
+    exercises = {id(outer) for block in blocks for outer in block.outers}
+    segments = payload.get("workoutSegments") or [{}]
+    return [
+        step
+        for step in segments[0].get("workoutSteps") or []
+        if id(step) not in exercises
+    ]
+
+
 def set_exercise_steps(
     payload: dict[str, Any],
     exercises: list[list[dict[str, Any]]],

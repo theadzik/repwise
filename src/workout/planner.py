@@ -43,6 +43,7 @@ from .garmin.payloads import (
     step_exercise_name,
     step_note,
     step_rest,
+    steps_between,
 )
 
 Performed = tuple[dict[str, list[PerformedSet]], dict[str, list[PerformedSet]]]
@@ -201,9 +202,8 @@ class Plan:
 
 def find_workout(config: Config, activity_name: str) -> Workout:
     """Which workout does an activity belong to, by name prefix."""
-    name = activity_name.lower()
     for workout in config:
-        if any(name.startswith(prefix) for prefix in workout.activity_prefixes):
+        if workout.claims(activity_name):
             return workout
     raise ActivityNotFound(f"Cannot tell which workout '{activity_name}' belongs to.")
 
@@ -527,7 +527,7 @@ def _refresh_gaps(workout: Workout, payload: dict[str, Any]) -> GapChange | None
         return None
 
     blocks = list(iter_exercise_blocks(payload))
-    gaps = [step for step in _existing_gaps(payload, blocks) if is_rest(step)]
+    gaps = [step for step in steps_between(payload, blocks) if is_rest(step)]
     stale = [
         step for step in gaps if not is_timed_rest(step) or step_rest(step) != wanted
     ]
@@ -593,24 +593,6 @@ def _index_blocks(blocks: list[ExerciseBlock]) -> ExerciseIndex[ExerciseBlock]:
     return index
 
 
-def _existing_gaps(
-    payload: dict[str, Any], blocks: list[ExerciseBlock]
-) -> list[dict[str, Any]]:
-    """The steps between the exercises: rests, and anything else up there.
-
-    Kept and put back rather than rebuilt, so that a run which changes nothing
-    leaves the between-exercise rests exactly as Garmin stored them - down to
-    the value a lap-button rest carries and ignores.
-    """
-    exercises = {id(outer) for block in blocks for outer in block.outers}
-    segments = payload.get("workoutSegments") or [{}]
-    return [
-        step
-        for step in segments[0].get("workoutSteps") or []
-        if id(step) not in exercises
-    ]
-
-
 def _reconcile(
     workout: Workout,
     payload: dict[str, Any],
@@ -630,7 +612,7 @@ def _reconcile(
     """
     blocks = list(iter_exercise_blocks(payload))
     index = _index_blocks(blocks)
-    gaps = _existing_gaps(payload, blocks)
+    gaps = steps_between(payload, blocks)
 
     # Steps are compared by identity throughout: two exercises can hold equal
     # dictionaries, and it matters which one of them is being moved.
@@ -730,14 +712,6 @@ def _out_of_order(kept: list[int], was: dict[int, int]) -> list[int]:
     return [ident for position, ident in enumerate(kept) if position not in in_place]
 
 
-def _exercise_step(outer: dict[str, Any]) -> dict[str, Any]:
-    """The exercise inside a repeat group, or the step itself when bare."""
-    for inner in outer.get("workoutSteps") or []:
-        if inner.get("exerciseName") or inner.get("category"):
-            return inner
-    return outer
-
-
 def _gaps_for(
     outers: list[list[dict[str, Any]]],
     existing: list[dict[str, Any]],
@@ -794,7 +768,7 @@ def plan_workout(
     # target ramps can be laid back down in the right place afterwards.
     blocks = list(iter_exercise_blocks(payload))
     layout = [block.outers for block in blocks]
-    spare = _existing_gaps(payload, blocks)
+    spare = steps_between(payload, blocks)
     reshaped = False
 
     for position, block in enumerate(blocks):
@@ -857,8 +831,8 @@ def plan_workout(
         payload,
         changes,
         shaped.warnings,
-        shaped.notes,
-        shaped.rests,
+        notes=shaped.notes,
+        rests=shaped.rests,
         sets=shaped.sets,
         skips=shaped.skips,
         structure=structure,
@@ -885,7 +859,7 @@ def plan_sync(
 
     blocks = list(iter_exercise_blocks(payload))
     layout = [block.outers for block in blocks]
-    spare = _existing_gaps(payload, blocks)
+    spare = steps_between(payload, blocks)
     reshaped = False
 
     for position, block in enumerate(blocks):
@@ -930,8 +904,8 @@ def plan_sync(
         payload,
         changes,
         shaped.warnings,
-        shaped.notes,
-        shaped.rests,
+        notes=shaped.notes,
+        rests=shaped.rests,
         sets=shaped.sets,
         skips=shaped.skips,
     )

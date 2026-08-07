@@ -84,6 +84,15 @@ class Workout:
     #: session is run rather than of any exercise in it.
     rest_between: int | None = None
 
+    def claims(self, activity_name: str) -> bool:
+        """Whether an activity with this name was a session of this workout.
+
+        The one place the rule lives, read in both directions: finding the
+        workout an activity belongs to, and finding a workout's activities.
+        """
+        name = activity_name.lower()
+        return any(name.startswith(prefix) for prefix in self.activity_prefixes)
+
 
 @dataclass(frozen=True)
 class GarminSettings:

@@ -18,6 +18,7 @@ from .garmin.payloads import (
     iter_exercise_blocks,
     step_rest,
     step_target,
+    steps_between,
 )
 from .yamlio import dump
 
@@ -154,15 +155,8 @@ def _rest_between(payload: dict) -> int | None:
     - or waits for the lap button, as Garmin's own default does - imports
     without the key rather than with a value that would change the others.
     """
-    exercises = {
-        id(outer) for block in iter_exercise_blocks(payload) for outer in block.outers
-    }
-    segments = payload.get("workoutSegments") or [{}]
-    gaps = [
-        step
-        for step in segments[0].get("workoutSteps") or []
-        if id(step) not in exercises and is_rest(step)
-    ]
+    blocks = list(iter_exercise_blocks(payload))
+    gaps = [step for step in steps_between(payload, blocks) if is_rest(step)]
     if not gaps or not all(is_timed_rest(step) for step in gaps):
         return None
 

@@ -12,7 +12,8 @@ workouts.yaml              all configuration: routine, Garmin ids, settings
 workouts.example.yaml      the shipped example, validated by the tests
 src/workout/
     domain/
-        models.py          domain objects, no behaviour
+        models.py          domain objects; a workout knows which activity
+                           names are its own
         progression.py     the rules. No I/O, no Garmin types
         matching.py        which exercise a name or category refers to
     app/                   one module per command, plus the report they print

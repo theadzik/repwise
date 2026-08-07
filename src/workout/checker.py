@@ -39,9 +39,6 @@ class Finding:
     detail: str
     severity: str = "warning"
 
-    def __str__(self) -> str:
-        return f"{self.workout}: {self.detail}"
-
 
 def check_workout(workout: Workout, payload: dict) -> list[Finding]:
     """Look for exercises the config cannot name properly."""
