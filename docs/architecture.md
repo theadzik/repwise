@@ -35,11 +35,12 @@ src/workout/
     garmin/
         client.py          authentication and the Garmin session
         payloads.py        Garmin's JSON <-> our types, and building it from
-                           nothing for a workout Garmin does not have yet
+                           nothing for a workout Garmin does not have yet.
+                           Also reads the workout an activity was run against
 tests/
     builders.py            the payloads and specs every test builds from
     conftest.py            fixtures
-    test_progression.py    the rules
+    test_progression.py    the rules, and how far a stall shortens a step
     test_matching.py       name and category lookup
     test_config.py         loading and validation
     test_payloads.py       schema mapping, using trimmed real payloads
@@ -152,7 +153,9 @@ record, and where that record lands is `main()`'s business alone.
 flowchart TD
     YAML["workouts.yaml"] -->|load_config| SPEC["Workout / ExerciseSpec"]
     ACT["Garmin activity"] -->|performed_sets| PERF["PerformedSet list"]
-    WKT["Garmin workout"] -->|step_target| CUR["current Target"]
+    OLD["earlier activities"] -->|"executed_targets + performed_sets"| HIST["Session list"]
+    HIST -->|miss_streak| STREAK["misses in a row"]
+    WKT["Garmin workout"] -->|block_target| CUR["current Target"]
 
     SPEC --> SHAPE{{"_reconcile()"}}
     WKT --> SHAPE
@@ -161,9 +164,10 @@ flowchart TD
     SPEC --> RULES{{"next_target()"}}
     PERF --> RULES
     CUR --> RULES
+    STREAK --> RULES
 
     RULES --> NEW["new Target"]
-    NEW -->|apply_target| MUT["mutated workout payload"]
+    NEW -->|apply_block| MUT["mutated workout payload"]
     MUT -->|"save_workout, when applying"| OUT[("Garmin Connect")]
     MUT -->|"create_workout, when it is new"| OUT
     OUT -->|"the id it issues"| BACK["record_workout_id"] --> YAML
@@ -174,13 +178,15 @@ An `update` run in order:
 1. Load and validate `workouts.yaml`.
 2. Authenticate, reusing cached tokens if present.
 3. For every workout, find the latest activity whose name starts with one of
-   its `activity_prefixes`. With `--activity`, take just that one instead.
+   its `activity_prefixes`, and the older ones behind it. With `--activity`,
+   take just that one and the sessions before it.
 4. Shape every workout no session touched: reconcile its exercises against the
    config, building a whole workout from scratch when Garmin has none.
 5. Order the sessions oldest first, so replaying them matches what running the
    tool after each would have done.
 6. For each in turn, fetch the activity's exercise sets and the Garmin workout
-   definition, reconcile it the same way, and compute the next target.
+   definition, reconcile it the same way, read back how long each exercise had
+   been stalling, and compute the next target.
 7. Propagate any target that moved into other workouts sharing that exercise.
 8. Print the plan. With `--apply`, PUT the mutated workouts back - or POST the
    ones Garmin does not have, and record the ids it issues.

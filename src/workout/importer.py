@@ -106,9 +106,17 @@ def describe_workout(payload: dict) -> ImportedWorkout:
 
         condition = (block.step.get("endCondition") or {}).get("conditionTypeKey")
         time_based = condition == "time"
-        target = step_target(block.step, time_based)
-        if target is None:
+        # An exercise part-way up a ramp asks more of its leading sets than of
+        # the rest. The lower figure is the one every set has reached, so it is
+        # the one to import as the bottom of the range.
+        asked = [
+            found
+            for found in (step_target(step, time_based) for step in block.steps)
+            if found is not None
+        ]
+        if not asked:
             continue  # a step with no target of its own, e.g. a lap.button hold
+        target = min(asked, key=lambda found: found.reps)
 
         load, guessed = guess_load(label, target.weight)
         width = TIME_RANGE_WIDTH if time_based else REP_RANGE_WIDTH
@@ -146,7 +154,9 @@ def _rest_between(payload: dict) -> int | None:
     - or waits for the lap button, as Garmin's own default does - imports
     without the key rather than with a value that would change the others.
     """
-    exercises = {id(block.outer) for block in iter_exercise_blocks(payload)}
+    exercises = {
+        id(outer) for block in iter_exercise_blocks(payload) for outer in block.outers
+    }
     segments = payload.get("workoutSegments") or [{}]
     gaps = [
         step
@@ -183,7 +193,7 @@ HEADER = """\
 DEFAULT_SETTINGS: dict = {
     "garmin": {
         "token_store": "~/.garminconnect",
-        "activity_search_limit": 25,
+        "activity_search_limit": 50,
         "dump_dir": ".",
     },
     "weight_steps": {

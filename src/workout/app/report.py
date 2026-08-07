@@ -32,22 +32,33 @@ SEVERITY = {
     "warning": (" !", logging.WARNING),
 }
 
+#: How wide the before and after columns are. Enough for a target written out
+#: set by set - `9,9,8,8 x 30 kg` - so that a ramp does not push every reason
+#: beside it out of line.
+COLUMN = 17
+
 
 def describe(spec: ExerciseSpec, target: Target) -> str:
-    """Render a target the way the exercise is actually measured."""
+    """Render a target the way the exercise is actually measured.
+
+    A ramped target is written out set by set - `9,9,8,8` - because the whole
+    point of it is that the sets differ, and a single figure could only ever
+    name one of them.
+    """
+    figure = target.spread(spec.sets, spec.rep_step)
     if spec.time_based:
-        return f"{target.reps} s"
+        return f"{figure} s"
     if spec.bodyweight:
-        return f"{target.reps} reps"
-    return f"{target.reps} x {target.weight:g} kg"
+        return f"{figure} reps"
+    return f"{figure} x {target.weight:g} kg"
 
 
 def report_change(change: Change, force_flag: str | None = None) -> None:
     flag = force_flag or ("*" if change.moved else " ")
     logger.info(
         f"{flag} {change.spec.name:<40}"
-        f" {describe(change.spec, change.old):>13}"
-        f"  ->  {describe(change.spec, change.new):<13} ({change.reason})"
+        f" {describe(change.spec, change.old):>{COLUMN}}"
+        f"  ->  {describe(change.spec, change.new):<{COLUMN}} ({change.reason})"
     )
 
 
@@ -57,7 +68,7 @@ def report_prescribed(name: str, old: str, new: str, source: str) -> None:
     Shown like a target rather than hidden like a note: these change how the
     workout is performed, and are on the watch from the next sync.
     """
-    logger.info(f"* {name:<40} {old:>13}  ->  {new:<13} ({source})")
+    logger.info(f"* {name:<40} {old:>{COLUMN}}  ->  {new:<{COLUMN}} ({source})")
 
 
 def report_rest(change: RestChange) -> None:

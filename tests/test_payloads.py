@@ -16,9 +16,11 @@ from builders import (
 from workout.domain.progression import Target
 from workout.garmin.payloads import (
     GENERATED_NOTE,
+    apply_block,
     apply_note,
     apply_rest,
     apply_target,
+    block_target,
     is_timed_rest,
     iter_exercise_blocks,
     new_group,
@@ -294,7 +296,7 @@ def built(*specs, between=None):
     """A whole workout built from specs, each starting at the bottom of its
     range, laid out with the same gap between every exercise."""
     payload = new_workout("Workout C")
-    groups = [new_group(s, Target(s.rep_low, s.start_weight)) for s in specs]
+    groups = [[new_group(s, Target(s.rep_low, s.start_weight))] for s in specs]
     gaps = [new_rest(between) for _ in range(len(specs) - 1)]
     set_exercise_steps(payload, groups, gaps)
     return payload
@@ -468,3 +470,159 @@ def test_duration_is_kept_for_timed_holds():
     payload = {"exerciseSets": [active("PLANK", "PLANK", 1, 0.0, duration=46.0)]}
     by_name, _ = performed_sets(payload)
     assert by_name["plank"][0].as_time().reps == 46
+
+
+# --- an exercise split across two groups ----------------------------------
+#
+# A repeat group repeats one step identically, so a target that asks more of
+# the leading sets than of the rest needs two of them, side by side. Above this
+# module that is still one exercise.
+
+RAMP_SQUAT = spec(sets=4)
+
+
+def ramped(high_sets=2, high=9, low_sets=2, low=8, name="BARBELL_BACK_SQUAT"):
+    """The two adjacent groups this tool writes a ramped target as."""
+    return workout(
+        {
+            "type": "RepeatGroupDTO",
+            "numberOfIterations": high_sets,
+            "workoutSteps": [rep_step(name, "SQUAT", high, 30.0), timed_rest(120.0)],
+        },
+        {
+            "type": "RepeatGroupDTO",
+            "numberOfIterations": low_sets,
+            "workoutSteps": [rep_step(name, "SQUAT", low, 30.0), timed_rest(120.0)],
+        },
+    )
+
+
+def test_two_adjacent_groups_of_one_exercise_read_as_one_block():
+    blocks = list(iter_exercise_blocks(ramped()))
+
+    assert len(blocks) == 1, "one exercise, however many groups hold it"
+    assert blocks[0].sets == 4, "the two counts added together"
+    assert len(blocks[0].groups) == 2
+
+
+def test_a_split_exercise_reads_back_as_the_ramp_it_is():
+    block = next(iter(iter_exercise_blocks(ramped())))
+    assert block_target(block, RAMP_SQUAT) == Target(8, 30.0, lead=2)
+
+
+def test_a_ramp_reads_the_same_whichever_half_comes_first():
+    """Reordered by hand in Connect, it is still two nines and two eights."""
+    reordered = ramped(high_sets=2, high=8, low_sets=2, low=9)
+    block = next(iter(iter_exercise_blocks(reordered)))
+    assert block_target(block, RAMP_SQUAT) == Target(8, 30.0, lead=2)
+
+
+def test_two_groups_more_than_a_step_apart_are_not_a_ramp():
+    """Not a shape this tool writes, so it reads as its base and is collapsed."""
+    block = next(iter(iter_exercise_blocks(ramped(high=12, low=8))))
+    assert block_target(block, RAMP_SQUAT) == Target(8, 30.0, lead=0)
+
+
+def test_two_groups_of_different_exercises_stay_separate():
+    payload = workout(
+        {
+            "type": "RepeatGroupDTO",
+            "numberOfIterations": 2,
+            "workoutSteps": [rep_step("BARBELL_BACK_SQUAT", "SQUAT", 9, 30.0)],
+        },
+        {
+            "type": "RepeatGroupDTO",
+            "numberOfIterations": 2,
+            "workoutSteps": [rep_step("BARBELL_BENCH_PRESS", "BENCH_PRESS", 8, 30.0)],
+        },
+    )
+    assert len(list(iter_exercise_blocks(payload))) == 2
+
+
+def test_writing_a_ramp_splits_one_group_into_two():
+    payload = workout(
+        {
+            "type": "RepeatGroupDTO",
+            "numberOfIterations": 4,
+            "workoutSteps": [
+                rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 30.0),
+                timed_rest(120.0),
+            ],
+        }
+    )
+    block = next(iter(iter_exercise_blocks(payload)))
+    groups = apply_block(block, RAMP_SQUAT, Target(8, 30.0, lead=2))
+
+    assert [g["numberOfIterations"] for g in groups] == [2, 2]
+    assert [g["workoutSteps"][0]["endConditionValue"] for g in groups] == [9.0, 8.0]
+
+
+def test_writing_a_flat_target_collapses_a_ramp_back_to_one_group():
+    block = next(iter(iter_exercise_blocks(ramped())))
+    groups = apply_block(block, RAMP_SQUAT, Target(9, 30.0))
+
+    assert len(groups) == 1
+    assert groups[0]["numberOfIterations"] == 4
+    assert groups[0]["workoutSteps"][0]["endConditionValue"] == 9.0
+
+
+def test_splitting_reuses_the_group_garmin_already_holds():
+    """The first half keeps its identity, so its ids and history survive."""
+    payload = workout(
+        {
+            "type": "RepeatGroupDTO",
+            "numberOfIterations": 4,
+            "stepId": 12345,
+            "workoutSteps": [rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 30.0)],
+        }
+    )
+    block = next(iter(iter_exercise_blocks(payload)))
+    groups = apply_block(block, RAMP_SQUAT, Target(8, 30.0, lead=2))
+
+    assert groups[0] is block.groups[0]
+    assert groups[0]["stepId"] == 12345
+
+
+def test_a_ramp_survives_being_written_and_read_back():
+    payload = workout(
+        {
+            "type": "RepeatGroupDTO",
+            "numberOfIterations": 4,
+            "workoutSteps": [
+                rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 30.0),
+                timed_rest(120.0),
+            ],
+        }
+    )
+    block = next(iter(iter_exercise_blocks(payload)))
+    wanted = Target(8, 30.0, lead=2)
+    groups = apply_block(block, RAMP_SQUAT, wanted)
+
+    set_exercise_steps(payload, [groups], [])
+    read_back = next(iter(iter_exercise_blocks(payload)))
+    assert block_target(read_back, RAMP_SQUAT) == wanted
+    assert read_back.sets == 4
+
+
+def test_the_two_halves_of_an_exercise_sit_side_by_side():
+    """No rest between exercises between them: the group's own rest covers it."""
+    payload = new_workout("Workout C")
+    squat = spec(sets=4)
+    block = next(iter(iter_exercise_blocks(ramped())))
+    halves = apply_block(block, squat, Target(8, 30.0, lead=2))
+    other = [new_group(PLANK, Target(30, 0.0))]
+
+    set_exercise_steps(payload, [halves, other], [new_rest(60)])
+
+    steps = payload["workoutSegments"][0]["workoutSteps"]
+    kinds = ["group" if step.get("workoutSteps") else "gap" for step in steps]
+    assert kinds == ["group", "group", "gap", "group"]
+
+
+def test_a_split_exercise_is_numbered_as_two_groups():
+    payload = new_workout("Workout C")
+    block = next(iter(iter_exercise_blocks(ramped())))
+    halves = apply_block(block, spec(sets=4), Target(8, 30.0, lead=2))
+    set_exercise_steps(payload, [halves], [])
+
+    assert orders(payload) == [(1, 1), (2, 1), (3, 1), (4, 2), (5, 2), (6, 2)]

@@ -4,6 +4,7 @@ How the next target is decided, in full. If a run changed something you did not
 expect, the answer is here.
 
 - [The five rules](#the-five-rules)
+- [Coming back from a stall](#coming-back-from-a-stall)
 - [Progress is judged by the weakest set](#progress-is-judged-by-the-weakest-set)
 - [Working weight](#working-weight)
 - [A load has to be earned](#a-load-has-to-be-earned)
@@ -19,12 +20,64 @@ expect, the answer is here.
 Double progression: reps go up first, weight second.
 
 1. Start at the lower end of the range, e.g. `6-6-6` for a range of 6-10.
-2. Each workout, add a rep to every set: `7-7-7`, then `8-8-8`.
+2. Each workout, add a rep to every set: `7-7-7`, then `8-8-8` - or to only
+   some of them, when you are coming back from a stall.
 3. Once every set reaches the upper end, add weight and reset to the lower end.
 4. If you didn't match the previous result, repeat it unchanged.
 5. A load is only adopted once it can be carried for `rep_low`. Lift something
    other than what was prescribed and fall short of the range and the previous
    target stands.
+
+## Coming back from a stall
+
+Rule 2 works while you are progressing smoothly. It works badly after a miss:
+you fail `9-9-9`, repeat it, finally hit it, and are immediately asked for
+`10-10-10` - the same jump that just failed, from a position you only barely
+reached. So the size of the step depends on the run of misses behind it:
+
+```text
+advance = sets - misses in a row, at least 1
+```
+
+An advance is a rep on **one** set, taken from the first set down. A clean
+session earns one per set, which is the whole target moving exactly as it
+always has. A stall behind it buys fewer, and the sets that miss out stay where
+they were:
+
+| Sets | Missed before | Advance | `8,8,8,8` becomes |
+| --- | --- | --- | --- |
+| 4 | none | 4 | `9,9,9,9` |
+| 4 | once | 3 | `9,9,9,8` |
+| 4 | twice | 2 | `9,9,8,8` |
+| 4 | three times or more | 1 | `9,8,8,8` |
+
+A hit always earns at least one set, however long the stall, or there would be
+no way out of one.
+
+**The sets level up before the base moves.** From `9,9,8,8`, a clean session
+goes to `9,9,9,9` rather than `10,10,9,9`: an uneven target is a way through a
+stall rather than a shape to keep, so it closes at the first opportunity even
+when the session earned more than it needed. Only once every set agrees again
+does the figure itself go up.
+
+Two things end a run of misses besides hitting the target:
+
+- **A change of load.** A different weight is a different ladder, and its
+  misses say nothing about this one. The session where you moved from 5 kg to
+  10 kg is not a stall at 10 kg.
+- **Running out of history.** An exercise added to the routine since, or
+  trained too long ago to appear in the activity search, reads as no stall -
+  the same answer as a first-ever session, and the right one when we cannot see
+  far enough back to say otherwise.
+
+Reading the misses means reading what past sessions were *asked* for, which is
+not in the workout: `update` rewrote that after each of them. It comes from the
+workout Garmin keeps beside each activity - what the watch actually ran. See
+[Garmin's API](garmin-api.md#the-workout-an-activity-was-performed-against).
+
+Only sessions that could still change the answer are fetched. A smoothly
+progressing exercise settles after one, and the walk stops at `sets - 1` misses
+because the advance is pinned at its minimum from there on.
 
 ## Progress is judged by the weakest set
 
@@ -90,15 +143,26 @@ actually performed:
 | 1 | No sets logged | Unchanged |
 | 2 | Weight changed, floor below `rep_low` | Unchanged (rule 5) |
 | 3 | Fewer than `sets` at the working weight | Bank the weight, consolidate reps |
-| 4 | Same weight, floor below target | Repeat unchanged (rule 4) |
+| 4 | Same weight, any set short of what it was asked | Repeat unchanged (rule 4) |
 | 5 | Floor at or above `rep_high` | `rep_low` at weight + step (rule 3) |
-| 6 | Otherwise | `floor + rep_step` at the working weight (rule 2) |
+| 6 | Otherwise | Advance `sets - misses` of the sets (rule 2) |
+
+Case 4 is judged set by set rather than against a single figure, since an
+uneven target does not ask the same of all of them. It is counted rather than
+matched in order - `8,9,9,8` against `9,9,8,8` is two nines and two eights,
+which is what was asked - because the watch logs what you did, not which set
+was meant to be the hard one.
 
 Bodyweight exercises never reach case 5's weight increase; they target
 `rep_high` and hold.
 
 Case 6 caps at `rep_high`, so an off-step target cannot overshoot the range.
 Together with case 2, a target can never leave the programmed range.
+
+An uneven target is stored as **two repeat groups** rather than one - Garmin
+repeats a single step identically and cannot say two things at once - which is
+why an exercise on its way back from a stall shows up twice in Connect and on
+the watch. It collapses back to one group as soon as the sets level up.
 
 ## Worked examples
 
@@ -120,6 +184,16 @@ The last two rows are the pair worth knowing. A deload rebases the stored target
 downward, so a bad day at a lighter weight moves the target with it - but only
 while the reps stay in the range. Once they drop below `rep_low`, the load is
 discarded instead and the stored target is left alone.
+
+The same squat, coming back from a stall rather than progressing smoothly:
+
+| Stored target | Performed | Missed before | Next target | Why |
+| --- | --- | --- | --- | --- |
+| 8 x 20 | 8,8,8,8 @ 20 | twice | `9,9,8,8` x 20 | Two sets earned, two held back |
+| `9,9,8,8` x 20 | 9,9,8,8 @ 20 | none | 9 x 20 | Levelled up, flat again |
+| `9,9,8,8` x 20 | 9,9,8,8 @ 20 | three times | `9,9,9,8` x 20 | One more set levelled |
+| `9,9,8,8` x 20 | 8,8,8,8 @ 20 | - | `9,9,8,8` x 20 | The two nines were missed |
+| `9,9,8,8` x 20 | 10,10,10,10 @ 20 | - | 6 x 22.5 | Topped the range regardless |
 
 ## Timed holds
 

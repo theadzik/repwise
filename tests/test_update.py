@@ -12,12 +12,15 @@ from workout.app.update import (
     Payloads,
     UpdateOptions,
     changed_steps,
+    gather_history,
     pick_sessions,
     run_update,
+    sessions_before,
 )
 from workout.config import ConfigError
 from workout.domain.models import Config, Workout
 from workout.errors import ActivityNotFound, ExitCode, GarminError, UsageError
+from workout.garmin.payloads import performed_sets
 
 SQUAT = spec(sets=3, weight_step=2.5)
 CALF = spec(
@@ -44,10 +47,15 @@ class FakeSession:
     #: What Garmin calls the next workout it is asked to create.
     next_id = "555"
 
-    def __init__(self, activities, workouts, sets):
+    def __init__(self, activities, workouts, sets, executed=None):
         self.activities = activities
         self.workouts = workouts
         self.sets = sets
+        #: The workout each activity was performed against, as Garmin keeps it
+        #: beside the activity. Absent means "not performed against a workout",
+        #: which is what an account with no such record answers.
+        self.executed = executed or {}
+        self.read_back: list[str] = []
         self.fetched: list[str] = []
         self.saved: list[tuple[str, dict]] = []
         self.created: list[dict] = []
@@ -66,7 +74,11 @@ class FakeSession:
         return next(a for a in self.activities if str(a["activityId"]) == activity_id)
 
     def exercise_sets(self, activity_id):
-        return self.sets[str(activity_id)]
+        return self.sets.get(str(activity_id), {"exerciseSets": []})
+
+    def executed_workout(self, activity_id):
+        self.read_back.append(str(activity_id))
+        return self.executed.get(str(activity_id), [])
 
     def workout(self, workout_id):
         self.fetched.append(workout_id)
@@ -158,8 +170,8 @@ def calf_targets(saved) -> dict[str, float]:
 
 def test_every_workout_gets_its_own_latest_session(account):
     """Training A then B and running once should advance both, not just B."""
-    chosen = pick_sessions(account, config_ab(), None)
-    assert [(w.key, a["activityId"]) for w, a in chosen] == [
+    chosen = pick_sessions(account, config_ab(), None, account.activities)
+    assert [(t.workout.key, t.activity["activityId"]) for t in chosen] == [
         ("Workout B", 800),
         ("Workout A", 900),
     ]
@@ -167,14 +179,14 @@ def test_every_workout_gets_its_own_latest_session(account):
 
 def test_sessions_are_replayed_oldest_first(account):
     """The order the sessions happened in, so the newest has the last word."""
-    chosen = pick_sessions(account, config_ab(), None)
-    assert [a["activityId"] for _, a in chosen] == [800, 900]
+    chosen = pick_sessions(account, config_ab(), None, account.activities)
+    assert [t.activity["activityId"] for t in chosen] == [800, 900]
 
 
 def test_only_the_latest_activity_per_workout_is_used(account):
     """Activity 700 is an older Workout A and stays untouched."""
-    chosen = pick_sessions(account, config_ab(), None)
-    assert 700 not in [a["activityId"] for _, a in chosen]
+    chosen = pick_sessions(account, config_ab(), None, account.activities)
+    assert 700 not in [t.activity["activityId"] for t in chosen]
 
 
 def test_a_workout_with_no_activity_is_simply_absent(account):
@@ -182,21 +194,23 @@ def test_a_workout_with_no_activity_is_simply_absent(account):
     config = config_ab()
     config.workouts["Workout C"] = Workout("Workout C", "333", ["workout c"], [SQUAT])
 
-    chosen = pick_sessions(account, config, None)
+    chosen = pick_sessions(account, config, None, account.activities)
 
-    assert [w.key for w, _ in chosen] == ["Workout B", "Workout A"]
+    assert [t.workout.key for t in chosen] == ["Workout B", "Workout A"]
 
 
 def test_an_explicit_activity_overrides_the_scan(account):
     """--activity names one session, so only that one is replayed."""
-    chosen = pick_sessions(account, config_ab(), "700")
-    assert [(w.key, a["activityId"]) for w, a in chosen] == [("Workout A", 700)]
+    chosen = pick_sessions(account, config_ab(), "700", account.activities)
+    assert [(t.workout.key, t.activity["activityId"]) for t in chosen] == [
+        ("Workout A", 700)
+    ]
 
 
 def test_no_matching_activity_at_all_is_an_error(account):
     account.activities = [an_activity(1, "Gdynia Walking")]
     with pytest.raises(ActivityNotFound):
-        pick_sessions(account, config_ab(), None)
+        pick_sessions(account, config_ab(), None, account.activities)
 
 
 # --- one payload per workout ----------------------------------------------
@@ -554,3 +568,154 @@ def test_a_push_that_worked_is_not_failed_by_an_unreadable_queue(account, caplog
     assert code == ExitCode.OK
     assert sorted(account.pushed) == ["111", "222"]
     assert "Could not read the device queue back" in caplog.text
+
+
+# --- reading back how long an exercise had been stalling -------------------
+#
+# How far a hit moves a target depends on the misses behind it, which live in
+# the sessions before this one. Each costs two requests, so the walk goes back
+# only as far as one of them is still unsettled.
+
+
+def executed(*asked):
+    """The workout an activity ran, as Garmin keeps it beside the activity.
+
+    Sets are FIT's repeats rather than nesting: a repeat step *after* the run
+    it repeats, naming the step to jump back to and how many times.
+    """
+    steps_out, index = [], 0
+    for name, category, reps, sets in asked:
+        start = index
+        steps_out.append(
+            {
+                "stepIndex": index,
+                "intensity": "ACTIVE",
+                "durationType": "REPS",
+                "durationValue": float(reps),
+                "exerciseName": name,
+                "exerciseCategory": category,
+            }
+        )
+        index += 1
+        steps_out.append(
+            {
+                "stepIndex": index,
+                "intensity": None,
+                "durationType": "REPEAT_UNTIL_STEPS_CMPLT",
+                "durationValue": float(start),
+                "targetValue": float(sets),
+            }
+        )
+        index += 1
+    return [{"workoutName": "Workout A", "steps": steps_out}]
+
+
+def squats(reps, sets=3, weight=30000.0):
+    return [active("BARBELL_BACK_SQUAT", "SQUAT", reps, weight)] * sets
+
+
+@pytest.fixture
+def stalling():
+    """Workout A squatted 8,8,8 against a target of 8, twice missing 8 before."""
+    return FakeSession(
+        activities=[an_activity(n, "Workout A") for n in (900, 800, 700, 600, 500)],
+        workouts={
+            "111": steps(repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 30.0)))
+        },
+        sets={
+            "900": sets_of(*squats(8)),
+            "800": sets_of(*squats(7)),
+            "700": sets_of(*squats(7)),
+            "600": sets_of(*squats(6)),
+            "500": sets_of(*squats(6)),
+        },
+        executed={
+            str(n): executed(("BARBELL_BACK_SQUAT", "SQUAT", 8, 3))
+            for n in (900, 800, 700, 600, 500)
+        },
+    )
+
+
+def only_a():
+    return Config({"Workout A": Workout("Workout A", "111", ["workout a"], [SQUAT])})
+
+
+def test_the_sessions_before_this_one_are_the_older_ones(stalling):
+    earlier = sessions_before(stalling.activities, only_a()["Workout A"], "800")
+    assert [a["activityId"] for a in earlier] == [700, 600, 500]
+
+
+def test_an_activity_too_old_to_appear_leaves_no_history(stalling):
+    assert sessions_before(stalling.activities, only_a()["Workout A"], "1") == []
+
+
+def test_a_stall_is_read_back_as_far_as_it_goes(stalling):
+    workout = only_a()["Workout A"]
+    earlier = sessions_before(stalling.activities, workout, "900")
+    history = gather_history(
+        stalling, workout, earlier, performed_sets(stalling.sets["900"])
+    )
+
+    assert [s.performed[0].reps for s in history["barbellbacksquat"]] == [7, 7]
+    assert stalling.read_back == ["800", "700"], "stopped at sets - 1 misses"
+
+
+def test_a_smooth_session_reads_back_one_activity_and_stops(stalling):
+    """The session before this one hit, so nothing deeper can change anything."""
+    stalling.sets["800"] = sets_of(*squats(8))
+    workout = only_a()["Workout A"]
+    earlier = sessions_before(stalling.activities, workout, "900")
+    gather_history(stalling, workout, earlier, performed_sets(stalling.sets["900"]))
+
+    assert stalling.read_back == ["800"]
+
+
+def test_a_change_of_load_ends_the_walk(stalling):
+    """A different weight is a different ladder, so its misses do not count."""
+    stalling.sets["800"] = sets_of(*squats(7, weight=27500.0))
+    workout = only_a()["Workout A"]
+    earlier = sessions_before(stalling.activities, workout, "900")
+    gather_history(stalling, workout, earlier, performed_sets(stalling.sets["900"]))
+
+    assert stalling.read_back == ["800"]
+
+
+def test_a_stall_shortens_the_advance_of_the_session_that_ends_it(stalling):
+    """8,8,8 after two misses earns one set, not three: 9,8,8 rather than 9,9,9."""
+    run_update(stalling, only_a(), args(apply=True))
+
+    written = stalling.saved[0][1]["workoutSegments"][0]["workoutSteps"]
+    asked = [
+        (group["numberOfIterations"], group["workoutSteps"][0]["endConditionValue"])
+        for group in written
+        if group.get("workoutSteps")
+    ]
+    assert asked == [(1, 9.0), (2, 8.0)]
+
+
+def test_without_a_stall_behind_it_the_whole_target_still_moves(stalling):
+    """The rule this replaces is its own streak-free case, and must be intact."""
+    stalling.sets["800"] = sets_of(*squats(8))
+    run_update(stalling, only_a(), args(apply=True))
+
+    written = stalling.saved[0][1]["workoutSegments"][0]["workoutSteps"]
+    asked = [
+        (group["numberOfIterations"], group["workoutSteps"][0]["endConditionValue"])
+        for group in written
+        if group.get("workoutSteps")
+    ]
+    assert asked == [(3, 9.0)], "one group of three at nine, as before"
+
+
+def test_an_account_with_no_executed_record_progresses_as_it_always_did(stalling):
+    """Nothing to read back is no stall, not a failure."""
+    stalling.executed = {}
+    run_update(stalling, only_a(), args(apply=True))
+
+    written = stalling.saved[0][1]["workoutSegments"][0]["workoutSteps"]
+    asked = [
+        group["workoutSteps"][0]["endConditionValue"]
+        for group in written
+        if group.get("workoutSteps")
+    ]
+    assert asked == [9.0]

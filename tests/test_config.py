@@ -258,7 +258,7 @@ def test_recording_leaves_no_working_file_behind(write_config, tmp_path):
 def test_garmin_settings_have_defaults(write_config):
     config = load_config(write_config(FIXTURE))
     assert config.garmin.token_store.endswith(".garminconnect")
-    assert config.garmin.activity_search_limit == 25
+    assert config.garmin.activity_search_limit == 50
 
 
 def test_garmin_settings_come_from_the_file(write_config):

@@ -86,7 +86,7 @@ class GarminSettings:
     """Everything about talking to Garmin that a user might want to change."""
 
     token_store: str = "~/.garminconnect"
-    activity_search_limit: int = 25
+    activity_search_limit: int = 50
     dump_dir: str = "."
 
 

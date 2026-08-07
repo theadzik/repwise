@@ -11,20 +11,30 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from ..config import ConfigError, record_workout_id
 from ..domain.matching import normalise
-from ..domain.models import Config, Workout
-from ..domain.progression import Target
+from ..domain.models import Config, ExerciseSpec, Workout
+from ..domain.progression import (
+    PerformedSet,
+    Session,
+    Target,
+    miss_streak,
+    working_weight,
+)
 from ..errors import ActivityNotFound, ExitCode, GarminError, UsageError
 from ..garmin.client import GarminSession
 from ..garmin.payloads import new_workout, performed_sets
 from ..planner import (
+    History,
+    Performed,
     Plan,
     decided_targets,
+    executed_targets,
     find_workout,
+    logged_for,
     plan_sync,
     plan_workout,
 )
@@ -49,6 +59,23 @@ class UpdateOptions:
             raise UsageError(
                 "--push only makes sense with --apply: there is nothing to send yet."
             )
+
+
+@dataclass(frozen=True)
+class Trained:
+    """A workout, the session that trained it, and the sessions before that.
+
+    The earlier ones travel with it because they are only ever wanted for that
+    workout, and finding them means the same scan that found this session.
+    """
+
+    workout: Workout
+    activity: dict[str, Any]
+    earlier: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def activity_id(self) -> str:
+        return str(self.activity["activityId"])
 
 
 class Payloads:
@@ -79,8 +106,11 @@ def dump(payloads: dict[str, Any], directory: str, suffix: str) -> None:
 
 
 def pick_sessions(
-    session: GarminSession, config: Config, activity_id: str | None
-) -> list[tuple[Workout, dict[str, Any]]]:
+    session: GarminSession,
+    config: Config,
+    activity_id: str | None,
+    activities: list[dict[str, Any]],
+) -> list[Trained]:
     """The sessions to learn from, oldest first.
 
     With --activity, only the one named. Otherwise the latest activity for
@@ -95,11 +125,17 @@ def pick_sessions(
     """
     if activity_id:
         activity = session.activity(activity_id)
-        return [(find_workout(config, activity.get("activityName") or ""), activity)]
+        workout = find_workout(config, activity.get("activityName") or "")
+        return [
+            Trained(
+                workout,
+                activity,
+                sessions_before(activities, workout, activity_id),
+            )
+        ]
 
     # Garmin returns activities newest first, so the first match for a workout
     # is its latest session, and a lower position means more recent.
-    activities = session.recent_activities()
     found: list[tuple[int, Workout, dict[str, Any]]] = []
     for workout in config:
         if workout.garmin_workout_id is None:
@@ -118,7 +154,123 @@ def pick_sessions(
         )
 
     found.sort(key=lambda each: each[0], reverse=True)
-    return [(workout, activity) for _, workout, activity in found]
+    return [
+        Trained(
+            workout,
+            activity,
+            sessions_before(activities, workout, str(activity["activityId"])),
+        )
+        for _, workout, activity in found
+    ]
+
+
+def matching_activities(
+    activities: list[dict[str, Any]], workout: Workout
+) -> list[dict[str, Any]]:
+    """Every activity belonging to this workout, newest first."""
+    return [
+        activity
+        for activity in activities
+        if any(
+            (activity.get("activityName") or "").lower().startswith(prefix)
+            for prefix in workout.activity_prefixes
+        )
+    ]
+
+
+def sessions_before(
+    activities: list[dict[str, Any]], workout: Workout, activity_id: str
+) -> list[dict[str, Any]]:
+    """This workout's activities older than the one being judged, newest first.
+
+    Found by position rather than by date: Garmin returns them newest first, so
+    everything past the one in hand is older than it. An activity too old to
+    appear in the search at all leaves no history, which reads as no stall -
+    the same answer as a first-ever session, and the right one to give when we
+    cannot see far enough back to say otherwise.
+    """
+    mine = matching_activities(activities, workout)
+    ids = [str(activity["activityId"]) for activity in mine]
+    if activity_id not in ids:
+        return []
+    return mine[ids.index(activity_id) + 1 :]
+
+
+def wants_more(
+    spec: ExerciseSpec, logged: list[PerformedSet], earlier: list[Session]
+) -> bool:
+    """Whether one more session back could still change this exercise's streak.
+
+    The walk that counts a streak stops of its own accord at a session that
+    hit, at a change of load, or at `sets - 1` misses. If instead it ran off
+    the end of what we hold, there may be more to count and the next session
+    back is worth fetching; anything else is already settled. So one activity
+    answers a smoothly progressing exercise, and only a genuine stall reads
+    deeper.
+    """
+    limit = max(spec.sets - 1, 0)
+    if not logged or len(earlier) >= limit:
+        # Not trained in the session being judged, so there is nothing for a
+        # streak to explain -- or already as deep as the rules can read.
+        return False
+    if not earlier:
+        return True
+
+    return miss_streak(spec, earlier, working_weight(logged)) == len(earlier)
+
+
+def gather_history(
+    session: GarminSession,
+    workout: Workout,
+    activities: list[dict[str, Any]],
+    latest: Performed,
+) -> History:
+    """What each exercise did before the latest session, newest first.
+
+    Walks back one activity at a time and stops as soon as no exercise could
+    still be counting, so a workout progressing smoothly costs one extra
+    activity and only a stall costs more. Two requests each: the sets that were
+    logged, and the workout they were performed against.
+
+    An exercise missing from an older session -- added to the routine since, or
+    trained under a different workout -- contributes nothing to its own history
+    rather than breaking anyone else's.
+    """
+    trained = {}
+    for spec in workout.exercises:
+        logged = logged_for(spec, latest)
+        if spec.time_based:
+            logged = [entry.as_time() for entry in logged]
+        trained[normalise(spec.garmin_name)] = logged
+
+    history: History = {}
+    for activity in activities:
+        if not any(
+            wants_more(
+                spec,
+                trained.get(normalise(spec.garmin_name)) or [],
+                history.get(normalise(spec.garmin_name)) or [],
+            )
+            for spec in workout.exercises
+        ):
+            break
+
+        activity_id = str(activity["activityId"])
+        logger.debug(f"Reading back {activity.get('activityName')} ({activity_id})")
+        targets = executed_targets(workout, session.executed_workout(activity_id))
+        performed = performed_sets(session.exercise_sets(activity_id))
+
+        for spec in workout.exercises:
+            key = normalise(spec.garmin_name)
+            target = targets.get(key)
+            logged = logged_for(spec, performed)
+            if target is None or not logged:
+                continue
+            if spec.time_based:
+                logged = [entry.as_time() for entry in logged]
+            history.setdefault(key, []).append(Session(target, logged))
+
+    return history
 
 
 def garmin_id(workout: Workout) -> str:
@@ -278,7 +430,7 @@ def advance_trained(
     payloads: Payloads,
     config: Config,
     options: UpdateOptions,
-    sessions: list[tuple[Workout, dict[str, Any]]],
+    sessions: list[Trained],
 ) -> tuple[list[Plan], bool]:
     """Plan every session that was trained, oldest first.
 
@@ -289,8 +441,9 @@ def advance_trained(
     plans: list[Plan] = []
     usable = False
 
-    for position, (workout, activity) in enumerate(sessions):
-        activity_id = str(activity["activityId"])
+    for position, trained in enumerate(sessions):
+        workout, activity = trained.workout, trained.activity
+        activity_id = trained.activity_id
         if position:
             logger.info("")
         logger.info(f"Activity: {activity.get('activityName') or ''} ({activity_id})")
@@ -313,7 +466,12 @@ def advance_trained(
             continue
         usable = True
 
-        plan = plan_workout(workout, payload, performed)
+        # How long each exercise had been stalling, which is what decides how
+        # far a session that hit moves it. Read back from the sessions before
+        # this one, and only as far as one of them is still unsettled.
+        history = gather_history(session, workout, trained.earlier, performed)
+
+        plan = plan_workout(workout, payload, performed, history)
         report_plan(plan)
         plans.append(plan)
 
@@ -369,12 +527,17 @@ def run_update(
     # the shape of a workout, and a config edit is not something to sit on
     # until the next time that workout is trained.
     untrained: ActivityNotFound | None = None
+    # Fetched once and used twice: to find the session each workout was last
+    # trained in, and then to read back the ones before it.
+    activities = session.recent_activities()
     try:
-        sessions = pick_sessions(session, config, options.activity)
+        sessions = pick_sessions(session, config, options.activity, activities)
     except ActivityNotFound as exc:
         sessions, untrained = [], exc
 
-    plans.extend(shape_untrained(payloads, config, {w.key for w, _ in sessions}))
+    plans.extend(
+        shape_untrained(payloads, config, {each.workout.key for each in sessions})
+    )
 
     trained, usable = advance_trained(session, payloads, config, options, sessions)
     plans.extend(trained)

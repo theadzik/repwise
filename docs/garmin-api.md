@@ -11,6 +11,7 @@ is where the fix goes.
 - [Weight units](#weight-units)
 - [Fields relied on](#fields-relied-on)
 - [Sets are repeat groups](#sets-are-repeat-groups)
+- [The workout an activity was performed against](#the-workout-an-activity-was-performed-against)
 - [Creating a workout](#creating-a-workout)
 - [Step order is a field, not a position](#step-order-is-a-field-not-a-position)
 - [Names drift between payloads](#names-drift-between-payloads)
@@ -54,6 +55,8 @@ weight onto such a step has to set the unit explicitly.
 | Exercise set | `weight` | Load used, in grams |
 | Exercise set | `exercises[0].name` | Which exercise the set belongs to |
 | Exercise set | `exercises[0].category` | Fallback when the name differs or is null |
+| Executed step | `durationType`, `durationValue` | What a past session was asked for |
+| Executed step | `targetValue` | How many sets, on a repeat step |
 | Device message | `messageUrl`, `messageType`, `metaDataId` | Queueing a workout for the watch |
 
 ## Notes are called `description`
@@ -107,6 +110,76 @@ all rather than as the number stored beside it.
 Note which rest that is. The step **inside** the repeat group is the rest
 between sets; Connect also emits a `lap.button` rest **after** each group,
 which is the pause between exercises.
+
+### One exercise can need two groups
+
+A group repeats one step identically, so a target that asks more of the leading
+sets than of the rest - which is what [progression](progression.md#coming-back-from-a-stall)
+writes on the way back from a stall - needs **two adjacent groups naming the
+same exercise**, the harder one first.
+
+Verified against a real account: Garmin accepts them, keeps them apart with
+their own targets and iteration counts, and returns them exactly as sent, so a
+second run finds nothing to do. Splitting one group into two and merging them
+back are both ordinary PUTs.
+
+No gap step goes between the two halves. The first group's own rest already
+covers the pause between its last set and the next one, and a `lap.button` rest
+there would be a second pause the config never asked for.
+
+`iter_exercise_blocks()` merges the pair back into one `ExerciseBlock` whose
+`sets` is the two counts added together, so nothing above the adapter has to
+know: the planner still matches one spec to one block, and `check` cannot see
+the same name twice and call it ambiguous.
+
+### Step ids are reissued on every save
+
+`stepId` is **not stable across a PUT**. Saving a workout returns fresh ids for
+every step, including ones that were sent back unchanged - verified by walking
+one workout through three saves and watching an untouched step's id change each
+time. What survives is the step's *content*: its target, its notes, its
+position. Nothing should key on `stepId` between runs.
+
+## The workout an activity was performed against
+
+```text
+GET /activity-service/activity/{activityId}/workouts
+```
+
+Returns the workout **as the watch actually ran it**, kept beside the activity.
+This is the only record of what a past session was asked for: the definition in
+`/workout-service` holds the target for the *next* session, because `update`
+rewrote it once that one was logged. An array, empty for an activity not
+performed against a workout at all.
+
+It is FIT's shape rather than a workout definition's - flat, with no nesting:
+
+| Field | Meaning |
+| --- | --- |
+| `stepIndex` | Position, and what an activity set's `wktStepIndex` refers to |
+| `intensity` | `ACTIVE` for a working step, `REST` for a rest, null for a repeat |
+| `durationType` | `REPS`, `TIME`, `OPEN`, or `REPEAT_UNTIL_STEPS_CMPLT` |
+| `durationValue` | The rep or second target - or, on a repeat, the step to go back to |
+| `targetValue` | On a repeat, how many times to run it |
+| `exerciseName`, `exerciseCategory` | Matched to a spec the usual way |
+| `notes` | The step's note, as it was at the time |
+
+**Sets are a repeat step placed *after* the run it repeats**, saying which step
+to jump back to and how many times, rather than a group wrapping them. A
+four-set squat is the exercise step, its rest, then a repeat with
+`durationValue: 0` and `targetValue: 4`.
+
+**`exerciseWeightValue` is always null**, with `weightDisplayUnit` set beside it
+regardless. The weight is not missing from the record, only from this JSON: the
+activity's own FIT file carries it in `workout_step.exercise_weight` (scaled by
+100), as does the FIT the watch downloads. Nothing this tool sends is missing -
+verified by decoding both files - so there is no field to add that would make it
+appear. Whether the load changed is read off what was actually lifted instead,
+which the exercise sets already give.
+
+`wktStepIndex` on an exercise set links it back to a step here, but it is **not
+reliable**: sets come back with it null - a whole timed exercise did, in one
+real activity - so matching stays by name and category like everywhere else.
 
 ## Creating a workout
 

@@ -72,7 +72,7 @@ settings:
     # Where OAuth tokens are cached after the first interactive login.
     token_store: ~/.garminconnect
     # How many recent activities to scan when looking for the last session.
-    activity_search_limit: 25
+    activity_search_limit: 50
     # Where --dump and `fetch` write their JSON.
     dump_dir: .
 

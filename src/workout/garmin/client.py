@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 STRENGTH = "strength_training"
 
 WORKOUTS_URL = "/workout-service/workouts"
+ACTIVITIES_URL = "/activity-service/activity"
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -87,6 +88,19 @@ class GarminSession:
     @_reporting("fetch the workout")
     def workout(self, workout_id: str) -> dict[str, Any]:
         return self._api.get_workout_by_id(workout_id)
+
+    @_reporting("fetch the workout that activity was performed against")
+    def executed_workout(self, activity_id: str) -> list[dict[str, Any]]:
+        """The workout as the watch ran it, kept with the activity itself.
+
+        The only record of what a past session was asked for: the definition
+        stored in Garmin holds the target for the *next* one, since `update`
+        rewrote it after that session finished. Empty for an activity that was
+        not performed against a workout at all.
+
+        garminconnect has no getter for this, so the call is made by hand.
+        """
+        return self._api.connectapi(f"{ACTIVITIES_URL}/{activity_id}/workouts") or []
 
     @_reporting("list your workouts")
     def list_workouts(
