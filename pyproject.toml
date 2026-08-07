@@ -64,7 +64,7 @@ template = ".cz/CHANGELOG.md.j2"
 # same section, so they cannot disagree.
 [tool.ruff]
 line-length = 88
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [
