@@ -80,5 +80,24 @@ updates:
         patterns:
           - "*"
 
-  # Add a "github-actions" entry here once .github/workflows exists; with no
-  # workflows there is nothing for Dependabot to update.
+  - package-ecosystem: "github-actions"
+    # .github/workflows, which this ecosystem addresses as the repository root.
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+
+    cooldown:
+      default-days: 7
+
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "build"
+
+    groups:
+      # One PR: these are CI steps, they cannot reach the Garmin integration,
+      # and release.yml is the only workflow using them.
+      actions:
+        patterns:
+          - "*"

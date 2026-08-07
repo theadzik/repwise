@@ -1,0 +1,171 @@
+# Releases, cut in two halves because `main` is protected.
+#
+# `cz bump` normally writes the version files, commits and tags in one step.
+# That cannot work against a protected branch: the bump has to arrive through a
+# pull request, and every merge method rewrites it - squash replaces the commit,
+# rebase replays it onto a new parent - so a tag created alongside the bump
+# would point at a commit that never reaches `main`. The two halves are
+# therefore separated, and each runs where it can:
+#
+#   release-pr  opens - or refreshes - a pull request carrying the version bump
+#   tag         tags `main` once that pull request has been squashed onto it
+#
+# Nothing here bypasses the branch ruleset. Merging stays a human decision; the
+# workflow only prepares the bump and records the tag afterwards. See
+# docs/releasing.md.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  # For re-running a half that failed, without an empty commit to trigger it.
+  workflow_dispatch:
+
+# Both jobs write refs. Two merges landing close together would otherwise race
+# over the same branch and tag, so runs queue rather than overlap - and rather
+# than cancel, which could drop a tag that was already half created.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # First, because a bump pull request that has just landed leaves `main`
+  # carrying a version with no tag. release-pr below must not run until that tag
+  # exists, or it would compute the next version from commits already released.
+  tag:
+    name: Tag main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Only pyproject.toml is read, and the tag is created through the API
+          # rather than pushed, so this checkout needs no credentials left
+          # behind in it.
+          persist-credentials: false
+
+      - name: Tag the head commit if its version is untagged
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+
+          # The condition is "this version has no tag", not "the last commit
+          # was a bump": it stays correct for a version bumped by hand, and it
+          # is what makes every other push to `main` - a feature, a Dependabot
+          # pin - a no-op rather than a duplicate tag.
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$version" >/dev/null 2>&1; then
+            echo "$version is already tagged. Nothing to do."
+            exit 0
+          fi
+
+          echo "Tagging $GITHUB_SHA as $version."
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f "ref=refs/tags/$version" \
+            -f "sha=$GITHUB_SHA" \
+            --silent
+
+  release-pr:
+    name: Prepare the next release
+    needs: tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # `cz bump` reads every commit back to the last tag. A shallow clone
+          # has neither the tag nor the commits, and it would compute the wrong
+          # version rather than fail.
+          fetch-depth: 0
+
+      - name: Install commitizen
+        run: |
+          # The pin is read from pyproject.toml's dev extra rather than written
+          # again here, so this workflow and a local `cz bump` cannot disagree
+          # about which version's rules decide the release.
+          pin=$(python3 -c '
+          import tomllib
+
+          dev = tomllib.load(open("pyproject.toml", "rb"))["project"]["optional-dependencies"]["dev"]
+          print(next(d for d in dev if d.startswith("commitizen")))
+          ')
+          echo "Installing $pin"
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet "$pin"
+
+      - name: Work out the next version
+        id: bump
+        run: |
+          read_version() {
+            python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])'
+          }
+          current=$(read_version)
+
+          # --version-files-only writes pyproject.toml, src/workout/__init__.py
+          # and CHANGELOG.md and stops there, leaving no commit and no tag. That
+          # is the whole trick: the commit is made below so it can go through a
+          # pull request, and the tag waits for the squashed result.
+          status=0
+          .venv/bin/cz bump --version-files-only --changelog --yes || status=$?
+
+          # 3: no commits at all since the last tag. 21: commits, but none that
+          # earn a release - a run of docs and chores. Neither is a failure.
+          if [ "$status" = 3 ] || [ "$status" = 21 ]; then
+            echo "Nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$status" != 0 ]; then
+            exit "$status"
+          fi
+
+          {
+            echo "release=true"
+            echo "current=$current"
+            echo "version=$(read_version)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open or refresh the release pull request
+        if: steps.bump.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Interpolated into the environment rather than into the script, so a
+          # version string can never be read as shell.
+          TITLE: >-
+            bump: version ${{ steps.bump.outputs.current }} →
+            ${{ steps.bump.outputs.version }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # -u stages tracked files only, which is what keeps the .venv above
+          # out of the commit whether or not it is ignored.
+          git switch -c release
+          git add -u
+          git commit -m "$TITLE"
+          # Force, because the branch is rebuilt from `main` on every push and
+          # holds nothing worth preserving between releases.
+          git push --force origin release
+
+          body=$(cat <<EOF
+          Cut from the commits on \`main\` since \`$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "the start")\`.
+
+          **Merge with the title above, unedited** - a squash merge takes the
+          title as the commit message, a rebase merge keeps the commit as
+          written. The tag job then creates \`$VERSION\` on whatever commit
+          lands.
+
+          Changelog and version files are generated by \`cz bump\`; edit the
+          commits, not this branch, if something reads wrong.
+          EOF
+          )
+
+          if [ -n "$(gh pr list --head release --state open --json number --jq '.[].number')" ]; then
+            gh pr edit release --title "$TITLE" --body "$body"
+          else
+            gh pr create --base main --head release --title "$TITLE" --body "$body"
+          fi

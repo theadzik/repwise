@@ -10,7 +10,7 @@ The work is split in two, deliberately:
 | When | What runs | What it does |
 | --- | --- | --- |
 | Every commit | `cz check`, via pre-commit's `commit-msg` hook | Rejects a message that is not conventional |
-| At release time | `cz bump`, by hand | Reads every commit since the last tag, picks the new version, writes it, updates the changelog, commits and tags |
+| Every push to `main` | `cz bump`, via `.github/workflows/release.yml` | Tags the release that just landed, then reads every commit since that tag and opens a pull request carrying the next one |
 
 A normal commit never changes the version. That is not a limitation of the
 tooling - see [why not bump on every
@@ -100,21 +100,46 @@ While the version is below 1.0.0, `major_version_zero = true` in
 
 ## Cutting a release
 
-```bash
-.venv/bin/cz bump --dry-run    # what would happen, changing nothing
-.venv/bin/cz bump              # do it
-git push --follow-tags
-```
+Merge the open pull request titled `bump: version 0.4.0 → 0.5.0`, leaving its
+title alone. That is the whole procedure; the tag appears a minute later.
 
-`--follow-tags` matters. A plain `git push` sends the bump commit and leaves the
-tag behind, so the release exists locally and nowhere else.
+That pull request is kept up to date by `.github/workflows/release.yml`, which
+runs on every push to `main` and does two things in order:
+
+1. **`tag`** - if the version in `pyproject.toml` has no tag yet, it tags the
+   head commit. This is what closes the release that has just merged.
+2. **`release-pr`** - it runs `cz bump --version-files-only`, which writes the
+   version files and the changelog and stops there, making no commit and no
+   tag. It commits that itself, force-pushes the `release` branch and opens or
+   retitles the pull request.
+
+The two are one workflow rather than two so that they cannot race: the tag has
+to exist before `cz bump` runs, or the next version would be computed from
+commits that were already released.
+
+`cz bump` cannot simply be run against `main`, which is why the work is split
+this way. It writes the version files, commits and tags in one step, and the
+ruleset on `main` takes no direct pushes - so the bump has to arrive through a
+pull request, and merging rewrites it. A squash replaces the commit; a rebase
+replays it onto a new parent. Either way the commit the tag was cut against
+never reaches `main`, and the tag is left pointing into your clone alone.
+Separating the two is what fixes it: the bump travels as an ordinary pull
+request, and the tag is created afterwards against whatever commit the merge
+produced.
+
+To see what the workflow will propose, without changing anything:
+
+```bash
+.venv/bin/cz bump --dry-run
+```
 
 With nothing worth releasing since the last tag, `cz bump` changes nothing and
 says so - `NO_COMMITS_FOUND` when there are no commits at all,
 `NO_COMMITS_TO_BUMP` when there are but none of them earn a release. The second
 case prints a misleading `bump: version 0.1.0 → 0.1.0` line first; it is not
 about to re-cut the existing tag, and the refusal on the next line is the real
-answer.
+answer. The workflow treats both as nothing to release and opens no pull
+request.
 
 One bump touches four things:
 
@@ -123,7 +148,7 @@ One bump touches four things:
 | `[project].version` in `pyproject.toml` | `version_provider = "pep621"`, so this is the single source of truth |
 | `__version__` in `src/workout/__init__.py` | Listed in `version_files`, kept in step |
 | `CHANGELOG.md` | Prepended, grouped by type |
-| A commit and a tag | `bump: version 0.1.0 → 0.2.0`, tagged `0.2.0` |
+| A commit and a tag | `bump: version 0.1.0 → 0.2.0`, tagged `0.2.0` - the commit on the `release` branch, the tag once it has merged |
 
 Tags carry no `v` prefix - `0.2.0`, not `v0.2.0`. That is Commitizen's default
 and matches the 0.1.0 tag cut by hand before any of this existed, so
@@ -133,12 +158,21 @@ change of default. Switching to `v` later means setting
 the existing tag stays readable; there is no reason to.
 
 To override the computed version - a release that deserves a minor bump
-although every commit was a `fix`, say:
+although every commit was a `fix`, say - prepare the bump by hand and open the
+pull request yourself. The workflow will overwrite the `release` branch on the
+next push to `main`, so use a branch of your own:
 
 ```bash
-.venv/bin/cz bump --increment MINOR
-.venv/bin/cz bump 1.0.0            # or state the version outright
+git switch -c release-minor
+.venv/bin/cz bump --version-files-only --changelog --increment MINOR
+.venv/bin/cz bump --version-files-only --changelog 1.0.0   # or state it outright
+git commit -am "bump: version 0.4.0 → 0.5.0"
 ```
+
+`--version-files-only` is the flag that makes this safe to do locally: it
+writes the version files and the changelog and leaves the commit and the tag
+alone. `cz bump` without it would cut a tag here, which is the one thing that
+must not happen off `main`.
 
 ## Why not bump on every commit
 
@@ -158,7 +192,8 @@ thing to reach for. It does not work, for four separate reasons:
 3. **Tags do not survive history rewriting.** Amend, rebase or squash-merge and
    the tagged commit stops existing. GitHub's squash merge replaces the commit
    messages with the PR title, so a locally computed bump would be based on
-   messages that never reach `main`.
+   messages that never reach `main`. This is the reason the tag is created by
+   the workflow, after the merge, rather than by whoever ran `cz bump`.
 4. **Hooks are skippable and per clone.** `git commit --no-verify`, or a clone
    where nobody ran `pre-commit install`, and the bump silently does not happen.
    Acceptable for a lint. Not acceptable for the thing that assigns version
@@ -168,16 +203,28 @@ So the hook does what a hook is good at - refusing a malformed message
 immediately, before it is in the history - and the version is computed once,
 from the commits, when a release is actually wanted.
 
-Moving `cz bump` into a GitHub Actions workflow on `main` is a reasonable later
-step, and changes none of the above; the bump would still be one aggregate
-decision per release, just made by CI instead of by hand.
+Moving `cz bump` into a workflow, as `.github/workflows/release.yml` now does,
+changes none of the above. The bump is still one aggregate decision per
+release; it is proposed by CI instead of typed by hand, and merging the pull
+request is still where a human decides that a release happens.
 
 ## Gotchas
 
 - **Squash merges rewrite the message.** If a PR is squash-merged, the commit
   that lands on `main` carries the PR *title*, which no local hook has checked.
   Title the PR conventionally too, or merge with rebase to keep the checked
-  messages.
+  messages. This decides what the changelog says: after a squash it lists PR
+  titles, after a rebase the individual commits.
+- **The workflow needs permission to open pull requests.** Settings → Actions →
+  General → Workflow permissions, "Allow GitHub Actions to create and approve
+  pull requests". Without it the `release-pr` job fails with *GitHub Actions is
+  not permitted to create or approve pull requests*, and only the bump PR is
+  lost - tagging is unaffected, and the bump can still be prepared by hand.
+- **A tag pushed by CI starts no further workflow.** Refs created with the
+  built-in `GITHUB_TOKEN` deliberately do not trigger runs, so a workflow
+  keyed on `push: tags` would never fire. Anything that should happen on a
+  release - a GitHub release, a build - belongs in `release.yml` next to the
+  tagging step, or needs a GitHub App token instead.
 - **Dependency updates do not bump the version.** `build(deps): ...` is
   intentionally inert, so a week of Dependabot merges does not produce
   releases. When a dependency bump does matter - a `garminconnect` release that
