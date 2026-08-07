@@ -5,8 +5,6 @@ lives in, and the settings that govern progression. Nothing here reads a file
 or talks to Garmin.
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 

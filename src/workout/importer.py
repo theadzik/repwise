@@ -8,8 +8,6 @@ load type from the exercise name, and marks the rest for the user to decide.
 Pure: takes payloads, returns text. Nothing here talks to Garmin.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from .garmin.payloads import (

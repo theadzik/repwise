@@ -6,8 +6,6 @@ and above are problems and land on stderr. A use case therefore emits its
 report without knowing where the report goes - only `main()` decides that.
 """
 
-from __future__ import annotations
-
 import logging
 
 from ..domain.models import ExerciseSpec

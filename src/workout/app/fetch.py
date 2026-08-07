@@ -1,7 +1,5 @@
 """Download workout definitions as JSON, for inspection or a connectivity check."""
 
-from __future__ import annotations
-
 import json
 import logging
 import os

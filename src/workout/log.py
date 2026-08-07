@@ -11,8 +11,6 @@ keep their own level, so a verbose run reports on this tool rather than on
 every HTTP request `garminconnect` makes.
 """
 
-from __future__ import annotations
-
 import logging
 import sys
 

@@ -6,8 +6,6 @@ It mutates the workout payload it is handed but performs no I/O, so a caller
 can inspect a plan and discard it -- which is what a dry run does.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any
 

@@ -7,14 +7,12 @@ exceptions. Every call is wrapped, so what leaves this module is a
 workout without catching everything that could possibly go wrong.
 """
 
-from __future__ import annotations
-
 import functools
 import logging
 import os
 from collections.abc import Callable
 from getpass import getpass
-from typing import Any, ParamSpec, TypeVar
+from typing import Any
 
 from garminconnect import Garmin, GarminConnectTooManyRequestsError
 
@@ -31,11 +29,8 @@ STRENGTH = "strength_training"
 WORKOUTS_URL = "/workout-service/workouts"
 ACTIVITIES_URL = "/activity-service/activity"
 
-P = ParamSpec("P")
-R = TypeVar("R")
 
-
-def _reporting(what: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
+def _reporting[**P, R](what: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Turn whatever garminconnect raises into this tool's own failure type.
 
     The library raises its own exception classes, plus anything `requests` and

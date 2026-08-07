@@ -5,8 +5,6 @@ one file to open to answer "which flags exist" holds no behaviour to read
 past. Which function runs is `cli/__init__.py`, keyed by the command name.
 """
 
-from __future__ import annotations
-
 import argparse
 from typing import Any
 
@@ -55,6 +53,14 @@ def build_parser() -> argparse.ArgumentParser:
             "get started. Nothing is written to Garmin without --apply."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        # argparse decides for itself whether colour is wanted - a terminal,
+        # and neither NO_COLOR nor TERM=dumb set - so piped help stays plain.
+        # The subcommands inherit it, so it is set once.
+        color=True,
+        # A mistyped command says what you probably meant rather than only
+        # listing the five that exist. Set here alone: it acts on mistyped
+        # choices, and the subcommand name is the only choice this parser has.
+        suggest_on_error=True,
     )
     # The single source of the number is [project].version in pyproject.toml,
     # which `cz bump` writes through to __init__.py. Worth exposing: the first

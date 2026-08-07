@@ -1,7 +1,5 @@
 """Show the Garmin workouts in the account, with the ids workouts.yaml needs."""
 
-from __future__ import annotations
-
 import logging
 
 from ..domain.models import Config

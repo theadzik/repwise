@@ -12,8 +12,6 @@ Like `log.py`, this sits outside the layer arrows: a module raises without
 knowing who catches, and only `main()` turns an exception into a status.
 """
 
-from __future__ import annotations
-
 from enum import IntEnum
 
 
