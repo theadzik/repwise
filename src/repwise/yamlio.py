@@ -2,7 +2,7 @@
 
 Every interaction this tool has with that file goes through here: `load_config`
 validates what `read` returns, `record_workout_id` writes back through `dump`
-and `write`, and `workout import` renders a new file with the same `dump`. One
+and `write`, and `repwise import` renders a new file with the same `dump`. One
 place decides how the file is parsed, how what we write is styled, and how it
 is put on disk.
 

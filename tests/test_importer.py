@@ -2,8 +2,8 @@
 
 from builders import payload, rep_step, repeat, rest_step, timed_rest
 
-from workout.config import load_config
-from workout.importer import (
+from repwise.config import load_config
+from repwise.importer import (
     describe_workout,
     guess_load,
     humanise,

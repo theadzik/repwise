@@ -14,7 +14,7 @@
 # garmin_name and garmin_category values are real Garmin identifiers, but the
 # workout ids are placeholders -- replace them with your own (see below).
 #
-# This file drives the workout rather than describing it. `workout update`
+# This file drives the workout rather than describing it. `repwise update`
 # builds a workout Garmin does not have, orders the exercises the way they are
 # ordered here, adds and removes them to match, and writes the sets and rests
 # below. What it does not decide is where each exercise has got to: the target
@@ -61,16 +61,16 @@
 #
 # To find your own values:
 #   1. Build the workouts in Garmin Connect, or write them here with no
-#      garmin_workout_id and let `workout update --apply` build them for you.
+#      garmin_workout_id and let `repwise update --apply` build them for you.
 #   2. Take each garmin_workout_id from its Connect URL, e.g.
 #      https://connect.garmin.com/modern/workout/111111111
-#   3. Run `workout update --dump` after a session and read exerciseName and
+#   3. Run `repwise update --dump` after a session and read exerciseName and
 #      category off the dumped workout JSON.
 
 settings:
   garmin:
     # Where OAuth tokens are cached after the first interactive login.
-    token_store: ~/.garminconnect
+    token_store: ~/.repwise
     # How many recent activities to scan when looking for the last session.
     activity_search_limit: 50
     # Where --dump and `fetch` write their JSON.

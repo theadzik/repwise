@@ -2,7 +2,7 @@
 
 import pytest
 
-from workout.cli import build_parser
+from repwise.cli import build_parser
 
 
 def help_text(argv: list[str], capsys) -> str:
@@ -15,7 +15,7 @@ def help_text(argv: list[str], capsys) -> str:
 def test_examples_keep_their_line_breaks(capsys):
     """argparse reflows help text unless told not to, squashing the examples."""
     out = help_text(["--help"], capsys)
-    assert "\n  workout update --apply    write it back to Garmin\n" in out
+    assert "\n  repwise update --apply    write it back to Garmin\n" in out
 
 
 def test_top_level_help_lists_both_commands(capsys):
@@ -77,11 +77,11 @@ def test_config_defaults_to_being_searched_for():
 
 def test_version_reports_the_packaged_version(capsys):
     """The number commitizen bumps, so a bug report can carry it."""
-    from workout import __version__
+    from repwise import __version__
 
     out = help_text(["--version"], capsys)
 
-    assert out.strip() == f"workout {__version__}"
+    assert out.strip() == f"repwise {__version__}"
 
 
 # --- the Garmin-loading commands ------------------------------------------

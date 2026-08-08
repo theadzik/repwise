@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from workout.log import PACKAGE, configure
+from repwise.log import PACKAGE, configure
 
 logger = logging.getLogger(f"{PACKAGE}.testing")
 

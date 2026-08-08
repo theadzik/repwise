@@ -1,4 +1,4 @@
-"""Entry point for `python -m workout`."""
+"""Entry point for `python -m repwise`."""
 
 import sys
 

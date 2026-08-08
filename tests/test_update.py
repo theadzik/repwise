@@ -8,7 +8,7 @@ import pytest
 from builders import active, rep_step, repeat, rest_step, spec
 from builders import workout as steps
 
-from workout.app.update import (
+from repwise.app.update import (
     Payloads,
     UpdateOptions,
     changed_steps,
@@ -17,10 +17,10 @@ from workout.app.update import (
     run_update,
     sessions_before,
 )
-from workout.config import ConfigError
-from workout.domain.models import Config, Workout
-from workout.errors import ActivityNotFound, ExitCode, GarminError, UsageError
-from workout.garmin.payloads import performed_sets
+from repwise.config import ConfigError
+from repwise.domain.models import Config, Workout
+from repwise.errors import ActivityNotFound, ExitCode, GarminError, UsageError
+from repwise.garmin.payloads import performed_sets
 
 SQUAT = spec(sets=3, weight_step=2.5)
 CALF = spec(
@@ -224,8 +224,8 @@ def test_a_workout_is_fetched_once_however_often_it_is_asked_for(account):
 
 def test_changed_steps_counts_a_twice_moved_step_once():
     """Two sessions deciding one shared exercise is one step changing."""
-    from workout.domain.progression import Target
-    from workout.planner import Change, Plan
+    from repwise.domain.progression import Target
+    from repwise.planner import Change, Plan
 
     workout = Workout("Workout A", "111", ["workout a"], [CALF])
     first = Plan(
@@ -307,7 +307,7 @@ workouts:
 @pytest.fixture
 def uncreated(write_config):
     """A config naming one workout that Garmin has never heard of."""
-    from workout.config import load_config
+    from repwise.config import load_config
 
     return load_config(write_config(NEW_WORKOUT))
 
@@ -393,7 +393,7 @@ def test_the_gap_summary_counts_what_it_is_counting(account, caplog):
     dry run's wording for the same thing."""
     config = with_a_gap(account)
 
-    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+    with caplog.at_level(logging.INFO, logger="repwise.app.update"):
         run(account, config, apply=True)
 
     assert "Set the rest between exercises in 1 workout(s)." in caplog.text
@@ -402,7 +402,7 @@ def test_the_gap_summary_counts_what_it_is_counting(account, caplog):
 def test_the_dry_run_says_the_same_thing_the_other_way_round(account, caplog):
     config = with_a_gap(account)
 
-    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+    with caplog.at_level(logging.INFO, logger="repwise.app.update"):
         run(account, config)
 
     assert "the rest between exercises would change in 1 workout(s)" in caplog.text
@@ -433,7 +433,7 @@ def test_no_activity_at_all_still_shapes_the_workouts(account, caplog):
     account.activities = [an_activity(1, "Gdynia Walking")]
     config = config_ab(a_exercises=(SQUAT,))  # the calf raise is gone from A
 
-    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+    with caplog.at_level(logging.INFO, logger="repwise.app.update"):
         code = run(account, config, apply=True)
 
     assert code == ExitCode.OK
@@ -487,7 +487,7 @@ def test_a_configured_rest_is_written_with_the_targets(rested):
 def test_a_dry_run_leaves_the_rest_alone(rested, caplog):
     config = config_ab(a_exercises=(replace(SQUAT, rest=150), CALF))
 
-    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+    with caplog.at_level(logging.INFO, logger="repwise.app.update"):
         run(rested, config)
 
     assert rested.saved == []
@@ -527,7 +527,7 @@ def test_a_group_skipping_its_last_rest_is_written_back_resting(rested, caplog):
     ] = True
     config = config_ab(a_exercises=(SQUAT, CALF))
 
-    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+    with caplog.at_level(logging.INFO, logger="repwise.app.update"):
         code = run(rested, config, apply=True)
 
     assert code == ExitCode.OK
@@ -541,7 +541,7 @@ def test_a_dry_run_only_says_the_last_rest_would_come_back(rested, caplog):
     ] = True
     config = config_ab(a_exercises=(SQUAT, CALF))
 
-    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+    with caplog.at_level(logging.INFO, logger="repwise.app.update"):
         run(rested, config)
 
     assert rested.saved == []
@@ -574,7 +574,7 @@ def only_workout_a(exercise):
 def test_a_note_the_config_moved_is_reported_beside_the_exercise(annotated, caplog):
     """The report used to say "up to date" against every exercise and count
     the note only in its closing line, which named no exercise at all."""
-    with caplog.at_level(logging.INFO, logger="workout.app.report"):
+    with caplog.at_level(logging.INFO, logger="repwise.app.report"):
         run(annotated, only_workout_a(replace(SQUAT, rep_high=12)), activity="700")
 
     assert "* Barbell Back Squat" in caplog.text
@@ -587,14 +587,14 @@ def test_a_step_that_had_no_note_says_so(annotated, caplog):
     group = annotated.workouts["111"]["workoutSegments"][0]["workoutSteps"][0]
     group["workoutSteps"][0]["description"] = None
 
-    with caplog.at_level(logging.INFO, logger="workout.app.report"):
+    with caplog.at_level(logging.INFO, logger="repwise.app.report"):
         run(annotated, only_workout_a(SQUAT), activity="700")
 
     assert "no note  ->  6-10 reps | +2.5 kg" in caplog.text
 
 
 def test_the_summary_still_counts_the_notes(annotated, caplog):
-    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+    with caplog.at_level(logging.INFO, logger="repwise.app.update"):
         run(annotated, only_workout_a(replace(SQUAT, rep_high=12)), activity="700")
 
     assert "1 note(s) would be refreshed" in caplog.text
@@ -629,7 +629,7 @@ def test_pushing_queues_every_written_workout(account):
 
 def test_the_queue_is_read_back_under_verbose(account, caplog):
     """The only way to confirm a push was queued, so -v should show it."""
-    with caplog.at_level(logging.DEBUG, logger="workout.app.update"):
+    with caplog.at_level(logging.DEBUG, logger="repwise.app.update"):
         run(account, apply=True, push=True)
 
     assert account.queue_reads == 1
@@ -638,7 +638,7 @@ def test_the_queue_is_read_back_under_verbose(account, caplog):
 
 def test_the_queue_is_not_read_on_a_normal_run(account, caplog):
     """It costs a request, and a successful push already says so."""
-    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+    with caplog.at_level(logging.INFO, logger="repwise.app.update"):
         run(account, apply=True, push=True)
 
     assert account.queue_reads == 0
@@ -648,7 +648,7 @@ def test_a_push_that_worked_is_not_failed_by_an_unreadable_queue(account, caplog
     """Reading the queue back is a confirmation, not part of the push."""
     account.queue_failure = GarminError("Could not read the device message queue")
 
-    with caplog.at_level(logging.DEBUG, logger="workout.app.update"):
+    with caplog.at_level(logging.DEBUG, logger="repwise.app.update"):
         code = run(account, apply=True, push=True)
 
     assert code == ExitCode.OK

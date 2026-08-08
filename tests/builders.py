@@ -10,9 +10,9 @@ imported by name.
 
 import os
 
-from workout.domain.models import ExerciseSpec
-from workout.domain.progression import PerformedSet
-from workout.garmin.catalog import ExerciseCatalog
+from repwise.domain.models import ExerciseSpec
+from repwise.domain.progression import PerformedSet
+from repwise.garmin.catalog import ExerciseCatalog
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: The shipped example. A user's own workouts.yaml is gitignored, so this

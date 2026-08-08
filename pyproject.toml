@@ -3,7 +3,7 @@ requires = ["setuptools>=83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "workout"
+name = "repwise"
 version = "0.9.0"
 description = "Advance Garmin strength workout targets using double progression"
 readme = "README.md"
@@ -31,7 +31,7 @@ dev = [
 ]
 
 [project.scripts]
-workout = "workout.cli:main"
+repwise = "repwise.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -47,7 +47,7 @@ version_provider = "pep621"
 # hand-cut 0.1.0 tag, so it is stated only to pin it: the default has changed
 # upstream before, and a silent change would start a second tag series.
 tag_format = "$version"
-version_files = ["src/workout/__init__.py:__version__"]
+version_files = ["src/repwise/__init__.py:__version__"]
 update_changelog_on_bump = true
 # History before 0.1.0 predates conventional commits, so there is nothing to
 # generate a changelog from.

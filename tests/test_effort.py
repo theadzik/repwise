@@ -2,7 +2,7 @@
 
 from builders import spec
 
-from workout.domain.effort import (
+from repwise.domain.effort import (
     TOLERATED_SHIFT,
     effective_load,
     fitting_rep_highs,

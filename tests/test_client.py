@@ -3,9 +3,9 @@
 import pytest
 from garminconnect import GarminConnectTooManyRequestsError
 
-from workout.domain.models import GarminSettings
-from workout.errors import ExitCode, GarminError, NoTerminal, RateLimited
-from workout.garmin.client import STRENGTH, GarminSession, connect
+from repwise.domain.models import GarminSettings
+from repwise.errors import ExitCode, GarminError, NoTerminal, RateLimited
+from repwise.garmin.client import STRENGTH, GarminSession, connect
 
 
 class StubApi:

@@ -1,6 +1,6 @@
 """Finding the exercise a name or a category refers to."""
 
-from workout.domain.matching import ExerciseIndex, normalise
+from repwise.domain.matching import ExerciseIndex, normalise
 
 
 def test_normalise_bridges_the_two_naming_styles():

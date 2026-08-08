@@ -6,9 +6,9 @@ import re
 import pytest
 from builders import EXAMPLE_CONFIG, FIXTURE
 
-from workout import config as config_module
-from workout import yamlio
-from workout.config import (
+from repwise import config as config_module
+from repwise import yamlio
+from repwise.config import (
     ConfigError,
     load_config,
     record_workout_id,
@@ -471,7 +471,7 @@ def test_missing_named_config_is_reported_plainly(tmp_path):
 @pytest.fixture
 def nowhere(tmp_path, monkeypatch):
     """An empty world: no env var, no config in any searched location."""
-    monkeypatch.delenv("WORKOUT_CONFIG", raising=False)
+    monkeypatch.delenv("REPWISE_CONFIG", raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     monkeypatch.setattr(config_module, "_CHECKOUT_ROOT", str(tmp_path / "checkout"))
     monkeypatch.chdir(tmp_path)
@@ -488,14 +488,14 @@ def test_the_env_var_wins_over_the_working_directory(nowhere, monkeypatch):
     (nowhere / "workouts.yaml").write_text(FIXTURE)
     named = nowhere / "elsewhere.yaml"
     named.write_text(FIXTURE)
-    monkeypatch.setenv("WORKOUT_CONFIG", str(named))
+    monkeypatch.setenv("REPWISE_CONFIG", str(named))
 
     assert resolve_config() == str(named)
 
 
 def test_the_xdg_directory_is_searched_when_the_cwd_has_nothing(nowhere):
     """The place a config belongs once the tool is installed for real."""
-    xdg = nowhere / "xdg" / "workout"
+    xdg = nowhere / "xdg" / "repwise"
     xdg.mkdir(parents=True)
     (xdg / "workouts.yaml").write_text(FIXTURE)
 
@@ -515,7 +515,7 @@ def a_checkout(root):
 
 
 def test_the_checkout_is_searched_last(nowhere):
-    """So that `python -m workout` works from anywhere inside a clone."""
+    """So that `python -m repwise` works from anywhere inside a clone."""
     checkout = a_checkout(nowhere / "checkout")
     assert resolve_config() == str(checkout / "workouts.yaml")
 
@@ -554,7 +554,7 @@ def test_nothing_found_suggests_the_example_when_there_is_one(nowhere):
 
 def test_nothing_found_suggests_import_when_there_is_no_example(nowhere):
     """An installed copy ships no example, so point at the command instead."""
-    with pytest.raises(ConfigError, match="workout import -o"):
+    with pytest.raises(ConfigError, match="repwise import -o"):
         resolve_config()
 
 

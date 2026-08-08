@@ -157,7 +157,7 @@ One bump touches four things:
 | What | How |
 | --- | --- |
 | `[project].version` in `pyproject.toml` | `version_provider = "pep621"`, so this is the single source of truth |
-| `__version__` in `src/workout/__init__.py` | Listed in `version_files`, kept in step |
+| `__version__` in `src/repwise/__init__.py` | Listed in `version_files`, kept in step |
 | `CHANGELOG.md` | Prepended, grouped by type, each entry linked to its commit |
 | A commit and a tag | `bump: version 0.1.0 → 0.2.0`, tagged `0.2.0` - the commit on the `release` branch, the tag once it has merged |
 

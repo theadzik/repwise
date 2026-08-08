@@ -13,8 +13,8 @@ from builders import (
     workout,
 )
 
-from workout.domain.progression import Target
-from workout.garmin.payloads import (
+from repwise.domain.progression import Target
+from repwise.garmin.payloads import (
     GENERATED_NOTE,
     apply_block,
     apply_note,

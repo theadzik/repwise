@@ -26,9 +26,9 @@
 
 {% for change in changes %}
 {% if change.scope %}
-- **{{ change.scope }}**: {{ change.message }} ([{{ change.sha1[:7] }}](https://github.com/theadzik/workout/commit/{{ change.sha1 }}))
+- **{{ change.scope }}**: {{ change.message }} ([{{ change.sha1[:7] }}](https://github.com/theadzik/repwise/commit/{{ change.sha1 }}))
 {% elif change.message %}
-- {{ change.message }} ([{{ change.sha1[:7] }}](https://github.com/theadzik/workout/commit/{{ change.sha1 }}))
+- {{ change.message }} ([{{ change.sha1[:7] }}](https://github.com/theadzik/repwise/commit/{{ change.sha1 }}))
 {% endif %}
 {% endfor %}
 {% endfor %}

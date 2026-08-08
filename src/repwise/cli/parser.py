@@ -35,20 +35,20 @@ def build_parser() -> argparse.ArgumentParser:
     # examples into a single paragraph. The subcommands are plain prose, so
     # they keep the default formatter and its wrapping.
     parser = argparse.ArgumentParser(
-        prog="workout",
+        prog="repwise",
         description="Advance Garmin strength workout targets using double progression.",
         epilog=(
             "examples:\n"
-            "  workout update            show what a run would change\n"
-            "  workout update --apply    write it back to Garmin\n"
-            "  workout update --dump     save the raw Garmin JSON, change nothing\n"
-            "  workout update --apply --push   also send them to your watch\n"
-            "  workout update --activity 1234  replay one session you skipped\n"
-            "  workout fetch             download the workout definitions\n"
-            "  workout fetch exercises   refresh Garmin's exercise catalog\n"
-            "  workout list              show your Garmin workouts and ids\n"
-            "  workout import -o f.yaml  build config from Garmin workouts\n"
-            "  workout check             report config/Garmin drift\n"
+            "  repwise update            show what a run would change\n"
+            "  repwise update --apply    write it back to Garmin\n"
+            "  repwise update --dump     save the raw Garmin JSON, change nothing\n"
+            "  repwise update --apply --push   also send them to your watch\n"
+            "  repwise update --activity 1234  replay one session you skipped\n"
+            "  repwise fetch             download the workout definitions\n"
+            "  repwise fetch exercises   refresh Garmin's exercise catalog\n"
+            "  repwise list              show your Garmin workouts and ids\n"
+            "  repwise import -o f.yaml  build config from Garmin workouts\n"
+            "  repwise check             report config/Garmin drift\n"
             "\n"
             "Your routine lives in workouts.yaml; copy workouts.example.yaml to\n"
             "get started. Nothing is written to Garmin without --apply."
@@ -79,8 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
         metavar="PATH",
-        help="path to workouts.yaml; by default $WORKOUT_CONFIG, then "
-        "./workouts.yaml, then ~/.config/workout/workouts.yaml",
+        help="path to workouts.yaml; by default $REPWISE_CONFIG, then "
+        "./workouts.yaml, then ~/.config/repwise/workouts.yaml",
     )
     add_verbose(parser, default=False)
     sub = parser.add_subparsers(dest="command", required=True, metavar="command")

@@ -100,7 +100,7 @@ jobs:
           }
           current=$(read_version)
 
-          # --version-files-only writes pyproject.toml, src/workout/__init__.py
+          # --version-files-only writes pyproject.toml, src/repwise/__init__.py
           # and CHANGELOG.md and stops there, leaving no commit and no tag. That
           # is the whole trick: the commit is made below so it can go through a
           # pull request, and the tag waits for the squashed result.

@@ -7,7 +7,7 @@ Train, run one command, sync your watch. Next session's numbers are already
 waiting on it.
 
 ```text
-$ workout update
+$ repwise update
 
 Activity: Workout B (1234567890)
 Updating: Workout B -> workout 111111111
@@ -24,14 +24,14 @@ Dry run: 2 step(s) would change. Re-run with --apply.
 You need workouts already built in Garmin Connect, and Python 3.14 or newer.
 
 ```bash
-git clone https://github.com/theadzik/workout.git
-cd workout
+git clone https://github.com/theadzik/repwise.git
+cd repwise
 python3 -m venv .venv
 .venv/bin/pip install -e .
 
-workout import -o workouts.yaml   # build a config from your Garmin workouts
-workout update                    # after a session: see what would change
-workout update --apply --push     # write it, and send it to your watch
+repwise import -o workouts.yaml   # build a config from your Garmin workouts
+repwise update                    # after a session: see what would change
+repwise update --apply --push     # write it, and send it to your watch
 ```
 
 The first command that reaches Garmin asks for your email, password and MFA
@@ -100,13 +100,13 @@ keeping an exercise in sync when it appears in more than one workout.
 
 | Command | What it does |
 | --- | --- |
-| `workout update` | Advance targets from the latest session, and bring every workout in line with the config. Dry run by default |
-| `workout update --apply --push` | Write all of that to Garmin and send it to your watch |
-| `workout list` | Show your Garmin workouts and their ids |
-| `workout import` | Build a `workouts.yaml` from your Garmin workouts |
-| `workout check` | Check that your config names exercises Garmin actually has, that it still names the ones your workouts hold, and that every rep range fits what its weight step is really worth |
-| `workout fetch` | Download raw workout JSON |
-| `workout fetch exercises` | Refresh Garmin's list of every exercise it knows, which `check` reads |
+| `repwise update` | Advance targets from the latest session, and bring every workout in line with the config. Dry run by default |
+| `repwise update --apply --push` | Write all of that to Garmin and send it to your watch |
+| `repwise list` | Show your Garmin workouts and their ids |
+| `repwise import` | Build a `workouts.yaml` from your Garmin workouts |
+| `repwise check` | Check that your config names exercises Garmin actually has, that it still names the ones your workouts hold, and that every rep range fits what its weight step is really worth |
+| `repwise fetch` | Download raw workout JSON |
+| `repwise fetch exercises` | Refresh Garmin's list of every exercise it knows, which `check` reads |
 
 Any command takes `-v` to show debug output as well. Full flags and output for
 each are in [Commands](docs/commands.md).
@@ -115,7 +115,7 @@ each are in [Commands](docs/commands.md).
 
 Your routine lives in `workouts.yaml`: the exercises, their order, rep ranges,
 set counts, rests, and which Garmin workout each belongs to. Generate it with
-`workout import`, or copy [workouts.example.yaml](workouts.example.yaml) - a
+`repwise import`, or copy [workouts.example.yaml](workouts.example.yaml) - a
 complete working A/B full body split, annotated field by field.
 
 It is the source of truth rather than a copy of one: `update` writes what it
