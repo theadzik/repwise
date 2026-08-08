@@ -262,18 +262,74 @@ weight the exercise is loaded to today:
 Workout A (1631254436)
  ! Weighted Standing Calf Raise: +5 kg on 101 kg is 5.0%, but resetting
    20->12 reps gives back more, so the weight increase is a 12% drop in
-   effort (make it 12-18, or accept the sawtooth)
+   effort (make it 12-14; anything from 12-13 to 12-18 fits, or accept
+   the sawtooth)
 
 Workout B (1641921176)
  ! Dumbbell Lateral Raise: +1 kg on 3 kg is 33.3%, but resetting 20->12
    reps gives back less, so the weight increase is a 12% jump in effort
-   (make it 12-21, or micro-load)
+   (make it 12-26; anything from 12-21 to 12-30 fits, or micro-load)
 ```
 
 | Sign | Meaning | Costs you | Fix |
 | --- | --- | --- | --- |
 | Positive | Range too **wide** for the step | Sessions spent re-treading ground | Narrow the range |
 | Negative | Range too **narrow** for the step | A wall at every weight jump | Widen the range, or micro-load |
+
+Two figures, because the tolerance is a band rather than a line. The first is
+the top whose reset breaks even exactly; the rest of the window is every other
+top that is still inside the tolerance. Take the balanced one if you have no
+opinion, round to something you would rather count to if you do, or note that
+your range is already in the window and leave it alone.
+
+### Which end to move
+
+**Only `rep_high` is ever suggested.** The two ends of a range are not the same
+kind of number:
+
+- `rep_low` is the only rep count that says how hard the exercise ever gets.
+  The set straight after a weight jump - `rep_low` reps at the new weight - is
+  the highest relative intensity in the whole cycle. Dropping it to make the
+  arithmetic work means training a joint heavier than you chose to, which is a
+  large decision to make on a rounding error's behalf.
+- `rep_high` decides nothing except when the jump has been earned, and it is a
+  function of how strong you are today. The step is a shrinking share of a
+  growing load, so the top wants to come down as you progress while the bottom
+  does not move at all.
+
+So a range that is too narrow is widened at the top, and one that is too wide
+is narrowed at the top. The arithmetic agrees: the break-even top is roughly
+
+```text
+rep_high  =  rep_low + (30 + rep_low) x weight_step / effective_load
+```
+
+`rep_low` is on both sides, so raising it to narrow a range also widens what
+the range needs to be. Moving the bottom fights itself; moving the top does not.
+
+### Choosing rep_low for a new exercise
+
+There is no universally best rep count - hypertrophy is much the same anywhere
+from about 5 to 30 reps taken near failure, and the practical limits are
+technique at the bottom and Epley's accuracy plus sheer tedium at the top. What
+there is, is a tier:
+
+| `rep_low` | Which exercises |
+| --- | --- |
+| 6 | Heavy axial barbell lifts: squat, deadlift, bench |
+| 8 | Every other multi-joint lift: overhead press, rows, pull-downs, incline press, lunges (per side) |
+| 10-12 | Single-joint isolation: curls, triceps, leg curl, lateral raise, rear delts |
+| 15 | High-rep-tolerant tissue: calves, core |
+
+Pick the tier, put anything plausible in `rep_high`, and let `check` correct the
+top on the next run. You never have to look a range up - the only judgement is
+the bottom.
+
+Note which way each error drifts. **Too narrow is temporary**: it means the
+step is currently too big a share of the load, and it heals itself as you get
+stronger, which is why micro-loading is often the better answer than rewriting
+the range. **Too wide only worsens**, and a range that has narrowed to a rung
+or two is the signal to raise `weight_step` rather than to keep trimming.
 
 Judged per run rather than once, because the answer moves: a step is a
 shrinking share of a growing load, so a range that was fine at 20 kg stops

@@ -112,7 +112,27 @@ def test_a_range_too_wide_for_its_real_step_is_reported():
     detail = findings[0].detail
     assert "100 kg" in detail  # the stack plus the lifter, not the stack
     assert "drop in effort" in detail
-    assert "make it 12-18" in detail
+    assert "make it 12-14" in detail, "the top that breaks even, not the stack"
+
+
+def test_the_suggestion_shows_how_much_room_there_is_around_it():
+    """One number reads as the only answer. The tolerance is a band, and a
+    range already inside it is not worth rewriting to the decimal."""
+    findings = check_programming(
+        configured(CALF_SPEC), payload(CALF_GROUP), bodyweight=80.0
+    )
+
+    assert "anything from 12-13 to 12-18 fits" in findings[0].detail
+
+
+def test_the_bottom_of_the_range_is_never_suggested_away():
+    """Whatever is wrong with the arithmetic, `rep_low` is a decision about
+    how heavy the exercise gets and stays where it was put."""
+    findings = check_programming(
+        configured(CALF_SPEC), payload(CALF_GROUP), bodyweight=80.0
+    )
+
+    assert findings[0].detail.count("12-") == 3, "every range offered starts at 12"
 
 
 def test_the_same_range_is_fine_once_bodyweight_is_not_claimed():

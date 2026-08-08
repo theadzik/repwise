@@ -423,9 +423,12 @@ Garmin's API has no server-side name search, so `--name` filters locally.
 workout check
 ```
 
-Answers one question: **can the config still name the exercises it thinks it
-is naming?** It does not tell you what `update` would change - that is what
-`update` itself prints, and anything it can fix is not drift to report here.
+Answers two questions `update` does not. **Can the config still name the
+exercises it thinks it is naming?**, and **does every rep range still fit what
+its weight step is worth?** - the second is covered under [does the range fit
+the step](configuration.md#does-the-range-fit-the-step). Neither tells you what
+`update` would change: that is what `update` itself prints, and anything it can
+fix is not drift to report here.
 
 **Worth running before an `update --apply` you are unsure of**, because a wrong
 `garmin_name` does not fail loudly - matching falls back to `garmin_category`,
