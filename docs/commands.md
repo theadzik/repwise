@@ -21,7 +21,7 @@ stderr, so they stay visible when they do.
 - [list](#list) - see your Garmin workouts
 - [import](#import) - build a config from Garmin
 - [check](#check) - find drift between config and Garmin
-- [fetch](#fetch) - download raw payloads
+- [fetch](#fetch) - download raw payloads, or the exercise catalog
 - [Exit codes](#exit-codes)
 
 ## update
@@ -423,12 +423,42 @@ Garmin's API has no server-side name search, so `--name` filters locally.
 workout check
 ```
 
-Answers two questions `update` does not. **Can the config still name the
-exercises it thinks it is naming?**, and **does every rep range still fit what
-its weight step is worth?** - the second is covered under [does the range fit
-the step](configuration.md#does-the-range-fit-the-step). Neither tells you what
-`update` would change: that is what `update` itself prints, and anything it can
-fix is not drift to report here.
+Answers three questions `update` does not. **Do the exercises the config names
+exist at all?**, **can the config still name the exercises it thinks it is
+naming?**, and **does every rep range still fit what its weight step is
+worth?** - the last is covered under [does the range fit the
+step](configuration.md#does-the-range-fit-the-step). None of them tells you
+what `update` would change: that is what `update` itself prints, and anything
+it can fix is not drift to report here.
+
+### Names Garmin has never heard of
+
+The first question is asked of [Garmin's exercise
+catalog](garmin-api.md#the-exercise-catalog): every exercise it knows, and the
+category each is filed under. Garmin validates the two against each other, so a
+real exercise under the wrong category is as unusable as an invented one - and
+`update` cannot build either, which means the step never reaches the watch no
+matter how often you sync.
+
+```text
+Workout B (222222222)
+   !! Barbell Deadlift: BARBELL_DEADLIFT is filed under DEADLIFT, not SQUAT.
+      Garmin checks the pair, so set garmin_category: DEADLIFT
+   !! Face Pull: FACE_PULLL is not an exercise Garmin has. Did you mean
+      FACE_PULL or FACE_PULL_WITH_EXTERNAL_ROTATION?
+```
+
+The catalog is downloaded the first time a `check` needs it and cached in
+`settings.garmin.token_store`, so this costs one request ever. Refresh it with
+[`workout fetch exercises`](#fetch) when Garmin adds exercises. If it cannot be
+downloaded, the names go unchecked and the rest of the checks still run - the
+command is worth running with no network at all.
+
+**This is the one check that says something useful about a workout Garmin does
+not hold yet**, which is exactly when it pays: the names are wrong before the
+workout is built rather than after.
+
+### Names that match by luck
 
 **Worth running before an `update --apply` you are unsure of**, because a wrong
 `garmin_name` does not fail loudly - matching falls back to `garmin_category`,
@@ -453,10 +483,15 @@ it costs you the target stored in that step:
 | Reported | Meaning |
 | --- | --- |
 | `!` | The name is wrong but the category rescued it. Works today, breaks the day a second exercise claims that category |
-| `!!` | Nothing in Garmin answers to it, or the category is ambiguous. `update` would drop a step and build another |
+| `!!` | Garmin has no such exercise, or not under that category; or nothing in the workout answers to it; or the category is ambiguous |
 
-A workout with no `garmin_workout_id` yet is reported as "not in Garmin yet"
-rather than checked, there being nothing to compare it against.
+A workout with no `garmin_workout_id` yet has its names checked and nothing
+else, there being nothing in Garmin to compare the rest against:
+
+```text
+Workout C (not in Garmin yet)
+  ok
+```
 
 **Everything it reports needs a hand, so any finding at all exits non-zero.**
 That is what makes it worth putting in a cron job: it goes off when the config
@@ -477,6 +512,30 @@ workout fetch 111111111         # a specific workout
 ```
 
 Files land in `settings.garmin.dump_dir`.
+
+### fetch exercises
+
+The single word `exercises` instead of any ids downloads something else
+entirely: [Garmin's exercise catalog](garmin-api.md#the-exercise-catalog),
+every exercise it knows and the category each is filed under.
+
+```bash
+workout fetch exercises
+```
+
+```text
+Saved 1510 exercises in 47 categories -> /home/you/.garminconnect/exercises.json
+```
+
+It lands in `settings.garmin.token_store`, beside the cached OAuth tokens,
+because it is the same kind of thing: per-user, disposable, and not something
+to edit. [`check`](#check) reads it, and downloads it itself the first time it
+needs one - **so this is how you refresh a stale copy, not something to run
+first.** Refreshing is unconditional; a copy already there is replaced.
+
+The catalog is a public file, so this is the one command that opens no session
+and needs no login. It cannot be combined with workout ids: the two downloads
+share a word and nothing else.
 
 ## Exit codes
 

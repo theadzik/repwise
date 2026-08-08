@@ -5,8 +5,10 @@ responses. Garmin does not document any of this, so treat it as observed
 behaviour rather than a contract.
 
 Everything here is implemented in `src/workout/garmin/payloads.py`, which is the
-only module that knows Garmin's schema. If Garmin changes something, that file
-is where the fix goes.
+only module that knows Garmin's schema - except the exercise catalog below,
+which is a static file rather than an API and lives in
+`src/workout/garmin/catalog.py`. If Garmin changes something, those are where
+the fix goes.
 
 - [Weight units](#weight-units)
 - [Fields relied on](#fields-relied-on)
@@ -17,6 +19,7 @@ is where the fix goes.
 - [Names drift between payloads](#names-drift-between-payloads)
 - [Device messages](#device-messages)
 - [The workout list endpoint](#the-workout-list-endpoint)
+- [The exercise catalog](#the-exercise-catalog)
 
 ## Weight units
 
@@ -360,3 +363,62 @@ filtering has to happen locally, which is what `workout list --name` does.
 
 Garmin caps a response at the requested size rather than reporting a total, so a
 full page means there may be more and pagination has to keep asking.
+
+## The exercise catalog
+
+Every exercise Garmin knows is published as a static file, with no account and
+no token involved:
+
+```text
+GET https://connect.garmin.com/web-data/exercises/Exercises.json
+```
+
+About 200 KB, and at the time of writing 1510 exercises across 47 categories.
+It is what Garmin's own workout editor is built from, which makes it the one
+authority on whether a `garmin_name` names something real - a question `check`
+could otherwise only ask of exercises a workout already holds.
+
+```json
+{
+  "categories": {
+    "DEADLIFT": {
+      "exercises": {
+        "BARBELL_DEADLIFT": {
+          "primaryMuscles": ["HAMSTRINGS", "LOWER_BACK"],
+          "secondaryMuscles": ["LATS", "TRAPS", "FOREARM", "QUADS", "GLUTES", "ADDUCTORS"]
+        }
+      }
+    }
+  }
+}
+```
+
+The two keys are exactly `garmin_category` and `garmin_name` from
+`workouts.yaml`, and **Garmin validates the pair**: a real exercise filed under
+the wrong category is rejected like an invented one. That is why `check`
+reports the pair rather than the name alone.
+
+**Send a User-Agent.** Garmin answers `403` to urllib's default
+`Python-urllib/x.y`. Any other string works, including an honest one naming
+this tool - the default is refused for being the default, not for being
+unusual. This costs a false negative on every exercise at once if you miss it,
+which reads convincingly like the catalog having changed shape.
+
+`primaryMuscles` and `secondaryMuscles` are what drives the muscle map in
+Connect. Nothing here reads them yet; the cached copy keeps the whole payload
+rather than the two fields `check` uses, so they are already on disk for
+whatever wants them next.
+
+### The per-exercise files are not a substitute
+
+There is also a per-exercise endpoint carrying descriptions, tips and videos:
+
+```text
+GET https://connect.garmin.com/web-data/exercises/en-US/DEADLIFT/BARBELL_DEADLIFT.json
+```
+
+**It is incomplete.** Real exercises 404 there while resolving fine in
+`Exercises.json` - `WEIGHTED_LEG_CURL`, `DUMBBELL_LATERAL_RAISE` and
+`WEIGHTED_STANDING_CALF_RAISE` among them. Validating against it would report
+exercises as invented that Garmin holds perfectly well, so the master file is
+the one to use. Both paths are case-sensitive and upper-case.

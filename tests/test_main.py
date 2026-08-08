@@ -103,6 +103,68 @@ def test_the_handlers_exit_code_is_the_processs(config, dispatch):
     assert main(["--config", config, "check"]) == ExitCode.NOTHING_USABLE
 
 
+# --- `fetch`, which is two downloads sharing a positional -----------------
+
+
+@pytest.fixture
+def fetching(monkeypatch):
+    """Record which of the two downloads a `fetch` invocation reached.
+
+    Both are replaced, and so is `connect`: the routing is the whole question
+    here, and neither a session nor a network should be needed to answer it.
+    """
+    reached: dict[str, object] = {}
+
+    def workouts(session, config, workout_ids):
+        reached["workouts"] = workout_ids
+        return ExitCode.OK
+
+    def exercises(settings):
+        reached["exercises"] = settings
+        return ExitCode.OK
+
+    monkeypatch.setattr(cli, "run_fetch", workouts)
+    monkeypatch.setattr(cli, "run_fetch_exercises", exercises)
+    monkeypatch.setattr(cli, "connect", lambda settings: object())
+    return reached
+
+
+def test_fetch_with_ids_downloads_workouts(config, fetching):
+    assert main(["--config", config, "fetch", "123"]) == ExitCode.OK
+    assert fetching == {"workouts": ["123"]}
+
+
+def test_fetch_with_nothing_downloads_workouts(config, fetching):
+    assert main(["--config", config, "fetch"]) == ExitCode.OK
+    assert fetching == {"workouts": []}
+
+
+def test_fetch_exercises_downloads_the_catalog(config, fetching):
+    assert main(["--config", config, "fetch", "exercises"]) == ExitCode.OK
+    assert "workouts" not in fetching
+    assert fetching["exercises"].token_store
+
+
+def test_fetch_exercises_opens_no_session(config, monkeypatch, fetching):
+    """A public file should not cost a password prompt on a first run."""
+
+    def refuse(settings):
+        raise AssertionError("connect() was called")
+
+    monkeypatch.setattr(cli, "connect", refuse)
+
+    assert main(["--config", config, "fetch", "exercises"]) == ExitCode.OK
+
+
+def test_mixing_the_catalog_with_workout_ids_is_refused(config, fetching, capsys):
+    """Different source, different destination, and one of them needs a login."""
+    code = main(["--config", config, "fetch", "exercises", "123"])
+
+    assert code == ExitCode.CONFIG
+    assert fetching == {}, "neither download should have run"
+    assert "takes no workout ids" in capsys.readouterr().err
+
+
 # --- failures -------------------------------------------------------------
 
 

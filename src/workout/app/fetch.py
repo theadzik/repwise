@@ -1,14 +1,37 @@
-"""Download workout definitions as JSON, for inspection or a connectivity check."""
+"""Download what Garmin holds as JSON: your workouts, or its exercise catalog."""
 
 import json
 import logging
 import os
 
-from ..domain.models import Config
+from ..domain.models import Config, GarminSettings
 from ..errors import ExitCode, GarminError
+from ..garmin import catalog
 from ..garmin.client import GarminSession
 
 logger = logging.getLogger(__name__)
+
+
+def run_fetch_exercises(settings: GarminSettings) -> ExitCode:
+    """Download Garmin's exercise catalog, replacing any cached copy.
+
+    Unconditional, unlike the first-run download `check` does for itself:
+    asking for the catalog by name is how you refresh one that has gone stale,
+    so finding a copy already there is not a reason to stop.
+
+    No session is opened. The catalog is public, and requiring a login to
+    download it would be a password prompt in exchange for nothing.
+    """
+    payload = catalog.download()
+    # Parsed for the count, and to fail before overwriting a good cache with a
+    # response that turned out not to be a catalog at all.
+    parsed = catalog.ExerciseCatalog.parse(payload)
+    path = catalog.save(settings, payload)
+    logger.info(
+        f"Saved {len(parsed)} exercises in {len(parsed.categories)} "
+        f"categories -> {path}"
+    )
+    return ExitCode.OK
 
 
 def run_fetch(

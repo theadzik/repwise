@@ -45,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  workout update --apply --push   also send them to your watch\n"
             "  workout update --activity 1234  replay one session you skipped\n"
             "  workout fetch             download the workout definitions\n"
+            "  workout fetch exercises   refresh Garmin's exercise catalog\n"
             "  workout list              show your Garmin workouts and ids\n"
             "  workout import -o f.yaml  build config from Garmin workouts\n"
             "  workout check             report config/Garmin drift\n"
@@ -126,16 +127,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     fetch = sub.add_parser(
         "fetch",
-        help="download workout definitions as JSON",
+        help="download workout definitions, or Garmin's exercise catalog",
         description="Save workout definitions as JSON into "
         "settings.garmin.dump_dir, for inspecting Garmin's payloads or checking "
-        "connectivity.",
+        "connectivity. The single word `exercises` instead of any ids "
+        "downloads something else entirely: Garmin's list of every exercise it "
+        "knows and the category each is filed under, cached in "
+        "settings.garmin.token_store and read by `check` to tell a real "
+        "exercise name from a plausible-looking one. `check` downloads that "
+        "itself the first time it needs it, so this is how you refresh a copy "
+        "that has gone stale, not something to run first.",
     )
     fetch.add_argument(
         "workout_ids",
         nargs="*",
         metavar="ID",
-        help="workout ids; defaults to every workout in the config",
+        help="workout ids; defaults to every workout in the config. Or the "
+        "single word `exercises` to refresh the exercise catalog",
     )
     add_verbose(fetch)
 
@@ -176,13 +184,17 @@ def build_parser() -> argparse.ArgumentParser:
         "check",
         help="check that your config still names the exercises Garmin holds",
         description="Answer one question: can workouts.yaml still name the "
-        "exercises it thinks it is naming? A garmin_name that matches nothing, "
-        "or that only matches by falling back to the category, is a mistake "
-        "worth knowing about before `update` acts on it - an exercise the "
-        "config cannot name is dropped and rebuilt, which costs the target "
-        "stored in it. What `update` would change is `update`'s own business "
-        "and is not repeated here. Read-only, and exits non-zero on any "
-        "finding at all.",
+        "exercises it thinks it is naming? A garmin_name Garmin has never heard "
+        "of, one filed under a different category than the config claims, one "
+        "that matches nothing in the workout, or one that only matches by "
+        "falling back to the category - each is a mistake worth knowing about "
+        "before `update` acts on it, since an exercise the config cannot name "
+        "is dropped and rebuilt, which costs the target stored in it. Checking "
+        "the names needs Garmin's exercise catalog, which is downloaded and "
+        "cached the first time and never again unless you ask; without it, the "
+        "rest of the checks still run. What `update` would change is "
+        "`update`'s own business and is not repeated here. Read-only, and "
+        "exits non-zero on any finding at all.",
     )
     add_verbose(check)
 

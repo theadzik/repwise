@@ -12,13 +12,13 @@ import sys
 from collections.abc import Callable
 
 from ..app.checking import run_check
-from ..app.fetch import run_fetch
+from ..app.fetch import run_fetch, run_fetch_exercises
 from ..app.importing import ImportOptions, run_import
 from ..app.listing import run_list
 from ..app.update import UpdateOptions, run_update
 from ..config import load_config
 from ..domain.models import Config
-from ..errors import ExitCode, WorkoutError
+from ..errors import ExitCode, UsageError, WorkoutError
 from ..garmin.client import connect
 from ..log import configure
 from .parser import build_parser
@@ -26,6 +26,11 @@ from .parser import build_parser
 __all__ = ["main", "build_parser"]
 
 logger = logging.getLogger(__name__)
+
+#: `fetch` takes workout ids, and this word instead of them. Safe as a keyword
+#: rather than a flag because a Garmin workout id is a number, so nothing a
+#: user could legitimately pass here is ambiguous with it.
+CATALOG = "exercises"
 
 #: An argparse Namespace and a config in, an exit code out. The adapters below
 #: are the whole of what the CLI layer does with a command: pick the options
@@ -41,7 +46,18 @@ def _update(args: argparse.Namespace, config: Config) -> ExitCode:
 
 
 def _fetch(args: argparse.Namespace, config: Config) -> ExitCode:
-    return run_fetch(connect(config.garmin), config, args.workout_ids)
+    if CATALOG not in args.workout_ids:
+        return run_fetch(connect(config.garmin), config, args.workout_ids)
+    if len(args.workout_ids) > 1:
+        # Refused rather than guessed at: the two downloads share a word and
+        # nothing else - different source, different destination, and one of
+        # them needs a login - so doing both from one invocation would be a
+        # coincidence of spelling, not a feature.
+        raise UsageError(
+            f"`fetch {CATALOG}` downloads the exercise catalog and takes no "
+            f"workout ids. Run it on its own."
+        )
+    return run_fetch_exercises(config.garmin)
 
 
 def _list(args: argparse.Namespace, config: Config) -> ExitCode:
