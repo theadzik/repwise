@@ -13,6 +13,7 @@ from ..domain.progression import Target
 from ..planner import (
     Change,
     GapChange,
+    NoteChange,
     Plan,
     RestChange,
     SetChange,
@@ -68,6 +69,22 @@ def report_prescribed(name: str, old: str, new: str, source: str) -> None:
     workout is performed, and are on the watch from the next sync.
     """
     logger.info(f"* {name:<40} {old:>{COLUMN}}  ->  {new:<{COLUMN}} ({source})")
+
+
+def report_note(change: NoteChange) -> None:
+    """The one-line note the watch shows, which workouts.yaml also decides.
+
+    Shown rather than hidden because a config edit that only touches the
+    programming - a rep range, a weight step - moves no target at all, and the
+    run would otherwise say every exercise is up to date while still having a
+    reason to write.
+    """
+    report_prescribed(
+        change.spec.name,
+        change.old or "no note",
+        change.new,
+        "note from workouts.yaml",
+    )
 
 
 def report_rest(change: RestChange) -> None:
@@ -143,10 +160,10 @@ def report_plan(plan: Plan, force_flag: str | None = None) -> None:
         report_skips(skip)
     if plan.gaps:
         report_gaps(plan.gaps)
-    # Notes only move when workouts.yaml does, so they are a footnote to a
-    # normal run: the count goes in the summary, the detail behind -v.
-    for name in plan.notes:
-        logger.debug(f"  note {name:<38} -> {plan.workout.key}")
+    # Last of the config-driven lines, as in the closing summary: a note says
+    # how an exercise is programmed rather than what it asks of you today.
+    for note in plan.notes:
+        report_note(note)
     for warning in plan.warnings:
         # The marker survives the move to logging: it still sets a warning
         # apart when the level itself is not shown.

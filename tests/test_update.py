@@ -548,6 +548,58 @@ def test_a_dry_run_only_says_the_last_rest_would_come_back(rested, caplog):
     assert "1 step(s) would stop skipping their last rest" in caplog.text
 
 
+# --- step notes -----------------------------------------------------------
+
+
+@pytest.fixture
+def annotated(account):
+    """Workout A shaped exactly as the config asks, its note included.
+
+    What a run finds when nothing but workouts.yaml has moved. Activity 700 is
+    the session it learns from - 6 reps against a target of 7, so the target
+    holds still - which leaves the note as the only thing left to write.
+    """
+    account.workouts["111"] = steps(
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 30.0), sets=SQUAT.sets)
+    )
+    group = account.workouts["111"]["workoutSegments"][0]["workoutSteps"][0]
+    group["workoutSteps"][0]["description"] = SQUAT.note
+    return account
+
+
+def only_workout_a(exercise):
+    return Config({"Workout A": Workout("Workout A", "111", ["workout a"], [exercise])})
+
+
+def test_a_note_the_config_moved_is_reported_beside_the_exercise(annotated, caplog):
+    """The report used to say "up to date" against every exercise and count
+    the note only in its closing line, which named no exercise at all."""
+    with caplog.at_level(logging.INFO, logger="workout.app.report"):
+        run(annotated, only_workout_a(replace(SQUAT, rep_high=12)), activity="700")
+
+    assert "* Barbell Back Squat" in caplog.text
+    assert "6-10 reps | +2.5 kg  ->  6-12 reps | +2.5 kg" in caplog.text
+    assert "(note from workouts.yaml)" in caplog.text
+
+
+def test_a_step_that_had_no_note_says_so(annotated, caplog):
+    """An empty column would read as a note that says nothing."""
+    group = annotated.workouts["111"]["workoutSegments"][0]["workoutSteps"][0]
+    group["workoutSteps"][0]["description"] = None
+
+    with caplog.at_level(logging.INFO, logger="workout.app.report"):
+        run(annotated, only_workout_a(SQUAT), activity="700")
+
+    assert "no note  ->  6-10 reps | +2.5 kg" in caplog.text
+
+
+def test_the_summary_still_counts_the_notes(annotated, caplog):
+    with caplog.at_level(logging.INFO, logger="workout.app.update"):
+        run(annotated, only_workout_a(replace(SQUAT, rep_high=12)), activity="700")
+
+    assert "1 note(s) would be refreshed" in caplog.text
+
+
 def test_nothing_is_pushed_without_apply(account):
     run(account)
     assert account.pushed == []

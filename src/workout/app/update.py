@@ -525,7 +525,7 @@ def run_update(
         logger.info(f"{untrained} Shaping the workouts from the config regardless.")
 
     updated = len(changed_steps(plans))
-    noted = counted(plans, lambda plan: plan.notes)
+    noted = counted(plans, lambda plan: (c.spec.garmin_name for c in plan.notes))
     rested = counted(plans, lambda plan: (c.spec.garmin_name for c in plan.rests))
     recounted = counted(plans, lambda plan: (c.spec.garmin_name for c in plan.sets))
     unskipped = counted(plans, lambda plan: (c.spec.garmin_name for c in plan.skips))

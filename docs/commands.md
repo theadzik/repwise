@@ -145,11 +145,10 @@ The closing line counts everything else the run would touch:
 Dry run: 8 step(s) would change, 2 exercise(s) would be added, removed or moved, 1 set count(s) would change, 1 rest time(s) would change, 1 step(s) would stop skipping their last rest, 17 note(s) would be refreshed. Re-run with --apply.
 ```
 
-Each clause appears only when it applies. See [ordering, adding and
+Each clause appears only when it applies, and every exercise it counts has a
+line of its own above it. See [ordering, adding and
 removing](#ordering-adding-and-removing), [rest between
-sets](#rest-between-sets) and [step notes](#step-notes). Which exercises the
-notes were is behind `-v`, since notes only move when you edit
-`workouts.yaml`.
+sets](#rest-between-sets) and [step notes](#step-notes).
 
 An "Also in ..." section appears when a target that moved also exists in another
 workout. See [shared exercises](progression.md#shared-exercises).
@@ -305,6 +304,16 @@ These are refreshed from `workouts.yaml` on every run, so editing a rep range
 or a `weight_step` updates them. That is a reason to write a workout in its own
 right: a config edit moves no target, and without it the notes would go stale
 until your next session happened to earn something.
+
+A note that would move is reported like any other change the config makes, so
+a run whose targets all held still still names what it is about to write:
+
+```text
+  Barbell Back Squat            7 x 30 kg  ->  7 x 30 kg       (up to date)
+* Barbell Back Squat  6-10 reps | +2.5 kg  ->  6-12 reps | +2.5 kg (note from workouts.yaml)
+```
+
+A step with nothing in its notes field reads `no note` on the left.
 
 **A note you wrote yourself is never overwritten.** If a step's notes hold
 anything that is not in the shape above - a coaching cue, say - the tool

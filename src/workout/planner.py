@@ -66,6 +66,21 @@ class Change:
 
 
 @dataclass(frozen=True)
+class NoteChange:
+    """One exercise's step note, before and after.
+
+    Prescribed by workouts.yaml exactly as a rest is, and reported the same
+    way: a note only ever moves because the config moved, and a run whose
+    targets all held still is precisely when it needs saying out loud.
+    """
+
+    spec: ExerciseSpec
+    #: What the step said before. Empty where the step had no note at all.
+    old: str
+    new: str
+
+
+@dataclass(frozen=True)
 class RestChange:
     """One exercise's rest between sets, before and after.
 
@@ -165,7 +180,7 @@ class Plan:
     warnings: list[str]
     #: Exercises whose notes field was rewritten, which is its own reason to
     #: save a workout: editing workouts.yaml moves no target on its own.
-    notes: list[str] = field(default_factory=list)
+    notes: list[NoteChange] = field(default_factory=list)
     #: Exercises whose rest step was rewritten. Config-driven like the notes,
     #: and a reason to save for the same reason.
     rests: list[RestChange] = field(default_factory=list)
@@ -326,7 +341,7 @@ def _streak(
 def _refresh_note(
     block: ExerciseBlock,
     spec: ExerciseSpec,
-    notes: list[str],
+    notes: list[NoteChange],
     warnings: list[str],
 ) -> None:
     """Keep the step's notes field showing how the exercise is programmed.
@@ -354,9 +369,13 @@ def _refresh_note(
     stale = [step for step in block.steps if step_note(step) != wanted]
     if not stale:
         return
+
+    # Both halves of a ramped exercise carry the same note, so the first stale
+    # one speaks for all of them.
+    current = step_note(stale[0])
     for step in stale:
         apply_note(step, wanted)
-    notes.append(spec.name)
+    notes.append(NoteChange(spec, current, wanted))
 
 
 def _refresh_rest(
@@ -439,7 +458,7 @@ class _Shaping:
     caller that wanted one of them wants all four.
     """
 
-    notes: list[str] = field(default_factory=list)
+    notes: list[NoteChange] = field(default_factory=list)
     rests: list[RestChange] = field(default_factory=list)
     sets: list[SetChange] = field(default_factory=list)
     skips: list[SkipChange] = field(default_factory=list)
