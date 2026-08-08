@@ -40,7 +40,7 @@ this tool.
 
 **Nothing is written to Garmin without `--apply`.** A dry run is the default.
 
-The full walkthrough is in [Getting started](docs/getting-started.md).
+The full walkthrough is in [Getting started][getting-started].
 
 ## What it does
 
@@ -94,7 +94,7 @@ removal and move first.
 
 It also covers timed holds like planks, exercises the watch counts per side, and
 keeping an exercise in sync when it appears in more than one workout.
-[Progression](docs/progression.md) explains every decision it can make.
+[Progression][progression] explains every decision it can make.
 
 ## Commands
 
@@ -109,13 +109,13 @@ keeping an exercise in sync when it appears in more than one workout.
 | `repwise fetch exercises` | Refresh Garmin's list of every exercise it knows, which `check` reads |
 
 Any command takes `-v` to show debug output as well. Full flags and output for
-each are in [Commands](docs/commands.md).
+each are in [Commands][commands].
 
 ## Your routine
 
 Your routine lives in `workouts.yaml`: the exercises, their order, rep ranges,
 set counts, rests, and which Garmin workout each belongs to. Generate it with
-`repwise import`, or copy [workouts.example.yaml](workouts.example.yaml) - a
+`repwise import`, or copy [workouts.example.yaml][workouts-example] - a
 complete working A/B full body split, annotated field by field.
 
 It is the source of truth rather than a copy of one: `update` writes what it
@@ -123,7 +123,7 @@ says to Garmin, and the only thing ever written back into it is an id Garmin
 issues for a workout it has just created.
 
 That file is gitignored, so your routine and Garmin ids stay out of version
-control. Every field is described in [Configuration](docs/configuration.md).
+control. Every field is described in [Configuration][configuration].
 
 ## Documentation
 
@@ -131,21 +131,33 @@ For users:
 
 | Page | Contents |
 | --- | --- |
-| [Getting started](docs/getting-started.md) | Install to first update, step by step |
-| [Commands](docs/commands.md) | Every command, flag, output marker and exit code |
-| [Configuration](docs/configuration.md) | The `workouts.yaml` reference, and finding your exercise identifiers |
-| [Progression](docs/progression.md) | How the next target is decided, with worked examples |
-| [Troubleshooting](docs/troubleshooting.md) | Login problems, skipped exercises, known limitations |
+| [Getting started][getting-started] | Install to first update, step by step |
+| [Commands][commands] | Every command, flag, output marker and exit code |
+| [Configuration][configuration] | The `workouts.yaml` reference, and finding your exercise identifiers |
+| [Progression][progression] | How the next target is decided, with worked examples |
+| [Troubleshooting][troubleshooting] | Login problems, skipped exercises, known limitations |
 
 For contributors:
 
 | Page | Contents |
 | --- | --- |
-| [Architecture](docs/architecture.md) | Module layout, dependency and data-flow diagrams |
-| [Garmin's API](docs/garmin-api.md) | The undocumented payloads and endpoints, and their traps |
-| [Contributing](docs/contributing.md) | Dev setup, tests, where to make a change |
-| [Releasing](docs/releasing.md) | Commit message format, and how the version is derived from it |
+| [Architecture][architecture] | Module layout, dependency and data-flow diagrams |
+| [Garmin's API][garmin-api] | The undocumented payloads and endpoints, and their traps |
+| [Contributing][contributing] | Dev setup, tests, where to make a change |
+| [Releasing][releasing] | Commit message format, and how the version is derived from it |
 
 ## Licence
 
-[MIT](LICENSE).
+[MIT][license].
+
+[getting-started]: https://github.com/theadzik/repwise/blob/main/docs/getting-started.md
+[commands]: https://github.com/theadzik/repwise/blob/main/docs/commands.md
+[configuration]: https://github.com/theadzik/repwise/blob/main/docs/configuration.md
+[progression]: https://github.com/theadzik/repwise/blob/main/docs/progression.md
+[troubleshooting]: https://github.com/theadzik/repwise/blob/main/docs/troubleshooting.md
+[architecture]: https://github.com/theadzik/repwise/blob/main/docs/architecture.md
+[garmin-api]: https://github.com/theadzik/repwise/blob/main/docs/garmin-api.md
+[contributing]: https://github.com/theadzik/repwise/blob/main/docs/contributing.md
+[releasing]: https://github.com/theadzik/repwise/blob/main/docs/releasing.md
+[workouts-example]: https://github.com/theadzik/repwise/blob/main/workouts.example.yaml
+[license]: https://github.com/theadzik/repwise/blob/main/LICENSE

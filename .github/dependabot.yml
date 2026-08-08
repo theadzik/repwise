@@ -96,8 +96,9 @@ updates:
       prefix: "build"
 
     groups:
-      # One PR: these are CI steps, they cannot reach the Garmin integration,
-      # and release.yml is the only workflow using them.
+      # One PR: these are CI steps and they cannot reach the Garmin
+      # integration. Worth reading rather than waving through even so -
+      # publish.yml pins the action that uploads to PyPI.
       actions:
         patterns:
           - "*"

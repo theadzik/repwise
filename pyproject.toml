@@ -4,13 +4,34 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "repwise"
-version = "0.9.0"
+version = "1.0.0"
 description = "Advance Garmin strength workout targets using double progression"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.14"
+authors = [
+    { name = "Adam Żmuda", email = "adam@zmuda.pro" },
+]
 keywords = ["garmin", "strength-training", "progressive-overload"]
+# How PyPI files and filters this. Deliberately no "License :: OSI Approved"
+# line: PEP 639 replaced those with the SPDX `license` field above, and
+# setuptools refuses to build at all when both are present.
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    # One line per supported minor, and requires-python above is what actually
+    # enforces it - this only decides what the sidebar on PyPI says.
+    "Programming Language :: Python :: 3.14",
+    # Trove has no classifier for fitness, training or sport, so this is the
+    # closest honest fit.
+    "Topic :: Utilities",
+]
 # Pinned to exact versions. This is an application rather than a library, so a
 # reproducible install matters more than being co-installable, and Dependabot
 # raises a PR per release. garminconnect in particular has broken
@@ -19,6 +40,15 @@ dependencies = [
     "garminconnect==0.3.7",
     "pyyaml==6.0.3",
 ]
+
+# The sidebar on the PyPI page. Absolute, because the description rendered
+# there is README.md torn out of the repository, where nothing relative
+# resolves.
+[project.urls]
+Homepage = "https://github.com/theadzik/repwise"
+Documentation = "https://github.com/theadzik/repwise/tree/main/docs"
+Changelog = "https://github.com/theadzik/repwise/blob/main/CHANGELOG.md"
+Issues = "https://github.com/theadzik/repwise/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -52,9 +82,6 @@ update_changelog_on_bump = true
 # History before 0.1.0 predates conventional commits, so there is nothing to
 # generate a changelog from.
 changelog_start_rev = "0.1.0"
-# Pre-1.0: a breaking change bumps the minor, not the major. Drop this line
-# when releasing 1.0.0, after which "!" means a major bump.
-major_version_zero = true
 # Commitizen's own Markdown template with a commit link on each entry. The path
 # is resolved against the working directory, so `cz` has to run from the
 # repository root - which is where both the hook and the workflow run it.

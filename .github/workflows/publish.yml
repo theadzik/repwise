@@ -1,0 +1,318 @@
+# Releases, from the commits on `main` to the files on PyPI.
+#
+# `cz bump` normally writes the version files, commits and tags in one step.
+# That cannot work against a protected branch: the bump has to arrive through a
+# pull request, and every merge method rewrites it - squash replaces the commit,
+# rebase replays it onto a new parent - so a tag created alongside the bump
+# would point at a commit that never reaches `main`. The work is therefore
+# split into jobs, and each runs where it can:
+#
+#   tag         tags `main` once the bump pull request has been squashed onto it
+#   build       builds the sdist and the wheel from that tagged tree
+#   publish     uploads them to PyPI
+#   release-pr  opens - or refreshes - a pull request carrying the next bump
+#
+# The file is named publish.yml, rather than the release.yml this mostly is,
+# because the name is part of a credential. There are no API tokens here: the
+# publish job asks GitHub for a short-lived OIDC token and PyPI trades it for
+# an upload token that lasts fifteen minutes, having first checked the
+# `job_workflow_ref` claim in it against the trusted publisher configured for
+# the project:
+#
+#   theadzik/repwise/.github/workflows/publish.yml@<ref>
+#
+# So renaming this file, or moving the publish job out of it, breaks uploads
+# until that trusted publisher is updated to match.
+#
+# Nothing here bypasses the branch ruleset. Merging stays a human decision; the
+# workflow only prepares the bump, records the tag and ships the result. See
+# docs/releasing.md.
+name: Release
+
+on:
+  workflow_dispatch:
+
+# These jobs write refs and upload files that can never be replaced. Two runs
+# close together would otherwise race over the same tag and the same version,
+# so they queue rather than overlap - and rather than cancel, which could cut a
+# run off between PyPI accepting an upload and this workflow hearing that it
+# did.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# Nothing is granted by default; each job below asks for what it needs.
+permissions: {}
+
+jobs:
+  # First, because a bump pull request that has just landed leaves `main`
+  # carrying a version with no tag. release-pr below must not run until that tag
+  # exists, or it would compute the next version from commits already released.
+  tag:
+    name: Tag main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      publish: ${{ steps.tag.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Only pyproject.toml is read, and the tag is created through the API
+          # rather than pushed, so this checkout needs no credentials left
+          # behind in it.
+          persist-credentials: false
+
+      - name: Tag the head commit, then ask PyPI whether it has this version
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          read_project() {
+            python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['$1'])"
+          }
+          name=$(read_project name)
+          version=$(read_project version)
+
+          # The condition is "this version has no tag", not "the last commit
+          # was a bump": it stays correct for a version bumped by hand, and it
+          # is what makes a dispatch against an already released `main` - after
+          # a feature, a Dependabot pin - a no-op rather than a duplicate tag.
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$version" >/dev/null 2>&1; then
+            echo "$version is already tagged."
+          else
+            echo "Tagging $GITHUB_SHA as $version."
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/tags/$version" \
+              -f "sha=$GITHUB_SHA" \
+              --silent
+          fi
+
+          # Whether to publish is asked of PyPI rather than inferred from
+          # whether this run created the tag. A version is uploaded exactly
+          # once and can never be replaced or reused, so the only question
+          # worth asking is whether it is up there already - and asking it this
+          # way is what makes an upload that failed halfway retryable by
+          # dispatching again, which the tagging half above must not be.
+          status=$(curl -sS -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/$name/$version/json")
+          case "$status" in
+            404) echo "$name $version is not on PyPI yet."; publish=true ;;
+            200) echo "$name $version is already on PyPI."; publish=false ;;
+            *) echo "::error::PyPI answered $status - refusing to guess whether $version is published."; exit 1 ;;
+          esac
+
+          {
+            echo "version=$version"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build the distributions
+    needs: tag
+    if: needs.tag.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The tag job put the tag on this same commit, so the ordinary
+          # checkout of the dispatched ref is already the tagged tree.
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          # Only used to *run* the build. The wheel is pure Python and comes
+          # out as py3-none-any, so this decides nothing about who can install
+          # it - requires-python in pyproject.toml does.
+          python-version: "3.14"
+
+      - name: Build the sdist and the wheel
+        run: |
+          # `build` is deliberately not pinned in pyproject.toml's dev extra:
+          # it is no part of anyone's development loop, and it builds in an
+          # isolated environment from the [build-system] requires that are
+          # pinned there.
+          python -m pip install --quiet build
+          python -m build
+
+      - name: Check what PyPI will accept and render
+        run: |
+          # The long description is README.md, and PyPI rejects an upload whose
+          # description it cannot render - by which point the tag is cut and
+          # the version number is spent. Cheaper to find out here.
+          python -m pip install --quiet twine
+          twine check --strict dist/*
+          ls -l dist/
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # Split from the build deliberately. Building runs the project's own build
+  # backend and downloads its dependencies; this job holds the right to mint
+  # PyPI credentials. Keeping the two apart means nothing that arrives at build
+  # time is running in a job that can publish - this one checks out no code at
+  # all and runs a single pinned action over a directory of files.
+  publish:
+    name: Publish ${{ needs.tag.outputs.version }} to PyPI
+    needs: [tag, build]
+    runs-on: ubuntu-latest
+    # The environment is half of the credential. PyPI checks the name below as
+    # a claim of its own, so it has to match the trusted publisher exactly -
+    # and because uploads are accepted only from a job running here, this
+    # environment's own protection rules, required reviewers or a branch and
+    # tag restriction, gate the upload rather than merely documenting it.
+    environment:
+      name: publish
+      url: https://pypi.org/p/repwise
+    permissions:
+      # Mint the OIDC token PyPI trades for an upload token, and nothing else.
+      # This job is deliberately not given contents: read, so it cannot check
+      # out the repository even by accident.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist/
+
+      # No username, no password, no secret: the action reads the OIDC token
+      # out of the job and exchanges it. It also signs the distributions and
+      # uploads PEP 740 attestations by default, which is what lets anyone
+      # verify later that these files came from this workflow.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
+  release-pr:
+    name: Prepare the next release
+    needs: tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # `cz bump` reads every commit back to the last tag.
+          # zizmor: ignore[artipacked] - this job pushes the release branch
+          fetch-depth: 0
+
+      - name: Install commitizen
+        run: |
+          # The pin is read from pyproject.toml's dev extra rather than written
+          # again here, so this workflow and a local `cz bump` cannot disagree
+          # about which version's rules decide the release.
+          pin=$(python3 -c '
+          import tomllib
+
+          dev = tomllib.load(open("pyproject.toml", "rb"))["project"]["optional-dependencies"]["dev"]
+          print(next(d for d in dev if d.startswith("commitizen")))
+          ')
+          echo "Installing $pin"
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet "$pin"
+
+      - name: Work out the next version
+        id: bump
+        run: |
+          read_version() {
+            python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])'
+          }
+          current=$(read_version)
+
+          # --version-files-only writes pyproject.toml, src/repwise/__init__.py
+          # and CHANGELOG.md and stops there, leaving no commit and no tag. That
+          # is the whole trick: the commit is made below so it can go through a
+          # pull request, and the tag waits for the squashed result.
+          status=0
+          .venv/bin/cz bump --version-files-only --changelog --yes || status=$?
+
+          # 3: no commits at all since the last tag. 21: commits, but none that
+          # earn a release - a run of docs and chores. Neither is a failure.
+          if [ "$status" = 3 ] || [ "$status" = 21 ]; then
+            echo "Nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$status" != 0 ]; then
+            exit "$status"
+          fi
+
+          {
+            echo "release=true"
+            echo "current=$current"
+            echo "version=$(read_version)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Withdraw a release pull request that is no longer earned
+        if: steps.bump.outputs.release != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # There is nothing to release, so an open bump pull request is stale:
+          # it proposes a version the commits no longer justify. Leaving it
+          # alone is not harmless - auto-merge is enabled on it, so it would
+          # eventually land a release built from a view of history that has
+          # since changed. The next push that does earn a release opens a fresh
+          # one, so nothing is lost by closing this.
+          if [ -n "$(gh pr list --head release --state open --json number --jq '.[].number')" ]; then
+            gh pr close release --delete-branch \
+              --comment "Closing: there is nothing to release since the last tag. A new pull request will open when there is."
+          fi
+
+      - name: Open or refresh the release pull request
+        if: steps.bump.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Interpolated into the environment rather than into the script, so a
+          # version string can never be read as shell.
+          TITLE: >-
+            bump: version ${{ steps.bump.outputs.current }} →
+            ${{ steps.bump.outputs.version }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # -u stages tracked files only, which is what keeps the .venv above
+          # out of the commit whether or not it is ignored.
+          git switch -c release
+          git add -u
+          git commit -m "$TITLE"
+          # Force, because the branch is rebuilt from `main` on every push and
+          # holds nothing worth preserving between releases.
+          git push --force origin release
+
+          body=$(cat <<EOF
+          Cut from the commits on \`main\` since \`$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "the start")\`.
+
+          Auto-merge is on: this lands by itself once CI is green. Dispatching
+          **Release** afterwards tags \`$VERSION\` and publishes it to PyPI.
+          Close this if it is not a release you want yet.
+
+          **Leave the title alone** - it becomes the commit message on
+          \`main\`, and \`cz\` reads it. Changelog and version files are
+          generated by \`cz bump\`; edit the commits, not this branch, if
+          something reads wrong.
+          EOF
+          )
+
+          if [ -n "$(gh pr list --head release --state open --json number --jq '.[].number')" ]; then
+            gh pr edit release --title "$TITLE" --body "$body"
+          else
+            gh pr create --base main --head release --title "$TITLE" --body "$body"
+          fi
+
+          # Auto-merge, so the release lands on its own once CI is green - and
+          # does not land at all if CI is red.
+          #
+          # This is deliberately not tolerant of failure. GitHub refuses to
+          # enable auto-merge on a pull request that is already mergeable, so
+          # this step failing means `main` has no required status check and the
+          # bump would have merged unreviewed and ungated. That is worth a red
+          # run rather than a shrug.
+          gh pr merge release --auto --squash

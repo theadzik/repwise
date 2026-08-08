@@ -1,16 +1,17 @@
 # Commit messages and releases
 
 Commits are written in [Conventional
-Commits](https://www.conventionalcommits.org/en/v1.0.0/) form, and the version
+Commits](https://www.conventionalcommits.org/en/v1.0.0/) form, the version
 number is derived from them by
-[Commitizen](https://commitizen-tools.github.io/commitizen/).
+[Commitizen](https://commitizen-tools.github.io/commitizen/), and the result is
+published to [PyPI](https://pypi.org/project/repwise/).
 
 The work is split in two, deliberately:
 
 | When | What runs | What it does |
 | --- | --- | --- |
 | Every commit | `cz check`, via pre-commit's `commit-msg` hook | Rejects a message that is not conventional |
-| Every push to `main` | `cz bump`, via `.github/workflows/release.yml` | Tags the release that just landed, then reads every commit since that tag and opens a self-merging pull request carrying the next one |
+| When **Release** is dispatched | `.github/workflows/publish.yml` | Tags the release that just landed, uploads it to PyPI, then reads every commit since that tag and opens a self-merging pull request carrying the next one |
 
 A normal commit never changes the version. That is not a limitation of the
 tooling - see [why not bump on every
@@ -20,6 +21,7 @@ commit](#why-not-bump-on-every-commit).
 - [Commit message format](#commit-message-format)
 - [What each type does](#what-each-type-does)
 - [Cutting a release](#cutting-a-release)
+- [Publishing to PyPI](#publishing-to-pypi)
 - [Why not bump on every commit](#why-not-bump-on-every-commit)
 - [Gotchas](#gotchas)
 
@@ -94,33 +96,42 @@ the next `cz bump`:
 `refactor` and `perf` counting as a patch is worth knowing: a change with no
 user-visible effect still produces a release.
 
-While the version is below 1.0.0, `major_version_zero = true` in
-`pyproject.toml` holds a breaking change to a **minor** bump, so `!` gives
-0.1.0 → 0.2.0 rather than 1.0.0. Delete that line when releasing 1.0.0.
+Since 1.0.0 a breaking change costs a major version, and that is the whole
+point of having released 1.0.0. Before it, `major_version_zero = true` in
+`pyproject.toml` held `!` down to a minor bump; that line was removed with the
+1.0.0 bump and should not come back. Write `!` when `workouts.yaml` or the CLI
+changes shape under someone, and not otherwise.
 
 ## Cutting a release
 
-Nothing, on a good day. Merging anything that earns a release to `main` is
-enough: a pull request titled `bump: version 0.4.0 → 0.5.0` opens by itself,
-merges itself once CI is green, and the tag follows a minute later.
+One click. Run the **Release** workflow from the Actions tab; everything else
+has already happened by then. The bump pull request titled
+`bump: version 0.4.0 → 0.5.0` opened by itself when the work merged, and merged
+itself once CI was green, so dispatching Release tags what is already on `main`
+and ships it.
 
 What to do is therefore mostly *not* doing something. Close the bump pull
 request if this is not a release you want yet; it will be reopened, retitled to
-whatever the accumulated commits then deserve, on the next push to `main`.
+whatever the accumulated commits then deserve, on the next dispatch.
 
-The machinery is `.github/workflows/release.yml`, which runs on every push to
-`main` and does two things in order:
+The machinery is `.github/workflows/publish.yml`, which runs four jobs:
 
 1. **`tag`** - if the version in `pyproject.toml` has no tag yet, it tags the
-   head commit. This is what closes the release that has just merged.
-2. **`release-pr`** - it runs `cz bump --version-files-only`, which writes the
+   head commit. This is what closes the release that has just merged. It then
+   asks PyPI whether that version is already there, which is what the next two
+   jobs are keyed on.
+2. **`build`** - builds the sdist and the wheel from the tagged tree and runs
+   `twine check --strict` over them.
+3. **`publish`** - uploads them. See [publishing to PyPI](#publishing-to-pypi).
+4. **`release-pr`** - it runs `cz bump --version-files-only`, which writes the
    version files and the changelog and stops there, making no commit and no
    tag. It commits that itself, force-pushes the `release` branch, opens or
    retitles the pull request, and enables auto-merge on it.
 
-The two are one workflow rather than two so that they cannot race: the tag has
+They are one workflow rather than several so that they cannot race: the tag has
 to exist before `cz bump` runs, or the next version would be computed from
-commits that were already released.
+commits that were already released. The dispatch is manual for the same reason
+the merge is - a release is a decision, and this is where it is taken.
 
 Auto-merge is what makes CI, not a click, the thing that gates a release - so
 `ci.yml` must be a **required status check** on `main` for any of this to be
@@ -171,19 +182,81 @@ the existing tag stays readable; there is no reason to.
 To override the computed version - a release that deserves a minor bump
 although every commit was a `fix`, say - prepare the bump by hand and open the
 pull request yourself. The workflow will overwrite the `release` branch on the
-next push to `main`, so use a branch of your own:
+next dispatch, so use a branch of your own:
 
 ```bash
 git switch -c release-minor
 .venv/bin/cz bump --version-files-only --changelog --increment MINOR
-.venv/bin/cz bump --version-files-only --changelog 1.0.0   # or state it outright
-git commit -am "bump: version 0.4.0 → 0.5.0"
+.venv/bin/cz bump --version-files-only --changelog 2.0.0   # or state it outright
+git commit -am "bump: version 1.4.0 → 1.5.0"
 ```
 
 `--version-files-only` is the flag that makes this safe to do locally: it
 writes the version files and the changelog and leaves the commit and the tag
 alone. `cz bump` without it would cut a tag here, which is the one thing that
 must not happen off `main`.
+
+## Publishing to PyPI
+
+There is no API token anywhere in this repository, and no secret to rotate. The
+`publish` job asks GitHub for a short-lived OpenID Connect token describing the
+run that is asking, and PyPI trades that for an upload token valid for fifteen
+minutes. This is [trusted
+publishing](https://docs.pypi.org/trusted-publishers/), and the claim PyPI
+actually checks is `job_workflow_ref`:
+
+```text
+theadzik/repwise/.github/workflows/publish.yml@refs/heads/main
+```
+
+**The filename is part of the credential.** That is why the workflow file is
+called `publish.yml` rather than the `release.yml` it mostly is, and why the
+publish job has to stay in it. Rename the file, or move that job elsewhere, and
+uploads fail until the trusted publisher on PyPI is updated to match.
+
+The publisher is configured once, at [PyPI → Publishing][pypi-publishing]:
+
+| Field | Value |
+| --- | --- |
+| PyPI Project Name | `repwise` |
+| Owner | `theadzik` |
+| Repository name | `repwise` |
+| Workflow name | `publish.yml` |
+| Environment name | `publish` |
+
+[pypi-publishing]: https://pypi.org/manage/account/publishing/
+
+The environment is the other half, and PyPI checks it as a claim of its own.
+`publish` has to exist under Settings → Environments, and the name has to be
+the one the `publish` job names - because PyPI is configured to accept uploads
+only from a job running in it, its protection rules, required reviewers or a
+branch and tag restriction, are a real gate on the upload rather than a note
+about one. Renaming it in one place and not the other fails the upload after
+the tag has already been cut.
+
+Two jobs rather than one, deliberately. `build` runs the project's own build
+backend and downloads whatever it asks for; `publish` holds the right to mint
+PyPI credentials. Keeping them apart means nothing arriving at build time is
+running in a job that can publish - `publish` checks out no code at all, is not
+even granted `contents: read`, and runs a single pinned action over a directory
+of files. It signs them and uploads [PEP 740](https://peps.python.org/pep-0740/)
+attestations on the way, which is what lets anyone check later that a file on
+PyPI came from this workflow.
+
+Whether to upload at all is decided by asking PyPI, in the `tag` job, rather
+than by inferring it from whether that run created the tag:
+
+```text
+https://pypi.org/pypi/repwise/0.9.0/json  ->  404, so publish
+                                              200, so there is nothing to do
+```
+
+A version reaches PyPI exactly once and can never be replaced or reused, so the
+only question worth asking is whether it is up there already. Asking it this
+way is also what makes a half-failed release recoverable: dispatch **Release**
+again, and the tagging is a no-op while the upload is retried. Anything else -
+a `tagged` flag from the tag job, say - would skip the retry precisely when it
+is needed.
 
 ## Why not bump on every commit
 
@@ -214,7 +287,7 @@ So the hook does what a hook is good at - refusing a malformed message
 immediately, before it is in the history - and the version is computed once,
 from the commits, when a release is actually wanted.
 
-Moving `cz bump` into a workflow, as `.github/workflows/release.yml` now does,
+Moving `cz bump` into a workflow, as `.github/workflows/publish.yml` now does,
 changes none of the above. The bump is still one aggregate decision per
 release; it is proposed by CI instead of typed by hand, and merging the pull
 request is still where a human decides that a release happens.
@@ -236,13 +309,24 @@ request is still where a human decides that a release happens.
   being possible at all, which is the intended failure: the job goes red rather
   than quietly releasing whatever was pushed.
 - **A release you do not want is closed, not reverted.** The bump pull request
-  is rebuilt from `main` on every push, so closing it costs nothing and the
-  next push proposes the release again, with whatever has accumulated since.
+  is rebuilt from `main` on every dispatch, so closing it costs nothing and the
+  next one proposes the release again, with whatever has accumulated since.
 - **A tag pushed by CI starts no further workflow.** Refs created with the
-  built-in `GITHUB_TOKEN` deliberately do not trigger runs, so a workflow
-  keyed on `push: tags` would never fire. Anything that should happen on a
-  release - a GitHub release, a build - belongs in `release.yml` next to the
-  tagging step, or needs a GitHub App token instead.
+  built-in `GITHUB_TOKEN` deliberately do not trigger runs, so a workflow keyed
+  on `push: tags` would never fire. That is why publishing is a job in
+  `publish.yml` next to the tagging step rather than a workflow of its own
+  watching for tags; the alternative is a GitHub App token, which is a secret
+  to hold and rotate for no gain here.
+- **A version on PyPI is final.** It cannot be replaced, re-uploaded or
+  reused - deleting a release only frees the page, never the number. This is
+  why `twine check --strict` runs before the upload and why the `publish` job
+  is keyed on asking PyPI rather than on anything inferred locally. A release
+  that went out wrong is fixed by releasing again, never by editing it.
+- **The first upload needs a pending publisher.** Trusted publishing on a
+  project that does not exist yet is configured as a *pending* publisher, which
+  becomes a real one the moment the first upload creates the project. Without
+  it the `publish` job fails the OIDC exchange, having already tagged - so
+  configure it before the first dispatch, not after.
 - **Dependency updates do not bump the version.** `build(deps): ...` is
   intentionally inert, so a week of Dependabot merges does not produce
   releases. When a dependency bump does matter - a `garminconnect` release that
