@@ -16,9 +16,6 @@
 name: Release
 
 on:
-  push:
-    branches: [main]
-  # For re-running a half that failed, without an empty commit to trigger it.
   workflow_dispatch:
 
 # Both jobs write refs. Two merges landing close together would otherwise race
