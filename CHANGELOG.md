@@ -1,3 +1,9 @@
+## 0.9.0 (2026-08-08)
+
+### Feat
+
+- report optimal range (#26) ([97d1fd6](https://github.com/theadzik/workout/commit/97d1fd6445f7479f6b6885c459058e7a86630574))
+
 ## 0.8.0 (2026-08-07)
 
 ### Feat
