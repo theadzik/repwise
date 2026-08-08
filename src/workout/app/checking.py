@@ -2,13 +2,32 @@
 
 import logging
 
-from ..checker import Finding, check_programming, check_workout
-from ..domain.models import Config
+from ..checker import Finding, check_catalog, check_programming, check_workout
+from ..domain.models import Config, GarminSettings
 from ..errors import ExitCode, GarminError
+from ..garmin.catalog import ExerciseCatalog, ensure
 from ..garmin.client import GarminSession
 from .report import SEVERITY
 
 logger = logging.getLogger(__name__)
+
+
+def _catalog(settings: GarminSettings) -> ExerciseCatalog | None:
+    """Garmin's exercise list, downloaded on the first run that wants it.
+
+    Fetched here rather than demanded of the user, because a check that only
+    works after another command has been run is a check that goes unrun. The
+    copy is cached, so this costs one download ever.
+
+    A failure costs the name checks and nothing else, exactly as a missing
+    weigh-in costs the range checks. `check` is worth running with no network
+    at all, and the questions it can still answer are worth answering.
+    """
+    try:
+        return ensure(settings)
+    except GarminError as exc:
+        logger.warning(f"Exercise names were not checked: {exc}")
+        return None
 
 
 def _bodyweight(session: GarminSession, config: Config) -> float | None:
@@ -42,28 +61,38 @@ def _bodyweight(session: GarminSession, config: Config) -> float | None:
 def run_check(session: GarminSession, config: Config) -> ExitCode:
     findings: list[Finding] = []
     bodyweight = _bodyweight(session, config)
+    catalog = _catalog(config.garmin)
     for workout in config:
         workout_id = workout.garmin_workout_id
+        # First, and outside the branch below, because it is the only check
+        # that does not need Garmin to hold the workout. Reported first too: an
+        # exercise that does not exist explains whatever the checks below go on
+        # to say about it, which reads better before them than after.
+        found = check_catalog(workout, catalog) if catalog else []
+
         if workout_id is None:
             # Nothing in Garmin to disagree with yet. Said out loud, because
-            # silence here would read as "checked, and fine".
+            # silence here would read as "checked, and fine" - and the names
+            # above were checked, which is the point of doing it now.
             logger.info(f"{workout.key} (not in Garmin yet)")
-            logger.info("")
-            continue
+        else:
+            logger.info(f"{workout.key} ({workout_id})")
+            try:
+                payload = session.workout(workout_id)
+            except GarminError as exc:
+                # A workout that cannot be read is itself an error-level
+                # finding, so an unreachable workout still fails the command.
+                found.append(
+                    Finding(
+                        workout.key,
+                        f"could not fetch workout {workout_id}: {exc}",
+                        "error",
+                    )
+                )
+            else:
+                found += check_workout(workout, payload)
+                found += check_programming(workout, payload, bodyweight)
 
-        try:
-            payload = session.workout(workout_id)
-        except GarminError as exc:
-            detail = f"could not fetch workout {workout_id}: {exc}"
-            logger.error(f"{workout.key}: {detail}")
-            # A workout that cannot be read is itself an error-level finding,
-            # so an unreachable workout still fails the command.
-            findings.append(Finding(workout.key, detail, "error"))
-            continue
-
-        found = check_workout(workout, payload)
-        found += check_programming(workout, payload, bodyweight)
-        logger.info(f"{workout.key} ({workout_id})")
         if not found:
             logger.info("  ok")
         for finding in found:

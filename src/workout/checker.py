@@ -1,7 +1,12 @@
-"""Two questions `update` does not answer.
+"""Three questions `update` does not answer.
 
 `update --dry-run` already says what would change and then changes it; anything
 it can fix is not drift to report. What is left is what it cannot:
+
+**Existence.** A `garmin_name` or `garmin_category` that Garmin has never heard
+of. This is the prior question to the one below, and its consequences are
+worse: an exercise Garmin does not recognise cannot be built at all, so the
+step never reaches the watch no matter how often you sync.
 
 **Identity.** A `garmin_name` that no longer names anything, or names something
 only by luck. Since the config drives the workout, that mistake is expensive:
@@ -29,6 +34,7 @@ from .domain.effort import (
 )
 from .domain.matching import ExerciseIndex
 from .domain.models import ExerciseSpec, Workout
+from .garmin.catalog import ExerciseCatalog
 from .garmin.payloads import (
     ExerciseBlock,
     block_target,
@@ -49,6 +55,89 @@ class Finding:
     workout: str
     detail: str
     severity: str = "warning"
+
+
+def _unknown(spec: ExerciseSpec, catalog: ExerciseCatalog) -> str:
+    """No such exercise anywhere in the catalog, under any category."""
+    detail = f"{spec.name}: {spec.garmin_name} is not an exercise Garmin has"
+    if near := catalog.like(spec.garmin_name):
+        return f"{detail}. Did you mean {' or '.join(near)}?"
+    if spec.garmin_category and not catalog.has_category(spec.garmin_category):
+        # Both halves wrong usually means the pair was invented rather than
+        # mistyped, so saying only the name is wrong would send you looking
+        # for a spelling that was never the problem.
+        return (
+            f"{spec.name}: neither {spec.garmin_name} nor the category "
+            f"{spec.garmin_category} is one Garmin has"
+        )
+    return f"{detail}, so `update` could not build a step for it"
+
+
+def _corrected(spec: ExerciseSpec, found: list[tuple[str, str]]) -> str:
+    """The name is real, but not under the category the config pairs it with.
+
+    Three ways to be wrong, and the fix differs each time, so the wording does
+    too: the spelling, the category, or the whole pair.
+    """
+    spellings = {name for _, name in found}
+    categories = sorted({category for category, _ in found})
+
+    if spec.garmin_category in categories:
+        # Right shelf, wrong label. The only thing to change is the name.
+        exact = next(name for cat, name in found if cat == spec.garmin_category)
+        return f"{spec.name}: Garmin spells {spec.garmin_name} as {exact}"
+
+    where = " or ".join(categories)
+    if spellings == {spec.garmin_name}:
+        return (
+            f"{spec.name}: {spec.garmin_name} is filed under {where}, not "
+            f"{spec.garmin_category}. Garmin checks the pair, so set "
+            f"garmin_category: {categories[0]}"
+        )
+
+    category, exact = found[0]
+    return (
+        f"{spec.name}: Garmin has no {spec.garmin_category}/{spec.garmin_name}; "
+        f"what it has is {category}/{exact}"
+    )
+
+
+def check_catalog(workout: Workout, catalog: ExerciseCatalog) -> list[Finding]:
+    """Look for exercises Garmin has never heard of.
+
+    `check_workout` below asks whether the config names what a Garmin *workout*
+    holds. This asks the prior question - whether it names anything at all -
+    and so is the only check here worth running against a workout Garmin does
+    not have yet, which is exactly when it pays: the names are wrong before the
+    workout is built rather than after.
+
+    Everything found is an error. Garmin validates the category and the name
+    against each other, so none of it is a matter of taste and none of it is
+    something `update` could carry out anyway.
+    """
+    findings: list[Finding] = []
+
+    def note(detail: str) -> None:
+        findings.append(Finding(workout.key, detail, "error"))
+
+    for spec in workout.exercises:
+        category = spec.garmin_category
+        if category is not None and catalog.holds(category, spec.garmin_name):
+            continue
+
+        found = catalog.locate(spec.garmin_name)
+        if not found:
+            note(_unknown(spec, catalog))
+        elif category is not None:
+            note(_corrected(spec, found))
+        elif spec.garmin_name not in {name for _, name in found}:
+            # No category to contradict, so the spelling is the whole question.
+            # A missing category is a legitimate choice - matching falls back to
+            # it, and an exercise that never needs the fallback need not declare
+            # one - so its absence is not itself worth reporting.
+            note(f"{spec.name}: Garmin spells {spec.garmin_name} as {found[0][1]}")
+
+    return findings
 
 
 def check_workout(workout: Workout, payload: dict) -> list[Finding]:

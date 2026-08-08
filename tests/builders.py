@@ -12,6 +12,7 @@ import os
 
 from workout.domain.models import ExerciseSpec
 from workout.domain.progression import PerformedSet
+from workout.garmin.catalog import ExerciseCatalog
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: The shipped example. A user's own workouts.yaml is gitignored, so this
@@ -94,6 +95,44 @@ def spec(**kwargs) -> ExerciseSpec:
 def held(*seconds: float) -> list[PerformedSet]:
     """Timed sets as Garmin logs them: 1 rep, real figure in the duration."""
     return [PerformedSet(1, 0.0, s).as_time() for s in seconds]
+
+
+# --- Garmin's exercise catalog --------------------------------------------
+
+
+def catalog_payload(**categories: tuple[str, ...]) -> dict:
+    """The catalog as Garmin serves it, trimmed to the exercises named.
+
+    The muscle groups are carried because the real file carries them: nothing
+    reads them yet, and a parser that only tolerated the fields it uses would
+    be the wrong thing to have written.
+    """
+    return {
+        "categories": {
+            category: {
+                "exercises": {
+                    name: {"primaryMuscles": ["ABS"], "secondaryMuscles": []}
+                    for name in names
+                }
+            }
+            for category, names in categories.items()
+        }
+    }
+
+
+def catalog(**categories: tuple[str, ...]) -> ExerciseCatalog:
+    """A parsed catalog holding just what a test names."""
+    return ExerciseCatalog.parse(catalog_payload(**categories))
+
+
+#: What the specs in this file claim, so that a test about something else does
+#: not trip the name checks on its way past.
+CATALOG = catalog(
+    SQUAT=("BARBELL_BACK_SQUAT", "FRONT_SQUAT"),
+    PLANK=("PLANK",),
+    DEADLIFT=("BARBELL_DEADLIFT",),
+    ROW=("FACE_PULL",),
+)
 
 
 # --- workout definitions --------------------------------------------------

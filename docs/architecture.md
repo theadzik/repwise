@@ -18,7 +18,7 @@ src/workout/
         matching.py        which exercise a name or category refers to
     app/                   one module per command, plus the report they print
         update.py          advance targets from the sessions trained
-        fetch.py           download definitions as JSON
+        fetch.py           download definitions, or the exercise catalog
         listing.py         show the account's workouts
         importing.py       Garmin workouts -> config text
         checking.py        config against Garmin
@@ -38,6 +38,8 @@ src/workout/
         payloads.py        Garmin's JSON <-> our types, and building it from
                            nothing for a workout Garmin does not have yet.
                            Also reads the workout an activity was run against
+        catalog.py         every exercise Garmin knows, downloaded from a
+                           static file and cached in the token store
 tests/
     builders.py            the payloads and specs every test builds from
     conftest.py            fixtures
@@ -49,6 +51,8 @@ tests/
     test_update.py         session choice, and multi-workout runs
     test_importer.py       import and YAML rendering
     test_checker.py        drift detection
+    test_catalog.py        what the catalog says, and how it is cached
+    test_checking.py       what `check` gathers before it can check
     test_cli.py            argument parsing and help
     test_main.py           dispatch, exit codes, and which stream
     test_log.py            verbosity, and stdout vs stderr
@@ -82,7 +86,7 @@ flowchart TD
     end
 
     subgraph adapter["garmin/ - the only Garmin schema knowledge"]
-        garmin["client.py<br/>payloads.py"]
+        garmin["client.py<br/>payloads.py<br/>catalog.py"]
     end
 
     subgraph domain["domain/ - no I/O, no Garmin types"]
@@ -117,6 +121,12 @@ Four boundaries carry the weight:
   halves: reading and editing what Garmin holds, and building the same shapes
   from nothing for a workout it does not. Both only ever write what they are
   told to; whether a change is worth making is the planner's judgement.
+- **`garmin/catalog.py` is the exception, and not an API at all.** Garmin's
+  list of every exercise it knows is a static file, so it is fetched with the
+  standard library rather than through `GarminSession` - which also keeps
+  `workout fetch exercises` from demanding a password to download something
+  public. Being a cache, a copy that cannot be read is treated as one that is
+  not there, so a truncated file repairs itself on the next run.
 - **Only `planner.py` mutates a workout payload, and it performs no I/O.** A
   caller can build a plan and throw it away, which is exactly what a dry run
   does - so a dry run cannot accidentally write.

@@ -44,7 +44,7 @@ When none of them exists, the error lists the paths it tried.
 ```yaml
 settings:
   garmin:
-    token_store: ~/.garminconnect   # where OAuth tokens are cached
+    token_store: ~/.garminconnect   # OAuth tokens, and the exercise catalog
     activity_search_limit: 50       # recent activities scanned for a match
     dump_dir: .                     # where --dump and `fetch` write JSON
 
@@ -65,7 +65,7 @@ settings:
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `garmin.token_store` | `~/.garminconnect` | Where OAuth tokens are cached. Delete the directory to force a fresh login |
+| `garmin.token_store` | `~/.garminconnect` | Where OAuth tokens are cached, and where [`fetch exercises`](commands.md#fetch-exercises) caches the exercise catalog. Delete the directory to force a fresh login |
 | `garmin.activity_search_limit` | `50` | How many recent activities to scan for a name match, and for the sessions behind it |
 | `garmin.dump_dir` | `.` | Where `--dump` and `fetch` write JSON |
 | `weight_steps` | - | kg added per load type when a rep range is topped out |
@@ -410,6 +410,17 @@ workout update --dump   # writes dump-workout-*.json and dump-sets-*.json
 Each executable step in the workout dump carries `exerciseName` and `category`;
 copy those into `workouts.yaml`. [`workout check`](commands.md#check) finds any
 that do not match, and is worth running after editing these by hand.
+
+For an exercise no workout of yours holds yet, the authority is [Garmin's
+exercise catalog](garmin-api.md#the-exercise-catalog), which `check` downloads
+for itself and which `workout fetch exercises` refreshes. Garmin validates
+`garmin_name` and `garmin_category` against each other, so both have to be
+right - and `check` names the pair it should be:
+
+```text
+   !! Barbell Deadlift: BARBELL_DEADLIFT is filed under DEADLIFT, not SQUAT.
+      Garmin checks the pair, so set garmin_category: DEADLIFT
+```
 
 **Get `garmin_name` wrong and the exercise is treated as two.** The config
 names one Garmin does not have, so it is built; the one Garmin has goes

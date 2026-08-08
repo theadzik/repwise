@@ -51,6 +51,13 @@ def test_fetch_takes_any_number_of_ids():
     assert build_parser().parse_args(["fetch", "1", "2"]).workout_ids == ["1", "2"]
 
 
+def test_fetch_accepts_the_catalog_keyword_as_an_id():
+    """The parser stays declarative; which download it means is the handler's."""
+    assert build_parser().parse_args(["fetch", "exercises"]).workout_ids == [
+        "exercises"
+    ]
+
+
 def test_a_command_is_required(capsys):
     parser = build_parser()
     with pytest.raises(SystemExit):
