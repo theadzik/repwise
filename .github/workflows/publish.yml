@@ -161,11 +161,11 @@ jobs:
     name: Publish ${{ needs.tag.outputs.version }} to PyPI
     needs: [tag, build]
     runs-on: ubuntu-latest
-    # The environment is half of the credential. PyPI is configured to accept
-    # this project's uploads only from a job running in an environment named
-    # `pypi`, so that environment's own protection rules - required reviewers,
-    # a branch and tag restriction - gate the upload rather than merely
-    # documenting it.
+    # The environment is half of the credential. PyPI checks the name below as
+    # a claim of its own, so it has to match the trusted publisher exactly -
+    # and because uploads are accepted only from a job running here, this
+    # environment's own protection rules, required reviewers or a branch and
+    # tag restriction, gate the upload rather than merely documenting it.
     environment:
       name: publish
       url: https://pypi.org/p/repwise

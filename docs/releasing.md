@@ -220,14 +220,17 @@ The publisher is configured once, at [PyPI → Publishing][pypi-publishing]:
 | Owner | `theadzik` |
 | Repository name | `repwise` |
 | Workflow name | `publish.yml` |
-| Environment name | `pypi` |
+| Environment name | `publish` |
 
 [pypi-publishing]: https://pypi.org/manage/account/publishing/
 
-The environment is the other half. `pypi` has to exist under Settings →
-Environments, because PyPI is configured to accept uploads only from a job
-running in it - so its protection rules, required reviewers or a branch and tag
-restriction, are a real gate on the upload rather than a note about one.
+The environment is the other half, and PyPI checks it as a claim of its own.
+`publish` has to exist under Settings → Environments, and the name has to be
+the one the `publish` job names - because PyPI is configured to accept uploads
+only from a job running in it, its protection rules, required reviewers or a
+branch and tag restriction, are a real gate on the upload rather than a note
+about one. Renaming it in one place and not the other fails the upload after
+the tag has already been cut.
 
 Two jobs rather than one, deliberately. `build` runs the project's own build
 backend and downloads whatever it asks for; `publish` holds the right to mint
