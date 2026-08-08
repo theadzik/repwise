@@ -1,3 +1,9 @@
+## 0.8.0 (2026-08-07)
+
+### Feat
+
+- check too narrow or wide rep range (#23) ([553cb11](https://github.com/theadzik/workout/commit/553cb11da10dfb65b41537038e2f5a021e7687cc))
+
 ## 0.7.0 (2026-08-07)
 
 ### Feat
