@@ -96,10 +96,6 @@ the next `cz bump`:
 `refactor` and `perf` counting as a patch is worth knowing: a change with no
 user-visible effect still produces a release.
 
-While the version is below 1.0.0, `major_version_zero = true` in
-`pyproject.toml` holds a breaking change to a **minor** bump, so `!` gives
-0.1.0 → 0.2.0 rather than 1.0.0. Delete that line when releasing 1.0.0.
-
 ## Cutting a release
 
 One click. Run the **Release** workflow from the Actions tab; everything else

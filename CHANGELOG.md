@@ -1,3 +1,9 @@
+## 1.0.0 (2026-08-08)
+
+### Feat
+
+- repwise got its name and v1 release
+
 ## 0.9.0 (2026-08-08)
 
 ### Feat
