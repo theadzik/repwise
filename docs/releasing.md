@@ -96,6 +96,12 @@ the next `cz bump`:
 `refactor` and `perf` counting as a patch is worth knowing: a change with no
 user-visible effect still produces a release.
 
+Since 1.0.0 a breaking change costs a major version, and that is the whole
+point of having released 1.0.0. Before it, `major_version_zero = true` in
+`pyproject.toml` held `!` down to a minor bump; that line was removed with the
+1.0.0 bump and should not come back. Write `!` when `workouts.yaml` or the CLI
+changes shape under someone, and not otherwise.
+
 ## Cutting a release
 
 One click. Run the **Release** workflow from the Actions tab; everything else
@@ -181,8 +187,8 @@ next dispatch, so use a branch of your own:
 ```bash
 git switch -c release-minor
 .venv/bin/cz bump --version-files-only --changelog --increment MINOR
-.venv/bin/cz bump --version-files-only --changelog 1.0.0   # or state it outright
-git commit -am "bump: version 0.4.0 → 0.5.0"
+.venv/bin/cz bump --version-files-only --changelog 2.0.0   # or state it outright
+git commit -am "bump: version 1.4.0 → 1.5.0"
 ```
 
 `--version-files-only` is the flag that makes this safe to do locally: it
@@ -320,7 +326,7 @@ request is still where a human decides that a release happens.
   project that does not exist yet is configured as a *pending* publisher, which
   becomes a real one the moment the first upload creates the project. Without
   it the `publish` job fails the OIDC exchange, having already tagged - so
-  configure it before dispatching Release for 1.0.0's first ancestor.
+  configure it before the first dispatch, not after.
 - **Dependency updates do not bump the version.** `build(deps): ...` is
   intentionally inert, so a week of Dependabot merges does not produce
   releases. When a dependency bump does matter - a `garminconnect` release that
