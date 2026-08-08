@@ -37,7 +37,7 @@ CACHE_NAME = "exercises.json"
 #: Garmin answers 403 to urllib's default `Python-urllib/x.y`, so the client
 #: names itself. This is not pretending to be a browser - the honest string is
 #: served happily, and the default is refused for being the default.
-USER_AGENT = f"workout/{__version__} (+https://github.com/theadzik/workout)"
+USER_AGENT = f"repwise/{__version__} (+https://github.com/theadzik/repwise)"
 
 TIMEOUT = 30
 
@@ -113,7 +113,7 @@ def download() -> dict:
     """Fetch the catalog from Garmin.
 
     Deliberately not a `GarminSession` method: the file is public, and going
-    through the session would make `workout fetch exercises` prompt for a
+    through the session would make `repwise fetch exercises` prompt for a
     password on a first run to download something that needs no account.
     """
     request = urllib.request.Request(CATALOG_URL, headers={"User-Agent": USER_AGENT})
@@ -169,7 +169,7 @@ def ensure(settings: GarminSettings) -> ExerciseCatalog:
     """The catalog, downloading and caching it if this is the first time.
 
     So that `check` works on a fresh checkout without a fetch first. Refreshing
-    a stale copy stays explicit - `workout fetch exercises` - because there is
+    a stale copy stays explicit - `repwise fetch exercises` - because there is
     no way to tell a stale catalog from a current one without downloading it,
     and doing that every run is the cost this cache exists to avoid.
     """

@@ -26,7 +26,7 @@ __all__ = [
 CONFIG_NAME = "workouts.yaml"
 EXAMPLE_NAME = "workouts.example.yaml"
 
-#: Three directories above this module: src/workout/config.py -> the
+#: Three directories above this module: src/repwise/config.py -> the
 #: repository root, when this is a checkout. Installed into site-packages the
 #: same arithmetic points at a lib directory that holds nothing of ours, which
 #: is what `_checkout_config` checks before believing it.
@@ -71,19 +71,19 @@ def _checkout_config() -> str | None:
 def search_path() -> list[str]:
     """Where to look for workouts.yaml, most specific first.
 
-    In order: what `$WORKOUT_CONFIG` names, the working directory, the XDG
+    In order: what `$REPWISE_CONFIG` names, the working directory, the XDG
     config directory, and finally the checkout this module lives in - which is
-    what makes `python -m workout` work from anywhere inside a clone. The
+    what makes `python -m repwise` work from anywhere inside a clone. The
     checkout comes last so that it never shadows a config of the user's own,
     and is left out entirely when this is not a checkout, so that an installed
     copy does not offer a path inside site-packages as somewhere to look.
     """
     candidates = []
-    named = os.environ.get("WORKOUT_CONFIG")
+    named = os.environ.get("REPWISE_CONFIG")
     if named:
         candidates.append(os.path.expanduser(named))
     candidates.append(os.path.join(os.getcwd(), CONFIG_NAME))
-    candidates.append(os.path.join(_xdg_config_home(), "workout", CONFIG_NAME))
+    candidates.append(os.path.join(_xdg_config_home(), "repwise", CONFIG_NAME))
     checkout = _checkout_config()
     if checkout:
         candidates.append(checkout)
@@ -114,7 +114,7 @@ def resolve_config(explicit: str | None = None) -> str:
         f"Copy the example and edit it:\n    cp {example} {searched[0]}"
         if example
         else "Create one, or build a starting point from your Garmin account:\n"
-        f"    workout import -o {searched[0]}"
+        f"    repwise import -o {searched[0]}"
     )
     raise ConfigError(f"No {CONFIG_NAME} found. Looked in:\n{where}\n{hint}")
 

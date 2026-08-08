@@ -2,8 +2,8 @@
 
 from builders import catalog, payload, rep_step, repeat, rest_step, spec
 
-from workout.checker import check_catalog, check_programming, check_workout
-from workout.domain.models import Workout
+from repwise.checker import check_catalog, check_programming, check_workout
+from repwise.domain.models import Workout
 
 SQUAT_GROUP = repeat(
     rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0), sets=4, rest=120.0

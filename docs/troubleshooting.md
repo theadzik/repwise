@@ -22,8 +22,8 @@ Credentials are never stored by this tool - only the tokens Garmin issues.
 Reusing a cached session is routine, so it is only reported under `--verbose`:
 
 ```text
-$ workout list -v
-DEBUG   workout.garmin.client: Resumed cached session.
+$ repwise list -v
+DEBUG   repwise.garmin.client: Resumed cached session.
 ```
 
 ## Common symptoms
@@ -56,7 +56,7 @@ Check what Garmin actually called it, then either add that prefix to the config
 or pass the id directly:
 
 ```bash
-workout update --activity 1234567890
+repwise update --activity 1234567890
 ```
 
 Prefixes are matched case-insensitively against the start of the name, so
@@ -73,7 +73,7 @@ perform it in that session. Harmless if you skipped it.
 
 It can also mean the identifiers disagree - the exercise *was* performed, under
 a name neither `garmin_name` nor `garmin_category` matches. Run
-[`workout check`](commands.md#check), which is built for exactly this, and see
+[`repwise check`](commands.md#check), which is built for exactly this, and see
 [finding your exercise
 identifiers](configuration.md#finding-your-exercise-identifiers).
 
@@ -103,7 +103,7 @@ have been the same exercise - and warns when the two look like one movement:
 
 Two things stop it getting that far. Filling in `garmin_category` bridges a
 mistyped name whenever exactly one exercise in the workout claims that
-category, and [`workout check`](commands.md#check) reports the names it is
+category, and [`repwise check`](commands.md#check) reports the names it is
 rescuing, before the day a second exercise claims the same category and it
 stops being able to.
 

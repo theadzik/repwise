@@ -6,10 +6,10 @@ from typing import Any
 import pytest
 from builders import CATALOG, payload, rep_step, repeat, spec
 
-from workout.app import checking
-from workout.app.checking import _bodyweight, _catalog, run_check
-from workout.domain.models import Config, GarminSettings, Workout
-from workout.errors import ExitCode, GarminError
+from repwise.app import checking
+from repwise.app.checking import _bodyweight, _catalog, run_check
+from repwise.domain.models import Config, GarminSettings, Workout
+from repwise.errors import ExitCode, GarminError
 
 CALF = spec(bodyweight_factor=1.0)
 BENCH = spec(name="Barbell Bench Press", garmin_name="BARBELL_BENCH_PRESS")

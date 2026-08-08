@@ -11,9 +11,9 @@ from pathlib import Path
 import pytest
 from builders import catalog, catalog_payload
 
-from workout.domain.models import GarminSettings
-from workout.errors import GarminError
-from workout.garmin import catalog as module
+from repwise.domain.models import GarminSettings
+from repwise.errors import GarminError
+from repwise.garmin import catalog as module
 
 
 @pytest.fixture

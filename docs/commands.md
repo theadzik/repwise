@@ -4,8 +4,8 @@ Full reference. Every command accepts `--config` and `--verbose`, either
 before or after the command name:
 
 ```bash
-workout --config /path/to/other.yaml update
-workout update --verbose
+repwise --config /path/to/other.yaml update
+repwise update --verbose
 ```
 
 | Option | Effect |
@@ -52,11 +52,11 @@ that workout to come round again. A run that matches no activity at all still
 does the first column, and says so.
 
 ```bash
-workout update                    # dry run, shows changes
-workout update --apply            # write to Garmin
-workout update --apply --push     # and send them to your watch
-workout update --dump             # save raw JSON, change nothing
-workout update --activity 1234    # use a specific activity
+repwise update                    # dry run, shows changes
+repwise update --apply            # write to Garmin
+repwise update --apply --push     # and send them to your watch
+repwise update --dump             # save raw JSON, change nothing
+repwise update --activity 1234    # use a specific activity
 ```
 
 | Flag | Effect |
@@ -222,7 +222,7 @@ It is a warning rather than a refusal, because deliberately swapping a movement
 for a variant of it looks identical from here. Matching a name and matching a
 category both have to fail before it can happen at all, so filling in
 `garmin_category` is what stops most typos ever getting this far -
-[`workout check`](#check) reports the ones it rescues.
+[`repwise check`](#check) reports the ones it rescues.
 
 Only genuine moves are reported. Adding an exercise at the top shifts the
 position of everything under it without any of that being a move, so those
@@ -241,7 +241,7 @@ One line for the workout, however many gaps it has, because the config says it
 once. Leave the key out and Garmin's own steps are left alone, whether they
 wait for the button or were given a time in Connect.
 
-`workout import` fills the key in when every gap in a workout agrees on one
+`repwise import` fills the key in when every gap in a workout agrees on one
 fixed time, and leaves it out otherwise - one number cannot describe gaps that
 differ, and guessing would change the others.
 
@@ -336,7 +336,7 @@ button queues.
 `--push` does that for every workout the run wrote:
 
 ```bash
-workout update --apply --push
+repwise update --apply --push
 ```
 
 ```text
@@ -367,8 +367,8 @@ that would take.
 ## list
 
 ```bash
-workout list          # your strength workouts and their ids
-workout list --all    # every workout, whatever the sport
+repwise list          # your strength workouts and their ids
+repwise list --all    # every workout, whatever the sport
 ```
 
 Use it to find the `garmin_workout_id` values for your config, or to confirm
@@ -379,10 +379,10 @@ what Garmin actually has.
 Turns existing Garmin workouts into a config file.
 
 ```bash
-workout import                    # print to stdout
-workout import -o workouts.yaml   # write to a file
-workout import --name "Workout A" # only workouts matching a substring
-workout import --id 111111111     # only this workout
+repwise import                    # print to stdout
+repwise import -o workouts.yaml   # write to a file
+repwise import --name "Workout A" # only workouts matching a substring
+repwise import --id 111111111     # only this workout
 ```
 
 | Flag | Effect |
@@ -420,7 +420,7 @@ Garmin's API has no server-side name search, so `--name` filters locally.
 ## check
 
 ```bash
-workout check
+repwise check
 ```
 
 Answers three questions `update` does not. **Do the exercises the config names
@@ -450,7 +450,7 @@ Workout B (222222222)
 
 The catalog is downloaded the first time a `check` needs it and cached in
 `settings.garmin.token_store`, so this costs one request ever. Refresh it with
-[`workout fetch exercises`](#fetch) when Garmin adds exercises. If it cannot be
+[`repwise fetch exercises`](#fetch) when Garmin adds exercises. If it cannot be
 downloaded, the names go unchecked and the rest of the checks still run - the
 command is worth running with no network at all.
 
@@ -507,8 +507,8 @@ Downloads workout definitions as JSON. Mostly a connectivity check and a way to
 inspect Garmin's schema by hand.
 
 ```bash
-workout fetch                   # every workout in workouts.yaml
-workout fetch 111111111         # a specific workout
+repwise fetch                   # every workout in workouts.yaml
+repwise fetch 111111111         # a specific workout
 ```
 
 Files land in `settings.garmin.dump_dir`.
@@ -520,7 +520,7 @@ entirely: [Garmin's exercise catalog](garmin-api.md#the-exercise-catalog),
 every exercise it knows and the category each is filed under.
 
 ```bash
-workout fetch exercises
+repwise fetch exercises
 ```
 
 ```text

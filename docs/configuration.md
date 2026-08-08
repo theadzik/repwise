@@ -12,7 +12,7 @@ drives](commands.md#what-the-config-drives).
 
 Start from [workouts.example.yaml](../workouts.example.yaml), which is a
 complete working A/B split annotated field by field, or generate one with
-[`workout import`](commands.md#import).
+[`repwise import`](commands.md#import).
 
 - [Where the file lives](#where-the-file-lives)
 - [Settings](#settings)
@@ -30,9 +30,9 @@ used:
 
 | Order | Location | For |
 | --- | --- | --- |
-| 1 | `$WORKOUT_CONFIG` | Keeping it somewhere of your own, or switching routines |
+| 1 | `$REPWISE_CONFIG` | Keeping it somewhere of your own, or switching routines |
 | 2 | `./workouts.yaml` | Running in the directory that holds your routine |
-| 3 | `$XDG_CONFIG_HOME/workout/workouts.yaml`, i.e. `~/.config/workout/workouts.yaml` | An installed copy, run from anywhere |
+| 3 | `$XDG_CONFIG_HOME/repwise/workouts.yaml`, i.e. `~/.config/repwise/workouts.yaml` | An installed copy, run from anywhere |
 | 4 | The checkout this package is running from | Working on the tool itself |
 
 The checkout is last so that a clone never shadows a config of your own, and
@@ -404,16 +404,16 @@ Every problem in the file is reported at once, rather than one per run:
 guess, dump a real session and read them off:
 
 ```bash
-workout update --dump   # writes dump-workout-*.json and dump-sets-*.json
+repwise update --dump   # writes dump-workout-*.json and dump-sets-*.json
 ```
 
 Each executable step in the workout dump carries `exerciseName` and `category`;
-copy those into `workouts.yaml`. [`workout check`](commands.md#check) finds any
+copy those into `workouts.yaml`. [`repwise check`](commands.md#check) finds any
 that do not match, and is worth running after editing these by hand.
 
 For an exercise no workout of yours holds yet, the authority is [Garmin's
 exercise catalog](garmin-api.md#the-exercise-catalog), which `check` downloads
-for itself and which `workout fetch exercises` refreshes. Garmin validates
+for itself and which `repwise fetch exercises` refreshes. Garmin validates
 `garmin_name` and `garmin_category` against each other, so both have to be
 right - and `check` names the pair it should be:
 

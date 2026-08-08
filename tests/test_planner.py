@@ -15,16 +15,16 @@ from builders import (
     workout,
 )
 
-from workout.domain.models import Config, Workout
-from workout.domain.progression import Target
-from workout.garmin.payloads import (
+from repwise.domain.models import Config, Workout
+from repwise.domain.progression import Target
+from repwise.garmin.payloads import (
     is_timed_rest,
     iter_exercise_blocks,
     performed_sets,
     step_note,
     step_target,
 )
-from workout.planner import (
+from repwise.planner import (
     ActivityNotFound,
     decided_targets,
     find_workout,

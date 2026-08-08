@@ -4,10 +4,10 @@ Notes on the endpoints and payloads this tool depends on, verified against real
 responses. Garmin does not document any of this, so treat it as observed
 behaviour rather than a contract.
 
-Everything here is implemented in `src/workout/garmin/payloads.py`, which is the
+Everything here is implemented in `src/repwise/garmin/payloads.py`, which is the
 only module that knows Garmin's schema - except the exercise catalog below,
 which is a static file rather than an API and lives in
-`src/workout/garmin/catalog.py`. If Garmin changes something, those are where
+`src/repwise/garmin/catalog.py`. If Garmin changes something, those are where
 the fix goes.
 
 - [Weight units](#weight-units)
@@ -359,7 +359,7 @@ GET /workout-service/workouts?start=0&limit=200&sportTypeKey=strength_training
 
 `sportTypeKey` filters server-side and `orderBy` sorts, but **there is no name
 search**: `searchTerm`, `name`, `q` and friends are silently ignored. Name
-filtering has to happen locally, which is what `workout list --name` does.
+filtering has to happen locally, which is what `repwise list --name` does.
 
 Garmin caps a response at the requested size rather than reporting a total, so a
 full page means there may be more and pagination has to keep asking.

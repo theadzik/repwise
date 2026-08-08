@@ -11,10 +11,10 @@ import logging
 import pytest
 from builders import FIXTURE
 
-from workout import cli
-from workout.cli import HANDLERS, build_parser, main
-from workout.errors import ExitCode, GarminError, RateLimited
-from workout.log import PACKAGE
+from repwise import cli
+from repwise.cli import HANDLERS, build_parser, main
+from repwise.errors import ExitCode, GarminError, RateLimited
+from repwise.log import PACKAGE
 
 
 @pytest.fixture(autouse=True)

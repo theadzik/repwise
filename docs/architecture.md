@@ -10,7 +10,7 @@
 ```text
 workouts.yaml              all configuration: routine, Garmin ids, settings
 workouts.example.yaml      the shipped example, validated by the tests
-src/workout/
+src/repwise/
     domain/
         models.py          domain objects; a workout knows which activity
                            names are its own
@@ -124,7 +124,7 @@ Four boundaries carry the weight:
 - **`garmin/catalog.py` is the exception, and not an API at all.** Garmin's
   list of every exercise it knows is a static file, so it is fetched with the
   standard library rather than through `GarminSession` - which also keeps
-  `workout fetch exercises` from demanding a password to download something
+  `repwise fetch exercises` from demanding a password to download something
   public. Being a cache, a copy that cannot be read is treated as one that is
   not there, so a truncated file repairs itself on the next run.
 - **Only `planner.py` mutates a workout payload, and it performs no I/O.** A

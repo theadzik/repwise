@@ -13,11 +13,11 @@ From nothing to your first automatic target update.
 ## 1. Build the workouts in Garmin
 
 Build your routine in Garmin Connect first, as strength workouts with the
-exercises, sets and reps you want. Starting there is the easier path: `workout
+exercises, sets and reps you want. Starting there is the easier path: `repwise
 import` then writes your config for you, exercise identifiers and all.
 
 You can skip this and describe the workouts in the config instead, leaving
-`garmin_workout_id` out so that `workout update --apply` builds them in Garmin.
+`garmin_workout_id` out so that `repwise update --apply` builds them in Garmin.
 That means naming every exercise by its Garmin identifier by hand, which is
 fiddlier the first time round. See [creating a
 workout](commands.md#creating-a-workout).
@@ -29,14 +29,14 @@ activity started from a workout inherits that workout's name.
 ## 2. Install
 
 ```bash
-git clone https://github.com/theadzik/workout.git
-cd workout
+git clone https://github.com/theadzik/repwise.git
+cd repwise
 python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
 
-That gives you a `workout` command inside the virtualenv. Everything also works
-as `python -m workout` if you would rather not install.
+That gives you a `repwise` command inside the virtualenv. Everything also works
+as `python -m repwise` if you would rather not install.
 
 Python 3.14 or newer is required. `garminconnect` only asks for `>=3.12`; the
 higher floor is this project's own, so that the source can use deferred
@@ -47,8 +47,8 @@ annotation evaluation and argparse's colour and did-you-mean output.
 The quickest route is to let the tool read what you already built:
 
 ```bash
-workout list                     # your strength workouts and their ids
-workout import -o workouts.yaml  # turn them into a config
+repwise list                     # your strength workouts and their ids
+repwise import -o workouts.yaml  # turn them into a config
 ```
 
 `import` fills in everything Garmin knows and marks the rest `TODO`. Three
@@ -88,7 +88,7 @@ login endpoint.
 Train, and let the watch sync. Then:
 
 ```bash
-workout update
+repwise update
 ```
 
 This reads the most recent matching activity for each workout in your config,
@@ -120,7 +120,7 @@ see [configuration](configuration.md#finding-your-exercise-identifiers).
 Once the plan looks right:
 
 ```bash
-workout update --apply --push
+repwise update --apply --push
 ```
 
 `--apply` writes the new targets to Garmin Connect. `--push` then queues them
@@ -134,7 +134,7 @@ Queued 1 send(s) to your last-used device.
 Sync your watch to pick up the new targets.
 ```
 
-That is the whole loop: train, `workout update --apply --push`, sync, train
+That is the whole loop: train, `repwise update --apply --push`, sync, train
 again.
 
 ## Where to go next
