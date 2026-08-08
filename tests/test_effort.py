@@ -5,7 +5,7 @@ from builders import spec
 from workout.domain.effort import (
     TOLERATED_SHIFT,
     effective_load,
-    fitting_rep_high,
+    fitting_rep_highs,
     reset_drop,
     worked_reps,
 )
@@ -94,26 +94,69 @@ def test_an_unloaded_exercise_is_not_divided_by_zero():
 
 
 def test_the_suggested_range_is_one_the_step_can_pay_for():
-    widest = fitting_rep_high(CALF, 20.0, bodyweight=80.0)
-    assert widest is not None
-    assert CALF.rep_low < widest < CALF.rep_high
+    fitted = fitting_rep_highs(CALF, 20.0, bodyweight=80.0)
+    assert fitted is not None
+    assert CALF.rep_low < fitted.balanced < CALF.rep_high
 
-    narrowed = spec(**{**CALF.__dict__, "rep_high": widest})
+    narrowed = spec(**{**CALF.__dict__, "rep_high": fitted.balanced})
     drop = reset_drop(narrowed, 20.0, bodyweight=80.0)
     assert drop is not None and drop <= TOLERATED_SHIFT
+
+
+def test_the_balanced_top_is_the_one_nearest_to_breaking_even():
+    """What makes it the suggestion rather than merely a member of the window:
+    every other top inside the tolerance costs more than it does."""
+    fitted = fitting_rep_highs(CALF, 20.0, bodyweight=80.0)
+    assert fitted is not None
+
+    def cost(rep_high):
+        drop = reset_drop(spec(**{**CALF.__dict__, "rep_high": rep_high}), 20.0, 80.0)
+        assert drop is not None
+        return abs(drop)
+
+    others = range(fitted.narrowest, fitted.widest + 1)
+    assert cost(fitted.balanced) == min(cost(each) for each in others)
+
+
+def test_the_window_holds_every_top_that_fits_and_nothing_else():
+    """Reported as two ends, which only describes the window because
+    `reset_drop` is monotonic in `rep_high` and so the fits are contiguous."""
+    fitted = fitting_rep_highs(CALF, 20.0, bodyweight=80.0)
+    assert fitted is not None
+    assert fitted.narrowest <= fitted.balanced <= fitted.widest
+
+    def fits(rep_high):
+        drop = reset_drop(spec(**{**CALF.__dict__, "rep_high": rep_high}), 20.0, 80.0)
+        return drop is not None and abs(drop) <= TOLERATED_SHIFT
+
+    assert all(fits(each) for each in range(fitted.narrowest, fitted.widest + 1))
+    assert not fits(fitted.widest + 1)
+    # Nothing below the window fits either, except where the window already
+    # starts at the first rung above `rep_low` and there is no room below it.
+    assert fitted.narrowest == CALF.rep_low + CALF.rep_step or not fits(
+        fitted.narrowest - CALF.rep_step
+    )
+
+
+def test_the_bottom_of_the_range_is_never_part_of_the_answer():
+    """`rep_low` says how heavy the exercise is allowed to get, which is a
+    decision rather than an arithmetic result. Only the top is offered."""
+    fitted = fitting_rep_highs(CALF, 20.0, bodyweight=80.0)
+    assert fitted is not None
+    assert min(fitted.narrowest, fitted.balanced) > CALF.rep_low
 
 
 def test_even_a_trivial_step_can_afford_some_range():
     """Narrowing helps whatever the step is, because the reset is the cost."""
     trivial = spec(**{**CALF.__dict__, "weight_step": 0.1})
-    widest = fitting_rep_high(trivial, 20.0, bodyweight=80.0)
-    assert widest is not None and widest < CALF.rep_high
+    fitted = fitting_rep_highs(trivial, 20.0, bodyweight=80.0)
+    assert fitted is not None and fitted.balanced < CALF.rep_high
 
 
 def test_no_range_is_suggested_when_nothing_meets_the_tolerance():
     """Reachable only by demanding a reset that costs literally nothing."""
     trivial = spec(**{**CALF.__dict__, "weight_step": 0.1})
-    assert fitting_rep_high(trivial, 20.0, bodyweight=80.0, tolerance=0.0) is None
+    assert fitting_rep_highs(trivial, 20.0, bodyweight=80.0, tolerance=0.0) is None
 
 
 # --- exercises the watch counts per side -----------------------------------
@@ -144,10 +187,11 @@ def test_counting_both_legs_would_invent_a_finding():
 def test_a_suggested_range_lands_on_a_rung_the_ladder_reaches():
     """Narrowing 16-24 to 21 would straddle the top and never earn the jump."""
     wide = spec(**{**LUNGE.__dict__, "rep_low": 10, "rep_high": 30})
-    widest = fitting_rep_high(wide, 10.0, bodyweight=81.0)
+    fitted = fitting_rep_highs(wide, 10.0, bodyweight=81.0)
 
-    assert widest is not None
-    assert (widest - wide.rep_low) % wide.rep_step == 0
+    assert fitted is not None
+    for top in (fitted.narrowest, fitted.balanced, fitted.widest):
+        assert (top - wide.rep_low) % wide.rep_step == 0
 
 
 # --- ranges too narrow for their step --------------------------------------
@@ -180,22 +224,22 @@ def test_the_same_exercise_is_fine_once_the_dumbbells_are_heavier():
 
 
 def test_a_narrow_range_is_fixed_by_widening_it():
-    fitted = fitting_rep_high(RAISE, 3.0)
+    fitted = fitting_rep_highs(RAISE, 3.0)
     assert fitted is not None
-    assert fitted > RAISE.rep_high  # widened, not narrowed
+    assert fitted.balanced > RAISE.rep_high  # widened, not narrowed
 
-    widened = spec(**{**RAISE.__dict__, "rep_high": fitted})
+    widened = spec(**{**RAISE.__dict__, "rep_high": fitted.balanced})
     shift = reset_drop(widened, 3.0)
     assert shift is not None and abs(shift) <= TOLERATED_SHIFT
 
 
 def test_a_wide_range_is_still_fixed_by_narrowing_it():
     """Both directions from one search, decided by the sign alone."""
-    fitted = fitting_rep_high(CALF, 20.0, bodyweight=80.0)
+    fitted = fitting_rep_highs(CALF, 20.0, bodyweight=80.0)
     assert fitted is not None
-    assert fitted < CALF.rep_high
+    assert fitted.balanced < CALF.rep_high
 
 
 def test_micro_loading_fixes_what_no_range_can():
     """A 1 kg step on 1 kg is a 100% jump; no rep range absorbs that."""
-    assert fitting_rep_high(RAISE, 1.0) is None
+    assert fitting_rep_highs(RAISE, 1.0) is None

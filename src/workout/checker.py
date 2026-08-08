@@ -24,11 +24,11 @@ from dataclasses import dataclass
 from .domain.effort import (
     TOLERATED_SHIFT,
     effective_load,
-    fitting_rep_high,
+    fitting_rep_highs,
     reset_drop,
 )
 from .domain.matching import ExerciseIndex
-from .domain.models import Workout
+from .domain.models import ExerciseSpec, Workout
 from .garmin.payloads import (
     ExerciseBlock,
     block_target,
@@ -97,6 +97,34 @@ def check_workout(workout: Workout, payload: dict) -> list[Finding]:
     return findings
 
 
+def _suggestion(spec: ExerciseSpec, weight: float, bodyweight: float) -> str:
+    """What to write instead, and how much room there is to argue with it.
+
+    The whole window, not just the one number, because the tolerance is a band
+    and a single figure hides how wide it is: knowing that 12-16 through 12-25
+    all work is what lets you round to something you would actually count to,
+    or decide the exercise is close enough to leave alone. `balanced` leads
+    because a top that breaks even today drifts the least as you get stronger.
+
+    Only the top is ever offered. `rep_low` is a decision about how heavy the
+    exercise is allowed to get, and no arithmetic here is entitled to it - see
+    `fitting_rep_highs`.
+    """
+    fitted = fitting_rep_highs(spec, weight, bodyweight)
+    if fitted is None:
+        # No range absorbs this step, so naming one would be arithmetic
+        # dressed up as advice.
+        return f"change weight_step from {spec.weight_step:g} kg"
+
+    fix = f"make it {spec.rep_low}-{fitted.balanced}"
+    if fitted.narrowest == fitted.widest:
+        return fix
+    return (
+        f"{fix}; anything from {spec.rep_low}-{fitted.narrowest} to "
+        f"{spec.rep_low}-{fitted.widest} fits"
+    )
+
+
 def check_programming(
     workout: Workout, payload: dict, bodyweight: float | None = None
 ) -> list[Finding]:
@@ -147,7 +175,6 @@ def check_programming(
             continue
 
         load = effective_load(spec, target.weight, carried)
-        fitted = fitting_rep_high(spec, target.weight, carried)
         # The sign is the whole diagnosis, so it decides every word that
         # follows: which way the range is wrong, which way to move it, and
         # what it costs you to leave it alone.
@@ -157,11 +184,7 @@ def check_programming(
         else:
             gives, costs = "gives back less", f"{-shift:.0%} jump in effort"
             settle = "micro-load"
-        fix = (
-            f"make it {spec.rep_low}-{fitted}"
-            if fitted
-            else f"change weight_step from {spec.weight_step:g} kg"
-        )
+        fix = _suggestion(spec, target.weight, carried)
         findings.append(
             Finding(
                 workout.key,

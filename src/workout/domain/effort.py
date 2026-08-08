@@ -27,7 +27,7 @@ Nothing here decides anything. It is read by `check` and reported; targets are
 computed from the stored weight exactly as they always were.
 """
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from .models import ExerciseSpec
 
@@ -127,43 +127,73 @@ def reset_drop(
 _HIGHEST_USEFUL_REPS = 30
 
 
-def fitting_rep_high(
+@dataclass(frozen=True)
+class RepHighs:
+    """Where the top of a rep range could sit, at the load it sits at today.
+
+    A window rather than an answer, because there is more than one: the
+    tolerance is a band, and a suggestion that names one number hides how much
+    room there is to round it off, or to leave the exercise where it is. The
+    tops in it are contiguous - `reset_drop` rises monotonically with
+    `rep_high` - so the two ends describe the whole of it.
+    """
+
+    #: The one whose reset comes nearest to paying for the weight jump exactly.
+    balanced: int
+    #: The tightest and loosest tops still inside the tolerance.
+    narrowest: int
+    widest: int
+
+
+def fitting_rep_highs(
     spec: ExerciseSpec,
     weight: float,
     bodyweight: float = 0.0,
     tolerance: float = TOLERATED_SHIFT,
-) -> int | None:
-    """The nearest `rep_high` whose reset lands within `tolerance`, either way.
+) -> RepHighs | None:
+    """Every `rep_high` whose reset lands within `tolerance`, and the best one.
 
-    A range too wide is narrowed and one too narrow is widened. Both
-    directions are tried, but only one of them can ever hold the answer:
-    `reset_drop` rises monotonically with `rep_high`, so narrowing a range that
-    is already too narrow only makes it worse. That is what lets a single
-    ordered walk serve both cases without first asking which one it is in.
+    A range too wide is narrowed and one too narrow is widened, both by moving
+    the same end. **`rep_low` is never suggested**, and that is a statement
+    about what the two ends mean rather than a limitation of the search:
 
-    The first fit is returned, so the answer is the smallest edit that works
-    rather than the most comfortable one - a suggestion you can argue with is
-    more use than one that rewrites the exercise.
+    - `rep_low` is the only rep count that says how hard the exercise ever
+      gets. The set straight after a weight jump - `rep_low` reps at the new
+      weight - is the highest relative intensity in the cycle, so moving it
+      down to make the arithmetic work means training a joint heavier than you
+      chose to. It is a judgement about the exercise, and it is yours.
+    - `rep_high` decides nothing except when the jump has been earned, and it
+      is a function of how strong you are today: the step is a shrinking share
+      of a growing load, so the top wants to come down as you progress while
+      the bottom does not move at all.
 
-    Searched with `reset_drop` rather than solved for in closed form. The
-    algebra is easy enough to invert, but then the rule would be written twice
-    and the two could disagree - which they do, at exactly the boundary case a
+    Solving for the bottom would also fight itself. The break-even top is
+    roughly `rep_low + (30 + rep_low) x step / load`, so raising `rep_low` to
+    narrow a range widens what the range needs to be - a smaller edit in one
+    direction and a larger requirement in the other.
+
+    Searched with `reset_drop` rather than solved in closed form. The algebra
+    is easy enough to invert, but then the rule would be written twice and the
+    two could disagree - which they do, at exactly the boundary case a
     suggestion lands on, where floating point puts the "safe" answer a hair
     over the line. One definition, consulted, cannot drift from itself.
 
-    Counted in whole `rep_step`s, so the range suggested is one the exercise
-    can actually climb: a 16-24 range stepping by 2 must move to 22 or 26,
-    never 21, or the ladder would straddle `rep_high` and never land on it to
-    earn the weight jump at all.
+    Counted in whole `rep_step`s, so every top offered is one the exercise can
+    actually climb to: a 16-24 range stepping by 2 must move to 22 or 26, never
+    21, or the ladder would straddle `rep_high` and never land on it to earn
+    the weight jump at all.
 
     `None` when nothing between `rep_low` and `_HIGHEST_USEFUL_REPS` fits,
     which means the step itself is the thing to change.
     """
-    down = range(spec.rep_high - spec.rep_step, spec.rep_low, -spec.rep_step)
-    up = range(spec.rep_high + spec.rep_step, _HIGHEST_USEFUL_REPS + 1, spec.rep_step)
-
-    for candidate in [*down, *up]:
+    fits: list[tuple[float, int]] = []
+    for candidate in range(
+        spec.rep_low + spec.rep_step, _HIGHEST_USEFUL_REPS + 1, spec.rep_step
+    ):
         shift = reset_drop(replace(spec, rep_high=candidate), weight, bodyweight)
         if shift is not None and abs(shift) <= tolerance:
-            return candidate
-    return None
+            fits.append((abs(shift), candidate))
+
+    if not fits:
+        return None
+    return RepHighs(min(fits)[1], fits[0][1], fits[-1][1])
