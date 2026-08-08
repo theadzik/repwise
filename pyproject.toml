@@ -37,7 +37,7 @@ classifiers = [
 # raises a PR per release. garminconnect in particular has broken
 # authentication before, so the working version is recorded deliberately.
 dependencies = [
-    "garminconnect==0.3.7",
+    "garminconnect==0.3.8",
     "pyyaml==6.0.3",
 ]
 
