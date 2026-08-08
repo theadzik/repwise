@@ -189,6 +189,11 @@ def test_plan_does_not_write_back_a_load_below_the_range():
 # --- notes ----------------------------------------------------------------
 
 
+def noted(plan):
+    """Which notes moved, and what they said either side of the move."""
+    return [(change.spec.name, change.old, change.new) for change in plan.notes]
+
+
 def test_plan_writes_the_programming_into_the_step_note():
     payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0))
     performed = performed_sets(
@@ -198,7 +203,7 @@ def test_plan_writes_the_programming_into_the_step_note():
 
     step = next(iter(payload["workoutSegments"][0]["workoutSteps"]))
     assert step_note(step) == "6-10 reps | +2.5 kg"
-    assert plan.notes == ["Barbell Back Squat"]
+    assert noted(plan) == [("Barbell Back Squat", "", "6-10 reps | +2.5 kg")]
 
 
 def test_note_is_written_even_when_the_exercise_was_not_performed():
@@ -208,7 +213,7 @@ def test_note_is_written_even_when_the_exercise_was_not_performed():
     plan = plan_workout(a_workout(), payload, ({}, {}))
 
     assert plan.changes == [], "nothing was logged, so no target moved"
-    assert plan.notes == ["Barbell Back Squat"]
+    assert noted(plan) == [("Barbell Back Squat", "", "6-10 reps | +2.5 kg")]
     assert plan.writable, "a note alone is worth writing"
 
 
@@ -230,7 +235,9 @@ def test_a_stale_generated_note_is_replaced():
     plan = plan_workout(a_workout(exercises=[widened]), workout(step), ({}, {}))
 
     assert step_note(step) == "12-20 reps | +1 kg"
-    assert plan.notes == ["Dumbbell Lateral Raise"]
+    assert noted(plan) == [
+        ("Dumbbell Lateral Raise", "12-15 reps | +1 kg", "12-20 reps | +1 kg")
+    ], "the report has both halves of the edit, not just the exercise's name"
 
 
 def test_a_hand_written_note_is_never_overwritten():
@@ -250,7 +257,7 @@ def test_notes_reach_a_workout_that_only_receives_a_sync():
     targets = {"weightedstandingcalfraise": Target(12, 20.0)}
 
     plan = plan_sync(a_workout("Workout B", "2", [CALF]), payload, targets, "Workout A")
-    assert plan.notes == ["Weighted Standing Calf Raise"]
+    assert noted(plan) == [("Weighted Standing Calf Raise", "", "12-20 reps | +5 kg")]
 
 
 # --- rest between sets ----------------------------------------------------
