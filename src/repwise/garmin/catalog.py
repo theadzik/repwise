@@ -28,6 +28,7 @@ __all__ = [
     "ExerciseCatalog",
     "cache_path",
     "download",
+    "ensure",
     "load",
     "optional",
     "save",
@@ -121,20 +122,26 @@ class ExerciseCatalog:
 
 
 def optional(settings: GarminSettings, cost: str) -> ExerciseCatalog | None:
-    """The cached catalog, or None having said what its absence costs.
+    """The catalog, fetched if this is the first run that wants it, or None.
 
-    Reads the cache and stops there. `repwise fetch exercises` is the one
-    command that downloads it, so no other command surprises you with a request
-    to Garmin - and every command that wants the catalog is worth running
-    without it, degraded and saying so, rather than blocked on a network.
+    Downloaded here rather than demanded of the user, because a command that
+    only works after another command has been run is a command that goes unrun,
+    and because what the catalog buys `update` is correctness rather than
+    convenience: without it an exercise Garmin holds under another name is
+    reused instead of rebuilt. Making that protection conditional on having run
+    a setup command leaves it off for exactly the people who have not. Both
+    callers already log in and fetch workouts, so one public, unauthenticated,
+    cached-forever request is no dependency they did not already have.
+
+    A failure costs `cost` and nothing else, and says which command retries it
+    on its own. Both callers are worth running with no network at all.
     """
-    found = load(settings)
-    if found is None:
-        logger.warning(
-            f"No exercise catalog cached, so {cost}. "
-            f"Run `repwise fetch exercises` to download it."
-        )
-    return found
+    try:
+        return ensure(settings)
+    except GarminError as exc:
+        logger.warning(f"{exc} - so {cost}.")
+        logger.warning("Run `repwise fetch exercises` to try it on its own.")
+        return None
 
 
 def cache_path(settings: GarminSettings) -> str:
@@ -190,7 +197,8 @@ def load(settings: GarminSettings) -> ExerciseCatalog | None:
 
     A cache that cannot be read or parsed reads as absent rather than as a
     failure. It is a disposable copy of a public file, so the repair for a
-    truncated one is `repwise fetch exercises`, the same as for a missing one.
+    truncated one is to fetch it again - which is what `ensure` then does,
+    without anyone having to know the cache was corrupt.
     """
     path = cache_path(settings)
     try:
@@ -201,3 +209,24 @@ def load(settings: GarminSettings) -> ExerciseCatalog | None:
     except (OSError, ValueError, GarminError) as exc:
         logger.debug(f"Ignoring the cached catalog at {path}: {exc}")
         return None
+
+
+def ensure(settings: GarminSettings) -> ExerciseCatalog:
+    """The catalog, downloading and caching it if this is the first time.
+
+    So that `check` and `update` work on a fresh checkout without a fetch first.
+    Refreshing a stale copy stays explicit - `repwise fetch exercises` - because
+    there is no way to tell a stale catalog from a current one without
+    downloading it, and doing that every run is the cost this cache exists to
+    avoid.
+    """
+    cached = load(settings)
+    if cached is not None:
+        return cached
+
+    logger.info("No exercise catalog cached yet, downloading it.")
+    payload = download()
+    # Parsed before it is written, so a malformed download is not cached.
+    catalog = ExerciseCatalog.parse(payload)
+    logger.info(f"Cached {len(catalog)} exercises in {save(settings, payload)}")
+    return catalog

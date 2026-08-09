@@ -79,22 +79,25 @@ def test_a_failed_weigh_in_read_does_not_fail_the_command():
 
 @pytest.fixture
 def cataloged(monkeypatch):
-    """Answer the catalog lookup from the cache, with no network anywhere."""
+    """Answer the catalog lookup, without a cache or a network anywhere."""
 
     def install(outcome=CATALOG):
         calls = []
 
-        def fake_load(settings):
+        def fake_ensure(settings):
             calls.append(settings)
+            if isinstance(outcome, Exception):
+                raise outcome
             return outcome
 
-        monkeypatch.setattr(catalog, "load", fake_load)
+        monkeypatch.setattr(catalog, "ensure", fake_ensure)
         return calls
 
     return install
 
 
-def test_the_cached_catalog_is_what_gets_read(cataloged):
+def test_the_catalog_is_fetched_for_the_first_run_that_wants_it(cataloged):
+    """A check that only works after another command is a check that goes unrun."""
     calls = cataloged()
     settings = GarminSettings(token_store="/nowhere")
 
@@ -102,15 +105,15 @@ def test_the_cached_catalog_is_what_gets_read(cataloged):
     assert calls == [settings]
 
 
-def test_an_absent_catalog_costs_the_name_checks_and_nothing_else(cataloged):
-    cataloged(None)
+def test_an_unreachable_catalog_costs_the_name_checks_and_nothing_else(cataloged):
+    cataloged(GarminError("no network"))
 
     assert _catalog(GarminSettings()) is None
 
 
 def test_it_says_out_loud_that_the_names_went_unchecked(cataloged, caplog):
-    """And names the one command that fixes it, rather than fetching behind you."""
-    cataloged(None)
+    """And names the command that retries it, rather than only the failure."""
+    cataloged(GarminError("no network"))
 
     _catalog(GarminSettings())
 
@@ -182,7 +185,7 @@ def test_a_workout_not_in_garmin_yet_with_good_names_says_so(cataloged, caplog):
 
 def test_the_other_checks_still_run_without_a_catalog(cataloged, caplog):
     """Worth running with no network at all."""
-    cataloged(None)
+    cataloged(GarminError("no network"))
     wrong = spec(garmin_name="WEIGHTED_BARBELL_BACK_SQUAT", sets=3, rest=90)
 
     assert checked(configured(wrong)) == ExitCode.NOTHING_USABLE

@@ -17,8 +17,8 @@ from repwise.garmin import catalog as module
 
 
 @pytest.fixture(autouse=True)
-def no_cached_catalog():
-    """Opt out of the suite-wide stub: the cache is what this module tests.
+def no_catalog():
+    """Opt out of the suite-wide refusal: fetching is what this module tests.
 
     Safe here and nowhere else, because every store below is a tmp_path and
     every download is replaced.
@@ -148,42 +148,77 @@ def test_a_truncated_cache_reads_as_absent(settings):
     assert module.load(settings) is None
 
 
+# --- ensure ----------------------------------------------------------------
+
+
+def test_the_first_run_downloads_and_caches(settings, served):
+    calls = served(catalog_payload(SQUAT=("BARBELL_BACK_SQUAT",)))
+
+    assert module.ensure(settings).holds("SQUAT", "BARBELL_BACK_SQUAT")
+    assert len(calls) == 1
+    assert module.load(settings) is not None
+
+
+def test_a_later_run_costs_no_request(settings, served):
+    calls = served()
+    module.ensure(settings)
+
+    module.ensure(settings)
+
+    assert len(calls) == 1
+
+
+def test_a_corrupt_cache_is_replaced_rather_than_reported(settings, served):
+    served()
+    module.ensure(settings)
+    Path(module.cache_path(settings)).write_text("{ truncated")
+
+    assert module.ensure(settings) is not None
+
+
+def test_a_failed_download_is_not_cached(settings, served):
+    served(failure=GarminError("no network"))
+
+    with pytest.raises(GarminError):
+        module.ensure(settings)
+    assert module.load(settings) is None
+
+
+def test_a_response_that_is_not_a_catalog_is_never_written(settings, served):
+    """Parsed before it is saved, so a good cache survives a bad answer."""
+    served({"unexpected": "shape"})
+
+    with pytest.raises(GarminError):
+        module.ensure(settings)
+    assert module.load(settings) is None
+
+
 # --- what a command gets ---------------------------------------------------
 
 
-def test_a_cached_catalog_is_handed_over(settings):
-    module.save(settings, catalog_payload(SQUAT=("BARBELL_BACK_SQUAT",)))
+def test_a_command_gets_the_catalog_without_a_fetch_first(settings, served):
+    served(catalog_payload(SQUAT=("BARBELL_BACK_SQUAT",)))
 
     found = module.optional(settings, "names went unchecked")
     assert found is not None
     assert found.holds("SQUAT", "BARBELL_BACK_SQUAT")
 
 
-def test_nothing_cached_is_not_an_error(settings):
+def test_an_unreachable_catalog_is_not_an_error(settings, served):
     """Every caller is worth running degraded rather than blocked."""
+    served(failure=GarminError("no network"))
+
     assert module.optional(settings, "names went unchecked") is None
 
 
-def test_the_warning_says_the_cost_and_the_cure(settings, caplog):
+def test_the_warning_says_the_cost_and_the_cure(settings, served, caplog):
+    served(failure=GarminError("no network"))
+
     module.optional(settings, "names went unchecked")
 
+    assert "no network" in caplog.text
     assert "names went unchecked" in caplog.text
     assert "repwise fetch exercises" in caplog.text
-
-
-def test_reading_the_cache_never_downloads(settings, served):
-    """`repwise fetch exercises` is the only command that reaches Garmin."""
-    calls = served()
-
-    assert module.optional(settings, "names went unchecked") is None
-    assert calls == []
-
-
-def test_a_corrupt_cache_reads_as_absent_rather_than_raising(settings):
-    module.save(settings, catalog_payload(SQUAT=("A",)))
-    Path(module.cache_path(settings)).write_text("{ truncated")
-
-    assert module.optional(settings, "names went unchecked") is None
 
 
 def test_the_cache_path_expands_a_home_relative_store():
