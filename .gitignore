@@ -8,7 +8,8 @@ __pycache__/
 venv/
 
 # Your own routine and Garmin workout ids. Start from workouts.example.yaml.
-workouts.yaml
+workouts*.yaml
+!workouts.example.yaml
 
 # Garmin payloads saved by `fetch` and `update --dump`
 dumps/
@@ -16,3 +17,5 @@ workout-*.json
 dump-*.json
 
 *_cache/
+
+.claude/
