@@ -119,7 +119,7 @@ def _token_store(declared: str | None) -> str:
     logger.warning(f"    token_store: {LEGACY_TOKEN_STORE}")
     logger.warning(
         "Deprecated: repwise 2.0 drops this fallback and uses the new default "
-        "whatever is in the old directory."
+        "regardless of what is in the old directory."
     )
     return legacy
 
