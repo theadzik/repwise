@@ -24,10 +24,7 @@ Dry run: 2 step(s) would change. Re-run with --apply.
 You need workouts already built in Garmin Connect, and Python 3.14 or newer.
 
 ```bash
-git clone https://github.com/theadzik/repwise.git
-cd repwise
-python3 -m venv .venv
-.venv/bin/pip install -e .
+pipx install repwise
 
 repwise import -o workouts.yaml   # build a config from your Garmin workouts
 repwise update                    # after a session: see what would change
