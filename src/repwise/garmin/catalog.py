@@ -24,7 +24,14 @@ from .. import __version__
 from ..domain.models import GarminSettings
 from ..errors import GarminError
 
-__all__ = ["ExerciseCatalog", "cache_path", "download", "ensure", "load", "save"]
+__all__ = [
+    "ExerciseCatalog",
+    "cache_path",
+    "download",
+    "load",
+    "optional",
+    "save",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +101,15 @@ class ExerciseCatalog:
             if held.casefold() == wanted
         )
 
+    def names(self) -> frozenset[str]:
+        """Every exercise Garmin defines, category forgotten.
+
+        What matching needs to tell a real exercise name from one Garmin never
+        published: the first is worth taking at its word, the second is what
+        the category fallback is for.
+        """
+        return frozenset(held for names in self.categories.values() for held in names)
+
     def like(self, name: str, limit: int = 3) -> list[str]:
         """The nearest catalog names to one that is not in it at all.
 
@@ -101,12 +117,35 @@ class ExerciseCatalog:
         constant, and a loose match on 1500 names offers three exercises that
         have nothing to do with the one meant.
         """
-        every = {held for names in self.categories.values() for held in names}
-        return get_close_matches(name, every, n=limit, cutoff=0.8)
+        return get_close_matches(name, self.names(), n=limit, cutoff=0.8)
+
+
+def optional(settings: GarminSettings, cost: str) -> ExerciseCatalog | None:
+    """The cached catalog, or None having said what its absence costs.
+
+    Reads the cache and stops there. `repwise fetch exercises` is the one
+    command that downloads it, so no other command surprises you with a request
+    to Garmin - and every command that wants the catalog is worth running
+    without it, degraded and saying so, rather than blocked on a network.
+    """
+    found = load(settings)
+    if found is None:
+        logger.warning(
+            f"No exercise catalog cached, so {cost}. "
+            f"Run `repwise fetch exercises` to download it."
+        )
+    return found
 
 
 def cache_path(settings: GarminSettings) -> str:
-    return os.path.join(settings.token_store, CACHE_NAME)
+    """Where the cached catalog sits, beside the tokens.
+
+    Expanded here rather than trusted to have been: a config file's token_store
+    is expanded as it is read, but the default on `GarminSettings` is the
+    literal `~/.config/repwise`, and joining that raw makes a directory called
+    `~` wherever the process happens to be standing.
+    """
+    return os.path.join(os.path.expanduser(settings.token_store), CACHE_NAME)
 
 
 def download() -> dict:
@@ -151,8 +190,7 @@ def load(settings: GarminSettings) -> ExerciseCatalog | None:
 
     A cache that cannot be read or parsed reads as absent rather than as a
     failure. It is a disposable copy of a public file, so the repair for a
-    truncated one is to fetch it again - which is what `ensure` then does,
-    without anyone having to know the cache was corrupt.
+    truncated one is `repwise fetch exercises`, the same as for a missing one.
     """
     path = cache_path(settings)
     try:
@@ -163,23 +201,3 @@ def load(settings: GarminSettings) -> ExerciseCatalog | None:
     except (OSError, ValueError, GarminError) as exc:
         logger.debug(f"Ignoring the cached catalog at {path}: {exc}")
         return None
-
-
-def ensure(settings: GarminSettings) -> ExerciseCatalog:
-    """The catalog, downloading and caching it if this is the first time.
-
-    So that `check` works on a fresh checkout without a fetch first. Refreshing
-    a stale copy stays explicit - `repwise fetch exercises` - because there is
-    no way to tell a stale catalog from a current one without downloading it,
-    and doing that every run is the cost this cache exists to avoid.
-    """
-    cached = load(settings)
-    if cached is not None:
-        return cached
-
-    logger.info("No exercise catalog cached yet, downloading it.")
-    payload = download()
-    # Parsed before it is written, so a malformed download is not cached.
-    catalog = ExerciseCatalog.parse(payload)
-    logger.info(f"Cached {len(catalog)} exercises in {save(settings, payload)}")
-    return catalog

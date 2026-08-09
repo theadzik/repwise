@@ -22,8 +22,12 @@ def test_a_matching_workout_reports_nothing():
     assert findings == []
 
 
-def test_a_wrong_garmin_name_rescued_by_category_is_reported():
-    """The real drift this was written for: it works, but only by luck."""
+def test_two_exercises_sharing_a_category_are_reported_as_a_rebuild():
+    """Sharing a category does not make them the same movement.
+
+    The step is rebuilt rather than quietly reused, so the warning has to say
+    that the progression restarts - the cost of the swap, not a footnote.
+    """
     wrong = spec(garmin_name="WEIGHTED_BARBELL_BACK_SQUAT", sets=4, rest=120)
     findings = check_workout(configured(wrong), payload(SQUAT_GROUP))
 
@@ -31,7 +35,9 @@ def test_a_wrong_garmin_name_rescued_by_category_is_reported():
     detail = findings[0].detail
     assert "config says WEIGHTED_BARBELL_BACK_SQUAT" in detail
     assert "Garmin says BARBELL_BACK_SQUAT" in detail
-    assert "Matched by category" in detail
+    assert "different exercises" in detail
+    assert "restart its progression" in detail
+    assert findings[0].severity == "error"
 
 
 def test_an_exercise_missing_from_garmin_is_an_error():

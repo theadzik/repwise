@@ -13,7 +13,7 @@ is written once.
 """
 
 import re
-from collections.abc import Iterable
+from collections.abc import Container, Iterable
 
 
 def normalise(name: str) -> str:
@@ -77,7 +77,27 @@ class ExerciseIndex[Item]:
         claimed = self.claiming(category)
         return claimed[0] if len(claimed) == 1 else None
 
-    def find(self, name: str | None = None, category: str | None = None) -> Item | None:
-        """The full lookup: name first, then an unambiguous category."""
+    def find(
+        self,
+        name: str | None = None,
+        category: str | None = None,
+        *,
+        trusted: Container[str] | None = None,
+    ) -> Item | None:
+        """The full lookup: name first, then an unambiguous category.
+
+        `trusted` is every name Garmin publishes. Given it, a name the catalog
+        knows is taken at its word: if nothing answers to it, the answer is
+        nothing, and the category is not consulted. The fallback exists for
+        names Garmin never defined - a null one on a step, or whatever the
+        watch decided to call the movement while you lifted - and stretching it
+        to cover a real exercise makes it say the two are the same. A seated
+        calf raise and a standing one are both `CALF_RAISE`, and are not
+        interchangeable.
+        """
         found = self.by_name(name)
-        return found if found is not None else self.by_category(category)
+        if found is not None:
+            return found
+        if trusted is not None and name and name in trusted:
+            return None
+        return self.by_category(category)

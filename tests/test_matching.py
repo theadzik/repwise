@@ -90,3 +90,34 @@ def test_find_gives_up_when_neither_matches():
     index: ExerciseIndex[str] = ExerciseIndex()
     index.add("squat", name="BARBELL_BACK_SQUAT", category="SQUAT")
     assert index.find("DEADLIFT", "HIP_HINGE") is None
+
+
+def test_a_catalog_name_that_matches_nothing_does_not_fall_back():
+    """Two calf raises share CALF_RAISE and are not the same movement.
+
+    `trusted` says the name asked for is one Garmin publishes, so it is taken
+    at its word: nothing answers to it, and the category is not consulted.
+    """
+    index: ExerciseIndex[str] = ExerciseIndex()
+    index.add("standing", name="WEIGHTED_STANDING_CALF_RAISE", category="CALF_RAISE")
+    catalog = {"WEIGHTED_STANDING_CALF_RAISE", "WEIGHTED_SEATED_CALF_RAISE"}
+
+    assert index.find("WEIGHTED_SEATED_CALF_RAISE", "CALF_RAISE") == "standing"
+    found = index.find("WEIGHTED_SEATED_CALF_RAISE", "CALF_RAISE", trusted=catalog)
+    assert found is None
+
+
+def test_a_name_garmin_never_published_still_falls_back():
+    """The fallback's real job: whatever the watch decided to call it."""
+    index: ExerciseIndex[str] = ExerciseIndex()
+    index.add("squat", name="BARBELL_BACK_SQUAT", category="SQUAT")
+    catalog = {"BARBELL_BACK_SQUAT"}
+
+    assert index.find("WHATEVER_THE_WATCH_SAID", "SQUAT", trusted=catalog) == "squat"
+
+
+def test_a_trusted_name_that_does_match_is_still_found():
+    index: ExerciseIndex[str] = ExerciseIndex()
+    index.add("squat", name="BARBELL_BACK_SQUAT", category="SQUAT")
+    found = index.find("BARBELL_BACK_SQUAT", "SQUAT", trusted={"BARBELL_BACK_SQUAT"})
+    assert found == "squat"

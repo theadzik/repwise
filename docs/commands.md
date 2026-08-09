@@ -449,11 +449,12 @@ Workout B (222222222)
       FACE_PULL or FACE_PULL_WITH_EXTERNAL_ROTATION?
 ```
 
-The catalog is downloaded the first time a `check` needs it and cached in
-`settings.garmin.token_store`, so this costs one request ever. Refresh it with
-[`repwise fetch exercises`](#fetch) when Garmin adds exercises. If it cannot be
-downloaded, the names go unchecked and the rest of the checks still run - the
-command is worth running with no network at all.
+The catalog is read from the cache in `settings.garmin.token_store` and never
+downloaded here: [`repwise fetch exercises`](#fetch) is the one command that
+fetches it, so nothing else surprises you with a request to Garmin. Without a
+cached copy the names go unchecked, the rest of the checks still run, and the
+warning names the command that fixes it - `check` is worth running with no
+network at all.
 
 **This is the one check that says something useful about a workout Garmin does
 not hold yet**, which is exactly when it pays: the names are wrong before the
@@ -530,9 +531,10 @@ Saved 1510 exercises in 47 categories -> /home/you/.config/repwise/exercises.jso
 
 It lands in `settings.garmin.token_store`, beside the cached OAuth tokens,
 because it is the same kind of thing: per-user, disposable, and not something
-to edit. [`check`](#check) reads it, and downloads it itself the first time it
-needs one - **so this is how you refresh a stale copy, not something to run
-first.** Refreshing is unconditional; a copy already there is replaced.
+to edit. [`check`](#check) and [`update`](#update) both read it and neither
+downloads it, so **this is the command to run once before either of them, and
+again whenever Garmin adds exercises.** Fetching is unconditional; a copy
+already there is replaced.
 
 The catalog is a public file, so this is the one command that opens no session
 and needs no login. It cannot be combined with workout ids: the two downloads

@@ -6,10 +6,10 @@ from typing import Any
 import pytest
 from builders import CATALOG, payload, rep_step, repeat, spec
 
-from repwise.app import checking
 from repwise.app.checking import _bodyweight, _catalog, run_check
 from repwise.domain.models import Config, GarminSettings, Workout
 from repwise.errors import ExitCode, GarminError
+from repwise.garmin import catalog
 
 CALF = spec(bodyweight_factor=1.0)
 BENCH = spec(name="Barbell Bench Press", garmin_name="BARBELL_BENCH_PRESS")
@@ -79,25 +79,22 @@ def test_a_failed_weigh_in_read_does_not_fail_the_command():
 
 @pytest.fixture
 def cataloged(monkeypatch):
-    """Answer the catalog lookup, without a cache or a network anywhere."""
+    """Answer the catalog lookup from the cache, with no network anywhere."""
 
     def install(outcome=CATALOG):
         calls = []
 
-        def fake_ensure(settings):
+        def fake_load(settings):
             calls.append(settings)
-            if isinstance(outcome, Exception):
-                raise outcome
             return outcome
 
-        monkeypatch.setattr(checking, "ensure", fake_ensure)
+        monkeypatch.setattr(catalog, "load", fake_load)
         return calls
 
     return install
 
 
-def test_the_catalog_is_fetched_for_the_first_run_that_wants_it(cataloged):
-    """A check that only works after another command is a check that goes unrun."""
+def test_the_cached_catalog_is_what_gets_read(cataloged):
     calls = cataloged()
     settings = GarminSettings(token_store="/nowhere")
 
@@ -105,18 +102,20 @@ def test_the_catalog_is_fetched_for_the_first_run_that_wants_it(cataloged):
     assert calls == [settings]
 
 
-def test_an_unreachable_catalog_costs_the_name_checks_and_nothing_else(cataloged):
-    cataloged(GarminError("no network"))
+def test_an_absent_catalog_costs_the_name_checks_and_nothing_else(cataloged):
+    cataloged(None)
 
     assert _catalog(GarminSettings()) is None
 
 
 def test_it_says_out_loud_that_the_names_went_unchecked(cataloged, caplog):
-    cataloged(GarminError("no network"))
+    """And names the one command that fixes it, rather than fetching behind you."""
+    cataloged(None)
 
     _catalog(GarminSettings())
 
-    assert "Exercise names were not checked" in caplog.text
+    assert "exercise names were not checked" in caplog.text
+    assert "repwise fetch exercises" in caplog.text
 
 
 # --- the command, end to end ----------------------------------------------
@@ -183,11 +182,11 @@ def test_a_workout_not_in_garmin_yet_with_good_names_says_so(cataloged, caplog):
 
 def test_the_other_checks_still_run_without_a_catalog(cataloged, caplog):
     """Worth running with no network at all."""
-    cataloged(GarminError("no network"))
+    cataloged(None)
     wrong = spec(garmin_name="WEIGHTED_BARBELL_BACK_SQUAT", sets=3, rest=90)
 
     assert checked(configured(wrong)) == ExitCode.NOTHING_USABLE
-    assert "Matched by category" in caplog.text
+    assert "different exercises" in caplog.text
 
 
 def test_an_unreachable_workout_is_still_an_error(cataloged, caplog):

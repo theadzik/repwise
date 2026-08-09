@@ -16,6 +16,15 @@ from repwise.errors import GarminError
 from repwise.garmin import catalog as module
 
 
+@pytest.fixture(autouse=True)
+def no_cached_catalog():
+    """Opt out of the suite-wide stub: the cache is what this module tests.
+
+    Safe here and nowhere else, because every store below is a tmp_path and
+    every download is replaced.
+    """
+
+
 @pytest.fixture
 def settings(tmp_path):
     """A token store that does not exist yet, as on a first run."""
@@ -139,46 +148,51 @@ def test_a_truncated_cache_reads_as_absent(settings):
     assert module.load(settings) is None
 
 
-# --- ensure ----------------------------------------------------------------
+# --- what a command gets ---------------------------------------------------
 
 
-def test_the_first_run_downloads_and_caches(settings, served):
-    calls = served(catalog_payload(SQUAT=("BARBELL_BACK_SQUAT",)))
+def test_a_cached_catalog_is_handed_over(settings):
+    module.save(settings, catalog_payload(SQUAT=("BARBELL_BACK_SQUAT",)))
 
-    assert module.ensure(settings).holds("SQUAT", "BARBELL_BACK_SQUAT")
-    assert len(calls) == 1
-    assert module.load(settings) is not None
+    found = module.optional(settings, "names went unchecked")
+    assert found is not None
+    assert found.holds("SQUAT", "BARBELL_BACK_SQUAT")
 
 
-def test_a_later_run_costs_no_request(settings, served):
+def test_nothing_cached_is_not_an_error(settings):
+    """Every caller is worth running degraded rather than blocked."""
+    assert module.optional(settings, "names went unchecked") is None
+
+
+def test_the_warning_says_the_cost_and_the_cure(settings, caplog):
+    module.optional(settings, "names went unchecked")
+
+    assert "names went unchecked" in caplog.text
+    assert "repwise fetch exercises" in caplog.text
+
+
+def test_reading_the_cache_never_downloads(settings, served):
+    """`repwise fetch exercises` is the only command that reaches Garmin."""
     calls = served()
-    module.ensure(settings)
 
-    module.ensure(settings)
-
-    assert len(calls) == 1
+    assert module.optional(settings, "names went unchecked") is None
+    assert calls == []
 
 
-def test_a_corrupt_cache_is_replaced_rather_than_reported(settings, served):
-    served()
-    module.ensure(settings)
+def test_a_corrupt_cache_reads_as_absent_rather_than_raising(settings):
+    module.save(settings, catalog_payload(SQUAT=("A",)))
     Path(module.cache_path(settings)).write_text("{ truncated")
 
-    assert module.ensure(settings) is not None
+    assert module.optional(settings, "names went unchecked") is None
 
 
-def test_a_failed_download_is_not_cached(settings, served):
-    served(failure=GarminError("no network"))
+def test_the_cache_path_expands_a_home_relative_store():
+    """The default store is a literal `~/.config/repwise`, and is joined raw.
 
-    with pytest.raises(GarminError):
-        module.ensure(settings)
-    assert module.load(settings) is None
+    Left unexpanded it makes a directory called `~` wherever the process is
+    standing, which is how the suite once wrote one into the repository.
+    """
+    path = module.cache_path(GarminSettings())
 
-
-def test_a_response_that_is_not_a_catalog_is_never_written(settings, served):
-    """Parsed before it is saved, so a good cache survives a bad answer."""
-    served({"unexpected": "shape"})
-
-    with pytest.raises(GarminError):
-        module.ensure(settings)
-    assert module.load(settings) is None
+    assert not path.startswith("~")
+    assert path == str(Path.home() / ".config" / "repwise" / module.CACHE_NAME)

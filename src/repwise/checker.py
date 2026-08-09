@@ -166,8 +166,10 @@ def check_workout(workout: Workout, payload: dict) -> list[Finding]:
             actual = step_exercise_name(candidates[0].step)
             note(
                 f"{spec.name}: config says {spec.garmin_name}, Garmin says "
-                f"{actual}. Matched by category {spec.garmin_category}, so "
-                f"it works, but the name is wrong"
+                f"{actual}. They share category {spec.garmin_category} but are "
+                f"different exercises, so `update` would rebuild the step and "
+                f"restart its progression",
+                "error",
             )
         elif len(candidates) > 1:
             note(

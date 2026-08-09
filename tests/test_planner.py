@@ -912,3 +912,88 @@ def test_without_an_executed_record_the_stored_target_is_still_assumed():
     plan = plan_workout(a_workout(), payload, a_squat_session(8), asked={})
 
     assert [c.new for c in plan.changes] == [Target(9, 20.0)]
+
+
+# --- two exercises under one category -------------------------------------
+
+STANDING_CALF = spec(
+    name="Weighted Standing Calf Raise",
+    garmin_name="WEIGHTED_STANDING_CALF_RAISE",
+    garmin_category="CALF_RAISE",
+    rep_low=15,
+    rep_high=18,
+    sets=3,
+)
+SEATED_CALF = replace(
+    STANDING_CALF,
+    name="Weighted Seated Calf Raise",
+    garmin_name="WEIGHTED_SEATED_CALF_RAISE",
+    rep_high=20,
+    sets=4,
+)
+CALF_CATALOG = frozenset({"WEIGHTED_STANDING_CALF_RAISE", "WEIGHTED_SEATED_CALF_RAISE"})
+
+
+def a_calf_workout():
+    """A workout Garmin holds as the standing raise."""
+    return payload(
+        repeat(
+            rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 16, 25.0),
+            sets=3,
+        )
+    )
+
+
+def calf_steps(built):
+    return [block.step.get("exerciseName") for block in iter_exercise_blocks(built)]
+
+
+def test_swapping_to_another_exercise_in_the_same_category_rebuilds_the_step():
+    """The bug this guards: sets and reps changed while the name did not.
+
+    Both raises are `CALF_RAISE`, so the category fallback used to hand the
+    standing step to the seated spec. Everything then updated around a name
+    that stayed put, and the watch went on saying standing - the one place the
+    swap is actually read.
+    """
+    built = a_calf_workout()
+    plan = plan_workout(
+        a_workout(exercises=[SEATED_CALF]), built, ({}, {}), trusted=CALF_CATALOG
+    )
+
+    assert calf_steps(built) == ["WEIGHTED_SEATED_CALF_RAISE"]
+    assert [(c.kind, c.name) for c in plan.structure] == [
+        ("added", "Weighted Seated Calf Raise"),
+        ("removed", "WEIGHTED_STANDING_CALF_RAISE"),
+    ]
+
+
+def test_a_rebuilt_step_starts_at_the_bottom_of_its_range():
+    """A target earned on the standing raise was never the seated one's."""
+    built = a_calf_workout()
+    plan_workout(
+        a_workout(exercises=[SEATED_CALF]), built, ({}, {}), trusted=CALF_CATALOG
+    )
+
+    block = next(iter_exercise_blocks(built))
+    assert step_target(block.step) == Target(SEATED_CALF.rep_low, 0.0)
+
+
+def test_the_same_exercise_under_its_own_name_is_still_reused():
+    """Rebuilding is for a different movement, not for every run."""
+    built = a_calf_workout()
+    plan = plan_workout(
+        a_workout(exercises=[STANDING_CALF]), built, ({}, {}), trusted=CALF_CATALOG
+    )
+
+    block = next(iter_exercise_blocks(built))
+    assert step_target(block.step) == Target(16, 25.0)
+    assert [c.kind for c in plan.structure] == []
+
+
+def test_without_a_catalog_the_category_still_rescues_the_step():
+    """No network, no catalog: the older, looser behaviour rather than none."""
+    built = a_calf_workout()
+    plan_workout(a_workout(exercises=[SEATED_CALF]), built, ({}, {}))
+
+    assert calf_steps(built) == ["WEIGHTED_STANDING_CALF_RAISE"]

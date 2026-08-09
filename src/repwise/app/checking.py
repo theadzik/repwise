@@ -5,7 +5,7 @@ import logging
 from ..checker import Finding, check_catalog, check_programming, check_workout
 from ..domain.models import Config, GarminSettings
 from ..errors import ExitCode, GarminError
-from ..garmin.catalog import ExerciseCatalog, ensure
+from ..garmin.catalog import ExerciseCatalog, optional
 from ..garmin.client import GarminSession
 from .report import SEVERITY
 
@@ -13,21 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 def _catalog(settings: GarminSettings) -> ExerciseCatalog | None:
-    """Garmin's exercise list, downloaded on the first run that wants it.
-
-    Fetched here rather than demanded of the user, because a check that only
-    works after another command has been run is a check that goes unrun. The
-    copy is cached, so this costs one download ever.
-
-    A failure costs the name checks and nothing else, exactly as a missing
-    weigh-in costs the range checks. `check` is worth running with no network
-    at all, and the questions it can still answer are worth answering.
-    """
-    try:
-        return ensure(settings)
-    except GarminError as exc:
-        logger.warning(f"Exercise names were not checked: {exc}")
-        return None
+    """Garmin's exercise list. Its absence costs the name checks and nothing
+    else, exactly as a missing weigh-in costs the range checks."""
+    return optional(settings, "exercise names were not checked")
 
 
 def _bodyweight(session: GarminSession, config: Config) -> float | None:
