@@ -30,8 +30,8 @@ used to keep them. The default is now /home/you/.config/repwise.
     mkdir -p /home/you/.config/repwise && mv /home/you/.garminconnect/* /home/you/.config/repwise/
 Or name the old directory in workouts.yaml, under settings.garmin:
     token_store: ~/.garminconnect
-Deprecated: repwise 2.0 drops this fallback and uses the new default whatever
-is in the old directory.
+Deprecated: repwise 2.0 drops this fallback and uses the new default regardless
+of what is in the old directory.
 ```
 
 Take either way out. Run the `mv` and the warning stops, or set
