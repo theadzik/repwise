@@ -22,16 +22,16 @@ from ..domain.models import Config
 from ..errors import ExitCode, UsageError, WorkoutError
 from ..garmin.client import connect
 from ..log import configure
-from .parser import build_parser
+from .completion import render
+from .parser import CATALOG, build_parser
 
 __all__ = ["main", "build_parser"]
 
 logger = logging.getLogger(__name__)
 
-#: `fetch` takes workout ids, and this word instead of them. Safe as a keyword
-#: rather than a flag because a Garmin workout id is a number, so nothing a
-#: user could legitimately pass here is ambiguous with it.
-CATALOG = "exercises"
+#: The one command answered without a config, and so the one absent from
+#: HANDLERS below. main() says why.
+COMPLETION = "completion"
 
 #: An argparse Namespace and a config in, an exit code out. The adapters below
 #: are the whole of what the CLI layer does with a command: pick the options
@@ -84,6 +84,8 @@ def _logout(args: argparse.Namespace, config: Config) -> ExitCode:
 
 #: Keyed by the subparser name, so a command that parses has somewhere to go.
 #: `required=True` on the subparsers means an unknown key cannot be reached.
+#: `completion` is not among them: it is answered before a config exists, and
+#: main() says why.
 HANDLERS: dict[str, Handler] = {
     "update": _update,
     "fetch": _fetch,
@@ -95,8 +97,19 @@ HANDLERS: dict[str, Handler] = {
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     configure(args.verbose)
+
+    # Answered here rather than through HANDLERS below, because the config is
+    # loaded to reach those and this command must run without one: the way to
+    # use it is `source <(repwise completion bash)` from a startup file, which
+    # runs in whatever directory a shell opened in. The parser it describes is
+    # the one that just parsed this, so the script cannot describe a different
+    # command line than the binary printing it has.
+    if args.command == COMPLETION:
+        print(render(parser, args.shell))
+        return ExitCode.OK
 
     # One handler for every failure this tool knows how to describe. Anything
     # else is a bug here, and its traceback is the most useful thing to show.

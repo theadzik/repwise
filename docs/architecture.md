@@ -26,6 +26,7 @@ src/repwise/
         report.py          how a change, a plan and a finding are printed
     cli/
         parser.py          what the command line accepts, and its help
+        completion.py      the same parser, rendered as a shell script
         __init__.py        main(): parse, connect, dispatch, map failures
     config.py              workouts.yaml -> models, with validation, and the
                            one write back to it: an id Garmin has just issued
@@ -58,6 +59,7 @@ tests/
     test_client.py         the session wrapper, and the token store
     test_logout.py         what signing out deletes, keeps and says
     test_cli.py            argument parsing and help
+    test_completion.py     the generated scripts, and what bash makes of them
     test_main.py           dispatch, exit codes, and which stream
     test_log.py            verbosity, and stdout vs stderr
 ```
@@ -75,7 +77,7 @@ the CLI, the planner, or Garmin, and nothing in `app/` imports `cli/`.
 ```mermaid
 flowchart TD
     subgraph presentation["cli/ - argparse lives here and nowhere else"]
-        cli["__init__.py<br/>parser.py"]
+        cli["__init__.py<br/>parser.py<br/>completion.py"]
     end
 
     subgraph application["app/ - one module per command"]
