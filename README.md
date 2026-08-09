@@ -35,8 +35,11 @@ repwise update --apply --push     # write it, and send it to your watch
 ```
 
 The first command that reaches Garmin asks for your email, password and MFA
-code, then caches a token so later runs do not. Credentials are never stored by
-this tool.
+code, then caches the tokens Garmin issues so later runs do not. **Your
+password is never written anywhere. The token is** - in
+`settings.garmin.token_store` (defaulting to `~/.config/repwise`), readable
+only by you - **and until it expires it is as good as being logged in.**
+`repwise logout` deletes it. See [authentication][troubleshooting-auth].
 
 **Nothing is written to Garmin without `--apply`.** A dry run is the default.
 
@@ -107,6 +110,7 @@ keeping an exercise in sync when it appears in more than one workout.
 | `repwise check` | Check that your config names exercises Garmin actually has, that it still names the ones your workouts hold, and that every rep range fits what its weight step is really worth |
 | `repwise fetch` | Download raw workout JSON |
 | `repwise fetch exercises` | Refresh Garmin's list of every exercise it knows, which `check` reads |
+| `repwise logout` | Delete the cached Garmin token, so the next run logs in again |
 
 Any command takes `-v` to show debug output as well. Full flags and output for
 each are in [Commands][commands].
@@ -155,6 +159,7 @@ For contributors:
 [configuration]: https://github.com/theadzik/repwise/blob/main/docs/configuration.md
 [progression]: https://github.com/theadzik/repwise/blob/main/docs/progression.md
 [troubleshooting]: https://github.com/theadzik/repwise/blob/main/docs/troubleshooting.md
+[troubleshooting-auth]: https://github.com/theadzik/repwise/blob/main/docs/troubleshooting.md#authentication
 [architecture]: https://github.com/theadzik/repwise/blob/main/docs/architecture.md
 [garmin-api]: https://github.com/theadzik/repwise/blob/main/docs/garmin-api.md
 [contributing]: https://github.com/theadzik/repwise/blob/main/docs/contributing.md

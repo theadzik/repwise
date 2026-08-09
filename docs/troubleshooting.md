@@ -12,12 +12,62 @@
 
 The first command that reaches Garmin prompts for your email, password and MFA
 code, then caches OAuth tokens in `settings.garmin.token_store`
-(`~/.garminconnect` by default). Later runs reuse those and never touch the
-login endpoint, which is what keeps you clear of Garmin's login rate limits.
+(`$XDG_CONFIG_HOME/repwise`, i.e. `~/.config/repwise`, by default - beside your
+config). Later runs reuse those and never touch the login endpoint, which is
+what keeps you clear of Garmin's login rate limits.
 
-Delete that directory to force a fresh login.
+Run [`repwise logout`](commands.md#logout) to force a fresh login.
 
-Credentials are never stored by this tool - only the tokens Garmin issues.
+### Upgrading from a version that defaulted to `~/.garminconnect`
+
+Nothing to do today. If your config names no `token_store` of its own, and
+there are tokens in the old directory and none in the new one, they are used
+where they lie and the run says so:
+
+```text
+Using the Garmin tokens in /home/you/.garminconnect, which is where repwise
+used to keep them. The default is now /home/you/.config/repwise.
+    mkdir -p /home/you/.config/repwise && mv /home/you/.garminconnect/* /home/you/.config/repwise/
+Or name the old directory in workouts.yaml, under settings.garmin:
+    token_store: ~/.garminconnect
+Deprecated: repwise 2.0 drops this fallback and uses the new default regardless
+of what is in the old directory.
+```
+
+Take either way out. Run the `mv` and the warning stops, or set
+`settings.garmin.token_store: ~/.garminconnect` and keep the old location for
+good. Logging in again works too - the new tokens land at the new default, and
+the old directory stops being consulted the moment it does.
+
+Whichever you pick, **delete `~/.garminconnect` once you are done with it.** The
+token left in it stays valid until it expires, and nothing is watching it any
+more. A config that names its own `token_store` never sees any of this.
+
+### What is stored, and what it is worth
+
+Your email and password are typed at the prompt, handed straight to Garmin, and
+never written anywhere. What is written is `garmin_tokens.json` in the token
+store, holding the tokens Garmin issues in exchange:
+
+```json
+{"di_token": "...", "di_refresh_token": "...", "di_client_id": "..."}
+```
+
+**Treat that file as a password.** It is not one - but until it expires it is a
+bearer credential for the account, and using it needs neither your password nor
+an MFA code. Anything that can read the file can read your Garmin data and
+write to your workouts.
+
+What that means in practice:
+
+| Where you stand | What it means |
+| --- | --- |
+| It is written `0600` inside a `0700` directory | So other accounts on the machine cannot read it. `garminconnect` enforces this on every write |
+| repwise warns if it finds it otherwise | A file restored from a backup, copied between machines, or written by an older version can have looser permissions. The warning names the `chmod` that fixes it, and never runs it for you |
+| Keep it out of backups and dotfile repos | This is the realistic way it escapes, not another user on your laptop |
+| `repwise logout` deletes it | The token file only; the cached exercise catalog beside it is a copy of a public file and is left alone |
+| Nothing revokes it at Garmin's end | `logout` removes this machine's copy. A copy taken before that stays valid until it expires, and Garmin exposes no per-token revocation to repwise. If you think one has escaped, change your Garmin password |
+| Full-disk encryption is what protects a stolen laptop | File permissions do not, and repwise does not encrypt the file itself |
 
 Reusing a cached session is routine, so it is only reported under `--verbose`:
 
@@ -31,7 +81,8 @@ DEBUG   repwise.garmin.client: Resumed cached session.
 | Symptom | Cause and fix |
 | --- | --- |
 | `429` / rate limited | Too many login attempts from your IP. Wait it out; once tokens are cached the login endpoint is skipped entirely |
-| `401` after working before | Stale tokens. Delete the token store and log in again |
+| `401` after working before | Stale tokens. Run `repwise logout` and log in again |
+| `can be read by other users` | The token file or its directory has picked up looser permissions than it was written with. The warning names the `chmod` that fixes it. See [what is stored](#what-is-stored-and-what-it-is-worth) |
 | `no terminal to log in from` | A scheduled run found no cached session. Run it once by hand to cache the tokens |
 | Cloudflare challenge | Only affects browser automation. This tool goes through `garminconnect`, built on `curl_cffi`, which is not subject to it |
 | Every exercise looks like bodyweight | The weight is reading as zero. Check a `--dump` against [Garmin's API](garmin-api.md#weight-units) |

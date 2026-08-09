@@ -10,6 +10,7 @@ workout without catching everything that could possibly go wrong.
 import functools
 import logging
 import os
+import stat
 from collections.abc import Callable
 from datetime import date, timedelta
 from getpass import getpass
@@ -17,11 +18,16 @@ from typing import Any
 
 from garminconnect import Garmin, GarminConnectTooManyRequestsError
 
+# Which file in the token store holds the tokens. Imported rather than spelled
+# out: the store may be named as a directory or as the JSON file itself, and
+# the rule for telling those apart is the library's to decide.
+from garminconnect.client import token_file_path
+
 from ..domain.models import GarminSettings
 from ..errors import GarminError, NoTerminal, RateLimited
 from .payloads import GRAMS_PER_KG
 
-__all__ = ["GarminSession", "connect", "STRENGTH"]
+__all__ = ["GarminSession", "cached_token", "connect", "forget", "STRENGTH"]
 
 logger = logging.getLogger(__name__)
 
@@ -197,15 +203,91 @@ class GarminSession:
         return self._api.push_workout_to_device(workout_id)
 
 
+def cached_token(store: str) -> str | None:
+    """The token file in `store`, if a login has left one there.
+
+    Here rather than at either call site because which file that is, and
+    whether a store is named as a directory or as the file itself, is knowledge
+    of the library this module exists to keep in one place. `config.py` asks
+    this to tell an install that has logged in from one that has not.
+    """
+    path = str(token_file_path(store))
+    return path if os.path.exists(path) else None
+
+
+def _too_open(path: str) -> int | None:
+    """The mode of `path`, when someone other than its owner can reach it.
+
+    None when the mode is fine, and equally when there is nothing there to look
+    at - a store that does not exist yet is a first run, not a problem. None on
+    every platform whose permission bits do not mean this, too: `os.stat`
+    answers on Windows as well, and what it answers is not a POSIX mode.
+    """
+    if os.name != "posix":
+        return None
+    try:
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+    except OSError:
+        return None
+    return mode if mode & 0o077 else None
+
+
+def _warn_if_exposed(store: str) -> None:
+    """Say so when the cached token is readable by anyone but its owner.
+
+    garminconnect writes the file 0600 inside a 0700 directory, so this is not
+    about what gets written but about what happens to it afterwards: restored
+    from a backup, copied between machines, or written by a version predating
+    that fix. What is in it is not the password but is as good as being logged
+    in, so a mode that lets another account on the machine read it is worth a
+    line of warning.
+
+    Warned about rather than refused, and never repaired: it is the user's own
+    directory, a single-user machine where the mode has never mattered is not a
+    run to stop, and quietly chmod-ing files nobody asked us to touch is not
+    this tool's business.
+    """
+    token = cached_token(store)
+    if token is None:
+        # Nothing cached to expose. The directory can exist without it - `fetch
+        # exercises` creates one to cache a public file in, before any login -
+        # and warning about a token that is not there would be a lie.
+        return
+
+    # A store named as the JSON file itself is both, and worth one warning.
+    wanted = {store: 0o700, token: 0o600} if store != token else {token: 0o600}
+
+    fixes = [
+        f"    chmod {expected:03o} {path}   # currently {mode:03o}"
+        for path, expected in wanted.items()
+        if (mode := _too_open(path)) is not None
+    ]
+    if not fixes:
+        return
+
+    # The reason once, the paths after it: when both are wrong, repeating why
+    # it matters twice reads like two separate problems.
+    logger.warning(
+        f"Your cached Garmin token in {store} can be read by other users on "
+        f"this machine. It is not your password, but until it expires it is as "
+        f"good as being logged in to your account."
+    )
+    for fix in fixes:
+        logger.warning(fix)
+
+
 def connect(settings: GarminSettings, prompt: bool = True) -> GarminSession:
     """Resume a cached session, falling back to an interactive login.
 
-    Credentials are typed in at the prompt and never stored by this tool. After
-    a successful login the OAuth tokens are cached in the configured token
-    store, so later runs skip the prompt and avoid the rate-limited login
-    endpoint entirely.
+    Credentials are typed in at the prompt and never written anywhere. What is
+    cached after a successful login is the OAuth tokens Garmin issues, in the
+    configured token store, so later runs skip the prompt and avoid the
+    rate-limited login endpoint entirely. Those tokens are a bearer credential
+    for the account until they expire - see `_warn_if_exposed`, and `forget`
+    for getting rid of them.
     """
     store = settings.token_store
+    _warn_if_exposed(store)
 
     if os.path.isdir(store):
         try:
@@ -245,3 +327,25 @@ def _login(api: Garmin, store: str) -> None:
     message the user should read, not a traceback out of a library.
     """
     api.login(store)
+
+
+@_reporting("delete the cached tokens")
+def forget(settings: GarminSettings) -> str | None:
+    """Delete the cached tokens, and say what was deleted, or None if nothing.
+
+    The token file alone. The exercise catalog sits in the same directory and
+    is a disposable copy of a public file, so signing out has no business
+    throwing it away and making the next `check` download it again - which is
+    the difference between this and deleting the directory by hand.
+
+    Local, and only local. Garmin issued the token and offers nothing to hand
+    it back through, so this ends this machine's access to the account and
+    changes nothing at Garmin's end: a copy taken from the file before it went
+    stays usable until it expires.
+    """
+    path = cached_token(settings.token_store)
+    if path is None:
+        return None
+    # The library's own method, so which file this is stays its business.
+    Garmin().logout(settings.token_store)
+    return path

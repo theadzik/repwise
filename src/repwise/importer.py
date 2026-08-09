@@ -183,8 +183,10 @@ HEADER = """\
 #: What a fresh config starts with. Every one of these can be edited afterwards;
 #: they are here so that an imported file is valid the moment it is written.
 DEFAULT_SETTINGS: dict = {
+    # No token_store: it defaults to the directory this config is meant to live
+    # in, and writing that path out here would pin it to ~/.config for someone
+    # whose $XDG_CONFIG_HOME says otherwise.
     "garmin": {
-        "token_store": "~/.garminconnect",
         "activity_search_limit": 50,
         "dump_dir": ".",
     },

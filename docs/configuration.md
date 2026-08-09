@@ -44,7 +44,7 @@ When none of them exists, the error lists the paths it tried.
 ```yaml
 settings:
   garmin:
-    token_store: ~/.garminconnect   # OAuth tokens, and the exercise catalog
+    token_store: ~/.config/repwise  # OAuth tokens, and the exercise catalog
     activity_search_limit: 50       # recent activities scanned for a match
     dump_dir: .                     # where --dump and `fetch` write JSON
 
@@ -65,7 +65,7 @@ settings:
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `garmin.token_store` | `~/.garminconnect` | Where OAuth tokens are cached, and where [`fetch exercises`](commands.md#fetch-exercises) caches the exercise catalog. Delete the directory to force a fresh login |
+| `garmin.token_store` | `$XDG_CONFIG_HOME/repwise`, i.e. `~/.config/repwise` | Where the OAuth tokens are cached, and where [`fetch exercises`](commands.md#fetch-exercises) caches the exercise catalog. Beside your config by default, so one directory is everything this tool owns. The token is as good as being logged in until it expires, so the directory is kept private to you - see [what is stored](troubleshooting.md#what-is-stored-and-what-it-is-worth). [`repwise logout`](commands.md#logout) empties it. Tokens already in `~/.garminconnect`, where the default used to point, are still used until you move them - [see upgrading](troubleshooting.md#upgrading-from-a-version-that-defaulted-to-garminconnect), which 2.0 stops doing |
 | `garmin.activity_search_limit` | `50` | How many recent activities to scan for a name match, and for the sessions behind it |
 | `garmin.dump_dir` | `.` | Where `--dump` and `fetch` write JSON |
 | `weight_steps` | - | kg added per load type when a rep range is topped out |

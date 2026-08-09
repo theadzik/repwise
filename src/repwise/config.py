@@ -8,11 +8,13 @@ Where that file is depends on how the tool was installed, so it is searched
 for rather than computed from this module's location - see `search_path()`.
 """
 
+import logging
 import os
 from dataclasses import dataclass, field
 
 from .domain.models import BODYWEIGHT, Config, ExerciseSpec, GarminSettings, Workout
 from .errors import ConfigError
+from .garmin.client import cached_token
 from .yamlio import dump, read, write
 
 __all__ = [
@@ -20,11 +22,27 @@ __all__ = [
     "record_workout_id",
     "resolve_config",
     "search_path",
+    "default_token_store",
     "ConfigError",
 ]
 
+logger = logging.getLogger(__name__)
+
 CONFIG_NAME = "workouts.yaml"
 EXAMPLE_NAME = "workouts.example.yaml"
+
+#: The one directory this tool owns, under the XDG config home: where an
+#: installed copy looks for workouts.yaml, and where the Garmin tokens and the
+#: exercise catalog go unless the file names somewhere else.
+APP_DIR = "repwise"
+
+#: Where the tokens went before the store moved beside the config. Read only
+#: when the file names no store of its own and there is nothing at the new one,
+#: so that upgrading does not silently ask for a password again. Deprecated:
+#: 2.0 drops this and uses `default_token_store()` unconditionally, which is
+#: tracked in https://github.com/theadzik/repwise/issues/34 along with
+#: everything else that goes with it.
+LEGACY_TOKEN_STORE = "~/.garminconnect"
 
 #: Three directories above this module: src/repwise/config.py -> the
 #: repository root, when this is a checkout. Installed into site-packages the
@@ -56,6 +74,56 @@ def _xdg_config_home() -> str:
     return os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
 
 
+def default_token_store() -> str:
+    """Where the Garmin tokens go when the config does not say.
+
+    The same directory an installed copy keeps its config in, so that what this
+    tool owns is one directory rather than a config here and a dot-directory of
+    Garmin's naming somewhere else. `GarminSettings` states the same path as a
+    plain default, for anything constructing one without a file behind it; this
+    is the one that honours `$XDG_CONFIG_HOME`, so that a user who moved their
+    config does not find their tokens left behind in `~/.config`.
+    """
+    return os.path.join(_xdg_config_home(), APP_DIR)
+
+
+def _token_store(declared: str | None) -> str:
+    """Where this run keeps its Garmin tokens.
+
+    What the file names, if it names one - a declared store is an instruction,
+    and second-guessing it would move someone's credentials for them.
+
+    Otherwise the default, except for one case: an install that predates the
+    move has its tokens in `LEGACY_TOKEN_STORE` and nothing at the new path, so
+    taking the default literally would cost a login and a round trip through
+    the endpoint Garmin rate-limits hardest. Those are used where they lie, and
+    said out loud, because a fallback nobody is told about is one nobody acts
+    on - and this one goes away in 2.0.
+    """
+    if declared:
+        return os.path.expanduser(declared)
+
+    default = default_token_store()
+    legacy = os.path.expanduser(LEGACY_TOKEN_STORE)
+    if cached_token(default) or not cached_token(legacy):
+        return default
+
+    logger.warning(
+        f"Using the Garmin tokens in {legacy}, which is where repwise used to "
+        f"keep them. The default is now {default}."
+    )
+    logger.warning(f"    mkdir -p {default} && mv {legacy}/* {default}/")
+    logger.warning(
+        f"Or name the old directory in {CONFIG_NAME}, under settings.garmin:"
+    )
+    logger.warning(f"    token_store: {LEGACY_TOKEN_STORE}")
+    logger.warning(
+        "Deprecated: repwise 2.0 drops this fallback and uses the new default "
+        "regardless of what is in the old directory."
+    )
+    return legacy
+
+
 def _checkout_config() -> str | None:
     """Where a checkout keeps its config, if this is running from one.
 
@@ -83,7 +151,7 @@ def search_path() -> list[str]:
     if named:
         candidates.append(os.path.expanduser(named))
     candidates.append(os.path.join(os.getcwd(), CONFIG_NAME))
-    candidates.append(os.path.join(_xdg_config_home(), "repwise", CONFIG_NAME))
+    candidates.append(os.path.join(_xdg_config_home(), APP_DIR, CONFIG_NAME))
     checkout = _checkout_config()
     if checkout:
         candidates.append(checkout)
@@ -385,9 +453,7 @@ def load_config(path: str | None = None) -> Config:
     garmin_raw = settings.get("garmin") or {}
     defaults = GarminSettings()
     garmin = GarminSettings(
-        token_store=os.path.expanduser(
-            garmin_raw.get("token_store") or defaults.token_store
-        ),
+        token_store=_token_store(garmin_raw.get("token_store")),
         activity_search_limit=int(
             garmin_raw.get("activity_search_limit") or defaults.activity_search_limit
         ),

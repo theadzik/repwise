@@ -22,6 +22,7 @@ stderr, so they stay visible when they do.
 - [import](#import) - build a config from Garmin
 - [check](#check) - find drift between config and Garmin
 - [fetch](#fetch) - download raw payloads, or the exercise catalog
+- [logout](#logout) - forget the cached Garmin session
 - [Exit codes](#exit-codes)
 
 ## update
@@ -524,7 +525,7 @@ repwise fetch exercises
 ```
 
 ```text
-Saved 1510 exercises in 47 categories -> /home/you/.garminconnect/exercises.json
+Saved 1510 exercises in 47 categories -> /home/you/.config/repwise/exercises.json
 ```
 
 It lands in `settings.garmin.token_store`, beside the cached OAuth tokens,
@@ -536,6 +537,50 @@ first.** Refreshing is unconditional; a copy already there is replaced.
 The catalog is a public file, so this is the one command that opens no session
 and needs no login. It cannot be combined with workout ids: the two downloads
 share a word and nothing else.
+
+## logout
+
+Deletes the OAuth tokens cached in `settings.garmin.token_store`, so the next
+command that reaches Garmin asks for your email, password and MFA code again.
+
+```bash
+repwise logout
+```
+
+```text
+Deleted /home/you/.config/repwise/garmin_tokens.json
+The next command that reaches Garmin will ask you to log in.
+This does not revoke the token at Garmin's end.
+```
+
+**Run it on a machine that should stop having access to your account** - a
+shared box, a server you were trying something on, a laptop you are handing
+over. Until it expires, the cached token is as good as being logged in: see
+[what is stored, and what it is
+worth](troubleshooting.md#what-is-stored-and-what-it-is-worth).
+
+Three things it deliberately does not do:
+
+- **It does not revoke anything at Garmin.** Garmin issued the token and offers
+  nothing to hand it back through, so this removes *this machine's copy*. A
+  copy taken from the file beforehand stays usable until it expires; a password
+  change is the strongest lever you have if you think one escaped.
+- **It does not delete the exercise catalog** cached beside the token, which is
+  a copy of a public file. That is the difference between this and `rm -rf`ing
+  the token store: the next [`check`](#check) does not have to download it
+  again.
+- **It does not touch `workouts.yaml`.** Your routine is not a credential.
+
+Being signed out already is not a failure - it is the state the command exists
+to reach - so a token store with nothing in it says so and exits `0`:
+
+```text
+No cached session in /home/you/.config/repwise, so nothing to do.
+```
+
+It opens no session, and needs no network. It does read your config, because
+that is where the token store's location is written; `--config PATH` applies as
+it does everywhere else.
 
 ## Exit codes
 

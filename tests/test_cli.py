@@ -116,6 +116,11 @@ def test_check_takes_no_arguments():
     assert args.command == "check"
 
 
+def test_logout_takes_no_arguments():
+    args = build_parser().parse_args(["logout"])
+    assert args.command == "logout"
+
+
 def test_push_defaults_off():
     assert build_parser().parse_args(["update"]).push is False
 
