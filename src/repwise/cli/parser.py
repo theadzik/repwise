@@ -49,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  repwise list              show your Garmin workouts and ids\n"
             "  repwise import -o f.yaml  build config from Garmin workouts\n"
             "  repwise check             report config/Garmin drift\n"
+            "  repwise logout            forget the cached Garmin session\n"
             "\n"
             "Your routine lives in workouts.yaml; copy workouts.example.yaml to\n"
             "get started. Nothing is written to Garmin without --apply."
@@ -197,5 +198,21 @@ def build_parser() -> argparse.ArgumentParser:
         "exits non-zero on any finding at all.",
     )
     add_verbose(check)
+
+    logout = sub.add_parser(
+        "logout",
+        help="forget the Garmin session cached on this machine",
+        description="Delete the OAuth tokens cached in "
+        "settings.garmin.token_store, so the next command that reaches Garmin "
+        "asks for your email, password and MFA code again. Those tokens are "
+        "what a login leaves behind, and until they expire they are as good as "
+        "being logged in, so this is what to run on a machine that should stop "
+        "having that. The token file is the only thing removed: the exercise "
+        "catalog cached beside it is a copy of a public file and is left "
+        "alone, which is the difference between this and deleting the "
+        "directory by hand. Local only - Garmin issued the token and this does "
+        "not hand it back, so it stays valid at Garmin's end until it expires.",
+    )
+    add_verbose(logout)
 
     return parser

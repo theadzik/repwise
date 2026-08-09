@@ -69,8 +69,11 @@
 
 settings:
   garmin:
-    # Where OAuth tokens are cached after the first interactive login.
-    token_store: ~/.repwise
+    # Where the OAuth tokens are cached after the first interactive login,
+    # along with Garmin's exercise catalog. Defaults to the directory this
+    # file lives in when installed, i.e. ~/.config/repwise. What lands there
+    # is as good as being logged in, so keep it private and out of backups.
+    token_store: ~/.config/repwise
     # How many recent activities to scan when looking for the last session.
     activity_search_limit: 50
     # Where --dump and `fetch` write their JSON.

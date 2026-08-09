@@ -22,6 +22,7 @@ src/repwise/
         listing.py         show the account's workouts
         importing.py       Garmin workouts -> config text
         checking.py        config against Garmin
+        logout.py          delete the cached tokens
         report.py          how a change, a plan and a finding are printed
     cli/
         parser.py          what the command line accepts, and its help
@@ -34,7 +35,8 @@ src/repwise/
     errors.py              why a run failed, and what it exits with
     log.py                 which stream a message lands on, and its level
     garmin/
-        client.py          authentication and the Garmin session
+        client.py          authentication, the Garmin session, and the cached
+                           token: what it is worth and how to be rid of it
         payloads.py        Garmin's JSON <-> our types, and building it from
                            nothing for a workout Garmin does not have yet.
                            Also reads the workout an activity was run against
@@ -53,6 +55,8 @@ tests/
     test_checker.py        drift detection
     test_catalog.py        what the catalog says, and how it is cached
     test_checking.py       what `check` gathers before it can check
+    test_client.py         the session wrapper, and the token store
+    test_logout.py         what signing out deletes, keeps and says
     test_cli.py            argument parsing and help
     test_main.py           dispatch, exit codes, and which stream
     test_log.py            verbosity, and stdout vs stderr
@@ -75,7 +79,7 @@ flowchart TD
     end
 
     subgraph application["app/ - one module per command"]
-        commands["update.py, fetch.py<br/>listing.py, importing.py<br/>checking.py"]
+        commands["update.py, fetch.py<br/>listing.py, importing.py<br/>checking.py, logout.py"]
     end
 
     subgraph services["deciding, without performing"]
@@ -97,6 +101,7 @@ flowchart TD
 
     cli --> commands
     cli --> config & garmin
+    config --> garmin
     commands --> planner & importer & checker
     commands --> garmin & matching
     planner & importer & checker --> garmin
@@ -133,7 +138,11 @@ Four boundaries carry the weight:
 - **`config.py` is the only module that writes to `workouts.yaml`,** and the
   only thing it ever writes is a workout id Garmin has just issued. It parses
   the document, sets the one key and dumps the whole thing back, so values and
-  ordering survive but comments do not.
+  ordering survive but comments do not. It reaches into `garmin/client.py` for
+  one question - is there a token cached in this directory - which is what lets
+  it decide whether a config naming no `token_store` should fall back to the
+  directory the default used to point at. That fallback goes in 2.0, and the
+  arrow with it.
 - **`yamlio.py` is the only module that touches the file at all.** Reading,
   dumping and the atomic replace live there, so `config.py`, `importer.py` and
   the import use case cannot disagree about how the file is parsed, how what we

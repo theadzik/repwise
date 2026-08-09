@@ -15,6 +15,7 @@ from ..app.checking import run_check
 from ..app.fetch import run_fetch, run_fetch_exercises
 from ..app.importing import ImportOptions, run_import
 from ..app.listing import run_list
+from ..app.logout import run_logout
 from ..app.update import UpdateOptions, run_update
 from ..config import load_config
 from ..domain.models import Config
@@ -75,6 +76,12 @@ def _check(args: argparse.Namespace, config: Config) -> ExitCode:
     return run_check(connect(config.garmin), config)
 
 
+def _logout(args: argparse.Namespace, config: Config) -> ExitCode:
+    # No session: opening one to throw it away would prompt for the password of
+    # the account you are asking to be signed out of.
+    return run_logout(config.garmin)
+
+
 #: Keyed by the subparser name, so a command that parses has somewhere to go.
 #: `required=True` on the subparsers means an unknown key cannot be reached.
 HANDLERS: dict[str, Handler] = {
@@ -83,6 +90,7 @@ HANDLERS: dict[str, Handler] = {
     "list": _list,
     "import": _import,
     "check": _check,
+    "logout": _logout,
 }
 
 

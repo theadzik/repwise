@@ -78,10 +78,18 @@ Garmin password (hidden):
 MFA code: 123456
 ```
 
-Run it in a real terminal so you can type them. Credentials are never stored by
-this tool. On success the OAuth tokens are cached in `~/.garminconnect` and
-later runs skip the prompt entirely, which also avoids Garmin's rate-limited
-login endpoint.
+Run it in a real terminal so you can type them. On success the OAuth tokens
+Garmin issues are cached in `~/.config/repwise`, beside your config, and later
+runs skip the prompt entirely - which also avoids Garmin's rate-limited login
+endpoint.
+
+**Your password is never written anywhere. The token is, and it matters.**
+Until it expires, anything that can read `~/.config/repwise/garmin_tokens.json`
+can reach your Garmin account without a password or an MFA code. It is written
+readable only by you, and repwise warns if it ever finds it otherwise; keep it
+out of backups and dotfile repositories, and run `repwise logout` on a machine
+that should stop having it.
+[Authentication](troubleshooting.md#authentication) has the details.
 
 ## 5. Do a session, then dry run
 

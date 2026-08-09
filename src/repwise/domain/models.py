@@ -102,7 +102,12 @@ class Workout:
 class GarminSettings:
     """Everything about talking to Garmin that a user might want to change."""
 
-    token_store: str = "~/.garminconnect"
+    #: Beside the config, so that one directory is everything this tool owns.
+    #: What is kept there is a bearer credential for the account, which is why
+    #: `garmin/client.py` has an opinion about who can read it. `config.py`
+    #: resolves `$XDG_CONFIG_HOME` when a real run names no store of its own;
+    #: this literal is the same directory for anyone who has not moved it.
+    token_store: str = "~/.config/repwise"
     activity_search_limit: int = 50
     dump_dir: str = "."
 

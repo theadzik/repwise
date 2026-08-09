@@ -1,11 +1,19 @@
 """The Garmin session wrapper, against a stub API."""
 
+import logging
+import os
+import stat
+from pathlib import Path
+
 import pytest
 from garminconnect import GarminConnectTooManyRequestsError
 
 from repwise.domain.models import GarminSettings
 from repwise.errors import ExitCode, GarminError, NoTerminal, RateLimited
-from repwise.garmin.client import STRENGTH, GarminSession, connect
+from repwise.garmin.client import STRENGTH, GarminSession, connect, forget
+
+#: The permission checks are about POSIX modes; what Windows reports is not one.
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
 
 
 class StubApi:
@@ -198,6 +206,115 @@ def test_refusing_to_prompt_is_a_garmin_error(tmp_path):
 
     with pytest.raises(GarminError, match="No usable Garmin session"):
         connect(settings, prompt=False)
+
+
+# --- the token store ------------------------------------------------------
+
+
+def token_store(tmp_path, mode: int = 0o600, store_mode: int = 0o700):
+    """A store holding a cached token, at the modes the test wants to check.
+
+    The token itself is unusable on purpose: every test here stops at
+    `prompt=False`, and none of them should be able to reach Garmin.
+    """
+    store = tmp_path / "tokens"
+    store.mkdir()
+    (store / "garmin_tokens.json").write_text("{}")
+    (store / "garmin_tokens.json").chmod(mode)
+    store.chmod(store_mode)
+    return GarminSettings(token_store=str(store))
+
+
+def warnings_from(settings, caplog) -> str:
+    """What `connect` warned about on its way to giving up."""
+    with (
+        caplog.at_level(logging.WARNING, logger="repwise.garmin.client"),
+        pytest.raises(GarminError),
+    ):
+        connect(settings, prompt=False)
+    return caplog.text
+
+
+@posix_only
+def test_a_token_file_other_users_can_read_is_warned_about(tmp_path, caplog):
+    """The library writes it 0600; a backup or a copy need not have kept that."""
+    warned = warnings_from(token_store(tmp_path, mode=0o644), caplog)
+
+    assert "currently 644" in warned
+    assert "chmod 600" in warned
+
+
+@posix_only
+def test_a_store_directory_others_can_reach_is_warned_about_too(tmp_path, caplog):
+    warned = warnings_from(token_store(tmp_path, store_mode=0o755), caplog)
+
+    assert "chmod 700" in warned
+
+
+@posix_only
+def test_a_private_store_is_not_mentioned_at_all(tmp_path, caplog):
+    assert "chmod" not in warnings_from(token_store(tmp_path), caplog)
+
+
+def test_a_first_run_has_no_permissions_to_complain_about(tmp_path, caplog):
+    """Nothing cached yet is a first login, not a problem to report."""
+    settings = GarminSettings(token_store=str(tmp_path / "absent"))
+
+    assert "chmod" not in warnings_from(settings, caplog)
+
+
+@posix_only
+def test_a_store_holding_only_the_catalog_is_left_alone(tmp_path, caplog):
+    """`fetch exercises` makes one before any login; there is no token in it."""
+    store = tmp_path / "tokens"
+    store.mkdir()
+    (store / "exercises.json").write_text("{}")
+    store.chmod(0o755)
+
+    settings = GarminSettings(token_store=str(store))
+
+    assert "chmod" not in warnings_from(settings, caplog)
+
+
+@posix_only
+def test_the_mode_is_reported_but_never_repaired(tmp_path, caplog):
+    """Changing the mode of a file nobody asked us to touch is not our business."""
+    settings = token_store(tmp_path, mode=0o644)
+
+    warnings_from(settings, caplog)
+
+    token = Path(settings.token_store) / "garmin_tokens.json"
+    assert stat.S_IMODE(token.stat().st_mode) == 0o644
+
+
+# --- signing out ----------------------------------------------------------
+
+
+def test_forget_deletes_the_cached_token(tmp_path):
+    settings = token_store(tmp_path)
+
+    deleted = forget(settings)
+
+    assert deleted is not None
+    assert not os.path.exists(deleted)
+
+
+def test_forget_leaves_the_exercise_catalog_alone(tmp_path):
+    """A disposable copy of a public file: signing out is no reason to lose it."""
+    settings = token_store(tmp_path)
+    catalog = Path(settings.token_store) / "exercises.json"
+    catalog.write_text("{}")
+
+    forget(settings)
+
+    assert catalog.exists()
+
+
+def test_forget_with_nothing_cached_reports_nothing_deleted(tmp_path):
+    """So the command can tell "signed you out" from "you were not signed in"."""
+    settings = GarminSettings(token_store=str(tmp_path / "absent"))
+
+    assert forget(settings) is None
 
 
 # --- weigh-ins ------------------------------------------------------------
