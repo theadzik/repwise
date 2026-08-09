@@ -6,10 +6,10 @@ from typing import Any
 import pytest
 from builders import CATALOG, payload, rep_step, repeat, spec
 
-from repwise.app import checking
 from repwise.app.checking import _bodyweight, _catalog, run_check
 from repwise.domain.models import Config, GarminSettings, Workout
 from repwise.errors import ExitCode, GarminError
+from repwise.garmin import catalog
 
 CALF = spec(bodyweight_factor=1.0)
 BENCH = spec(name="Barbell Bench Press", garmin_name="BARBELL_BENCH_PRESS")
@@ -90,7 +90,7 @@ def cataloged(monkeypatch):
                 raise outcome
             return outcome
 
-        monkeypatch.setattr(checking, "ensure", fake_ensure)
+        monkeypatch.setattr(catalog, "ensure", fake_ensure)
         return calls
 
     return install
@@ -112,11 +112,13 @@ def test_an_unreachable_catalog_costs_the_name_checks_and_nothing_else(cataloged
 
 
 def test_it_says_out_loud_that_the_names_went_unchecked(cataloged, caplog):
+    """And names the command that retries it, rather than only the failure."""
     cataloged(GarminError("no network"))
 
     _catalog(GarminSettings())
 
-    assert "Exercise names were not checked" in caplog.text
+    assert "exercise names were not checked" in caplog.text
+    assert "repwise fetch exercises" in caplog.text
 
 
 # --- the command, end to end ----------------------------------------------
@@ -187,7 +189,7 @@ def test_the_other_checks_still_run_without_a_catalog(cataloged, caplog):
     wrong = spec(garmin_name="WEIGHTED_BARBELL_BACK_SQUAT", sets=3, rest=90)
 
     assert checked(configured(wrong)) == ExitCode.NOTHING_USABLE
-    assert "Matched by category" in caplog.text
+    assert "different exercises" in caplog.text
 
 
 def test_an_unreachable_workout_is_still_an_error(cataloged, caplog):

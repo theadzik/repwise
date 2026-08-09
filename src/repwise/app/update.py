@@ -9,7 +9,7 @@ workout containing that exercise.
 import json
 import logging
 import os
-from collections.abc import Callable, Hashable, Iterable
+from collections.abc import Callable, Container, Hashable, Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -24,6 +24,7 @@ from ..domain.progression import (
     working_weight,
 )
 from ..errors import ActivityNotFound, ExitCode, GarminError, UsageError
+from ..garmin.catalog import optional
 from ..garmin.client import GarminSession
 from ..garmin.payloads import new_workout, performed_sets
 from ..planner import (
@@ -358,7 +359,11 @@ def definition_for(payloads: Payloads, workout: Workout) -> dict[str, Any]:
 
 
 def shape_untrained(
-    payloads: Payloads, config: Config, trained: set[str]
+    payloads: Payloads,
+    config: Config,
+    trained: set[str],
+    *,
+    trusted: Container[str] | None = None,
 ) -> list[Plan]:
     """Bring every workout with no session behind it in line with the config.
 
@@ -371,7 +376,7 @@ def shape_untrained(
         if workout.key in trained:
             continue
 
-        plan = plan_workout(workout, definition_for(payloads, workout))
+        plan = plan_workout(workout, definition_for(payloads, workout), trusted=trusted)
         if not plan.writable:
             continue
 
@@ -389,12 +394,14 @@ def shape_untrained(
     return plans
 
 
-def advance_trained(
+def advance_trained(  # noqa: PLR0913 - each argument is one independent input
     session: GarminSession,
     payloads: Payloads,
     config: Config,
     options: UpdateOptions,
     sessions: list[Trained],
+    *,
+    trusted: Container[str] | None = None,
 ) -> tuple[list[Plan], bool]:
     """Plan every session that was trained, oldest first.
 
@@ -441,7 +448,9 @@ def advance_trained(
         # this one, and only as far as one of them is still unsettled.
         history = gather_history(session, workout, trained.earlier, performed)
 
-        plan = plan_workout(workout, payload, performed, history, asked)
+        plan = plan_workout(
+            workout, payload, performed, history, asked, trusted=trusted
+        )
         report_plan(plan)
         plans.append(plan)
 
@@ -505,11 +514,23 @@ def run_update(
     except ActivityNotFound as exc:
         sessions, untrained = [], exc
 
+    # Garmin's published names, which decide whether an exercise it holds under
+    # a different name is reused or rebuilt. See `_reconcile`.
+    catalog = optional(
+        config.garmin,
+        "an exercise Garmin holds under another name may be reused rather than rebuilt",
+    )
+    trusted = catalog.names() if catalog else None
+
     plans.extend(
-        shape_untrained(payloads, config, {each.workout.key for each in sessions})
+        shape_untrained(
+            payloads, config, {each.workout.key for each in sessions}, trusted=trusted
+        )
     )
 
-    trained, usable = advance_trained(session, payloads, config, options, sessions)
+    trained, usable = advance_trained(
+        session, payloads, config, options, sessions, trusted=trusted
+    )
     plans.extend(trained)
 
     if not usable and not plans:

@@ -24,7 +24,15 @@ from .. import __version__
 from ..domain.models import GarminSettings
 from ..errors import GarminError
 
-__all__ = ["ExerciseCatalog", "cache_path", "download", "ensure", "load", "save"]
+__all__ = [
+    "ExerciseCatalog",
+    "cache_path",
+    "download",
+    "ensure",
+    "load",
+    "optional",
+    "save",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +102,15 @@ class ExerciseCatalog:
             if held.casefold() == wanted
         )
 
+    def names(self) -> frozenset[str]:
+        """Every exercise Garmin defines, category forgotten.
+
+        What matching needs to tell a real exercise name from one Garmin never
+        published: the first is worth taking at its word, the second is what
+        the category fallback is for.
+        """
+        return frozenset(held for names in self.categories.values() for held in names)
+
     def like(self, name: str, limit: int = 3) -> list[str]:
         """The nearest catalog names to one that is not in it at all.
 
@@ -101,12 +118,41 @@ class ExerciseCatalog:
         constant, and a loose match on 1500 names offers three exercises that
         have nothing to do with the one meant.
         """
-        every = {held for names in self.categories.values() for held in names}
-        return get_close_matches(name, every, n=limit, cutoff=0.8)
+        return get_close_matches(name, self.names(), n=limit, cutoff=0.8)
+
+
+def optional(settings: GarminSettings, cost: str) -> ExerciseCatalog | None:
+    """The catalog, fetched if this is the first run that wants it, or None.
+
+    Downloaded here rather than demanded of the user, because a command that
+    only works after another command has been run is a command that goes unrun,
+    and because what the catalog buys `update` is correctness rather than
+    convenience: without it an exercise Garmin holds under another name is
+    reused instead of rebuilt. Making that protection conditional on having run
+    a setup command leaves it off for exactly the people who have not. Both
+    callers already log in and fetch workouts, so one public, unauthenticated,
+    cached-forever request is no dependency they did not already have.
+
+    A failure costs `cost` and nothing else, and says which command retries it
+    on its own. Both callers are worth running with no network at all.
+    """
+    try:
+        return ensure(settings)
+    except GarminError as exc:
+        logger.warning(f"{exc} - so {cost}.")
+        logger.warning("Run `repwise fetch exercises` to try it on its own.")
+        return None
 
 
 def cache_path(settings: GarminSettings) -> str:
-    return os.path.join(settings.token_store, CACHE_NAME)
+    """Where the cached catalog sits, beside the tokens.
+
+    Expanded here rather than trusted to have been: a config file's token_store
+    is expanded as it is read, but the default on `GarminSettings` is the
+    literal `~/.config/repwise`, and joining that raw makes a directory called
+    `~` wherever the process happens to be standing.
+    """
+    return os.path.join(os.path.expanduser(settings.token_store), CACHE_NAME)
 
 
 def download() -> dict:
@@ -168,10 +214,11 @@ def load(settings: GarminSettings) -> ExerciseCatalog | None:
 def ensure(settings: GarminSettings) -> ExerciseCatalog:
     """The catalog, downloading and caching it if this is the first time.
 
-    So that `check` works on a fresh checkout without a fetch first. Refreshing
-    a stale copy stays explicit - `repwise fetch exercises` - because there is
-    no way to tell a stale catalog from a current one without downloading it,
-    and doing that every run is the cost this cache exists to avoid.
+    So that `check` and `update` work on a fresh checkout without a fetch first.
+    Refreshing a stale copy stays explicit - `repwise fetch exercises` - because
+    there is no way to tell a stale catalog from a current one without
+    downloading it, and doing that every run is the cost this cache exists to
+    avoid.
     """
     cached = load(settings)
     if cached is not None:

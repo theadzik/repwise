@@ -16,6 +16,15 @@ from repwise.errors import GarminError
 from repwise.garmin import catalog as module
 
 
+@pytest.fixture(autouse=True)
+def no_catalog():
+    """Opt out of the suite-wide refusal: fetching is what this module tests.
+
+    Safe here and nowhere else, because every store below is a tmp_path and
+    every download is replaced.
+    """
+
+
 @pytest.fixture
 def settings(tmp_path):
     """A token store that does not exist yet, as on a first run."""
@@ -182,3 +191,43 @@ def test_a_response_that_is_not_a_catalog_is_never_written(settings, served):
     with pytest.raises(GarminError):
         module.ensure(settings)
     assert module.load(settings) is None
+
+
+# --- what a command gets ---------------------------------------------------
+
+
+def test_a_command_gets_the_catalog_without_a_fetch_first(settings, served):
+    served(catalog_payload(SQUAT=("BARBELL_BACK_SQUAT",)))
+
+    found = module.optional(settings, "names went unchecked")
+    assert found is not None
+    assert found.holds("SQUAT", "BARBELL_BACK_SQUAT")
+
+
+def test_an_unreachable_catalog_is_not_an_error(settings, served):
+    """Every caller is worth running degraded rather than blocked."""
+    served(failure=GarminError("no network"))
+
+    assert module.optional(settings, "names went unchecked") is None
+
+
+def test_the_warning_says_the_cost_and_the_cure(settings, served, caplog):
+    served(failure=GarminError("no network"))
+
+    module.optional(settings, "names went unchecked")
+
+    assert "no network" in caplog.text
+    assert "names went unchecked" in caplog.text
+    assert "repwise fetch exercises" in caplog.text
+
+
+def test_the_cache_path_expands_a_home_relative_store():
+    """The default store is a literal `~/.config/repwise`, and is joined raw.
+
+    Left unexpanded it makes a directory called `~` wherever the process is
+    standing, which is how the suite once wrote one into the repository.
+    """
+    path = module.cache_path(GarminSettings())
+
+    assert not path.startswith("~")
+    assert path == str(Path.home() / ".config" / "repwise" / module.CACHE_NAME)

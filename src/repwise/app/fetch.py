@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 def run_fetch_exercises(settings: GarminSettings) -> ExitCode:
     """Download Garmin's exercise catalog, replacing any cached copy.
 
-    Unconditional, unlike the first-run download `check` does for itself:
-    asking for the catalog by name is how you refresh one that has gone stale,
-    so finding a copy already there is not a reason to stop.
+    Unconditional, unlike the first-run download `check` and `update` do for
+    themselves: asking for the catalog by name is how you refresh one that has
+    gone stale, so finding a copy already there is not a reason to stop.
 
     No session is opened. The catalog is public, and requiring a login to
     download it would be a password prompt in exchange for nothing.

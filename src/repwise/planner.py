@@ -6,6 +6,7 @@ It mutates the workout payload it is handed but performs no I/O, so a caller
 can inspect a plan and discard it -- which is what a dry run does.
 """
 
+from collections.abc import Container
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -615,6 +616,7 @@ def _reconcile(
     payload: dict[str, Any],
     structure: list[StructureChange],
     added: set[int],
+    trusted: Container[str] | None = None,
 ) -> None:
     """Make the workout hold the exercises workouts.yaml names, in that order.
 
@@ -623,6 +625,14 @@ def _reconcile(
     progression. An exercise the config names but Garmin lacks is built at the
     bottom of its range; one Garmin has but the config no longer names is
     dropped, which is the config being the source of truth taken seriously.
+
+    `trusted` is every name Garmin publishes, and decides how hard a step is
+    looked for. A `garmin_name` the catalog knows is matched by name alone: a
+    step for some other exercise sharing its category is a different movement,
+    and reusing it would leave the old name on the watch while the sets, reps
+    and note all changed underneath - the swap looking done everywhere except
+    the one place you read it. Rebuilt instead, which restarts the progression,
+    because a target earned on one exercise was never the other's to keep.
 
     Nothing is decided about order beyond what the file says: `set_exercise_steps`
     renumbers, and Garmin sorts by those numbers.
@@ -648,7 +658,7 @@ def _reconcile(
     kept: list[int] = []
 
     for spec in workout.exercises:
-        block = index.find(spec.garmin_name, spec.garmin_category)
+        block = index.find(spec.garmin_name, spec.garmin_category, trusted=trusted)
         if block is None or id(block.outer) in kept:
             # Nothing in Garmin answers to this, or an earlier exercise already
             # claimed the step that does. Either way it needs one of its own.
@@ -746,12 +756,14 @@ def _gaps_for(
     return gaps + [new_rest(seconds) for _ in range(needed - len(gaps))]
 
 
-def plan_workout(
+def plan_workout(  # noqa: PLR0913 - each argument is one independent input
     workout: Workout,
     payload: dict[str, Any],
     performed: Performed | None = None,
     history: History | None = None,
     asked: dict[str, Target] | None = None,
+    *,
+    trusted: Container[str] | None = None,
 ) -> Plan:
     """Bring a workout in line with the config, and advance what was trained.
 
@@ -769,6 +781,11 @@ def plan_workout(
     `asked` is what this session itself was performed against. Without it the
     stored target is assumed to be that, which is only true until something
     moves it - this run's own `--apply`, most of all. See `_moved_on`.
+
+    `trusted` is Garmin's published exercise names, which decide whether an
+    exercise Garmin holds under another name is reused or rebuilt. Without it
+    every name falls back to its category, which is the behaviour this tool had
+    before it could tell a real exercise name from an invented one.
     """
     specs = index_specs(workout.exercises)
 
@@ -777,7 +794,7 @@ def plan_workout(
     structure: list[StructureChange] = []
     added: set[int] = set()
 
-    _reconcile(workout, payload, structure, added)
+    _reconcile(workout, payload, structure, added, trusted)
     shaped.warnings.extend(_renames(structure))
     gaps = _refresh_gaps(workout, payload)
 
