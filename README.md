@@ -36,9 +36,10 @@ repwise update --apply --push     # write it, and send it to your watch
 
 The first command that reaches Garmin asks for your email, password and MFA
 code, then caches the tokens Garmin issues so later runs do not. **Your
-password is never written anywhere. The token is** - in `~/.config/repwise`,
-readable only by you - **and until it expires it is as good as being logged
-in.** `repwise logout` deletes it. See [authentication][troubleshooting-auth].
+password is never written anywhere. The token is** - in
+`settings.garmin.token_store` (defaulting to `~/.config/repwise`), readable
+only by you - **and until it expires it is as good as being logged in.**
+`repwise logout` deletes it. See [authentication][troubleshooting-auth].
 
 **Nothing is written to Garmin without `--apply`.** A dry run is the default.
 
