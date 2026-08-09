@@ -1,3 +1,14 @@
+## 1.1.0 (2026-08-09)
+
+### Feat
+
+- autocompletion (#39) ([ba46a16](https://github.com/theadzik/repwise/commit/ba46a161e3817611db9106108550f8921e8554de))
+- logout, warn token permissions, move default config path (#35) ([5ba854b](https://github.com/theadzik/repwise/commit/5ba854bca87030cf6964e63035d04f1449520848))
+
+### Fix
+
+- allow changing exercises within the same category (#38) ([ada1fc1](https://github.com/theadzik/repwise/commit/ada1fc15cf5ed2ce6a57eae2ae82516986f88d69))
+
 ## 1.0.0 (2026-08-08)
 
 ### Feat
