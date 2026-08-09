@@ -79,7 +79,8 @@ MFA code: 123456
 ```
 
 Run it in a real terminal so you can type them. On success the OAuth tokens
-Garmin issues are cached in `~/.config/repwise`, beside your config, and later
+Garmin issues are cached in `settings.garmin.token_store` (defaulting to
+`~/.config/repwise`, beside your config by default), and later
 runs skip the prompt entirely - which also avoids Garmin's rate-limited login
 endpoint.
 
