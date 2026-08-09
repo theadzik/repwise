@@ -3,12 +3,32 @@
 Declarative on purpose: this module builds a parser and nothing else, so the
 one file to open to answer "which flags exist" holds no behaviour to read
 past. Which function runs is `cli/__init__.py`, keyed by the command name.
+
+The constants below are part of the same statement - words the command line
+accepts, rather than things it does - so they live here too. `completion.py`
+reads them and this parser to write its scripts.
 """
 
 import argparse
 from typing import Any
 
 from .. import __version__
+
+#: `fetch` takes workout ids, and this word instead of them. Safe as a keyword
+#: rather than a flag because a Garmin workout id is a number, so nothing a
+#: user could legitimately pass here is ambiguous with it.
+CATALOG = "exercises"
+
+#: The shells `completion` knows how to write for. One renderer answers each,
+#: in `completion.py`.
+SHELLS = ("bash", "zsh")
+
+#: Words a positional accepts that argparse cannot be told about, keyed by the
+#: command whose positional accepts them. `fetch` takes any number of workout
+#: ids, so it has no `choices` to enumerate and cannot be given one without
+#: rejecting every id there is - but the single word that means something else
+#: to it is still worth completing, and this is what says so.
+SUGGESTIONS: dict[str, tuple[str, ...]] = {"fetch": (CATALOG,)}
 
 
 def add_verbose(
@@ -50,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  repwise import -o f.yaml  build config from Garmin workouts\n"
             "  repwise check             report config/Garmin drift\n"
             "  repwise logout            forget the cached Garmin session\n"
+            "  repwise completion bash   print a shell completion script\n"
             "\n"
             "Your routine lives in workouts.yaml; copy workouts.example.yaml to\n"
             "get started. Nothing is written to Garmin without --apply."
@@ -214,5 +235,26 @@ def build_parser() -> argparse.ArgumentParser:
         "not hand it back, so it stays valid at Garmin's end until it expires.",
     )
     add_verbose(logout)
+
+    completion = sub.add_parser(
+        "completion",
+        help="print a shell completion script",
+        description="Write a completion script to stdout, so that Tab "
+        "finishes commands, options and the files they name. Load it from your "
+        "shell's startup file with `source <(repwise completion bash)`, or "
+        "redirect it into a completions directory to save doing that on every "
+        "shell; under zsh either has to come after `compinit`. The script is "
+        "generated from the same parser that prints this help, so it describes "
+        "the version of repwise that wrote it - upgrade and it is worth "
+        "re-sourcing. Ids are not completed: the only place to look a workout "
+        "or activity id up is Garmin, and a login on every press of Tab is not "
+        "a feature. Reads no config, opens no session and reaches no network, "
+        "which is what makes it safe to run from a startup file in whatever "
+        "directory a shell happens to open in.",
+    )
+    completion.add_argument(
+        "shell", choices=SHELLS, help="the shell to write a script for"
+    )
+    add_verbose(completion)
 
     return parser

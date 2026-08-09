@@ -1,7 +1,8 @@
 # Commands
 
-Full reference. Every command accepts `--config` and `--verbose`, either
-before or after the command name:
+Full reference. Every command accepts `--config` and `--verbose`. `--config`
+belongs to the top level, so it goes before the command name; `--verbose` reads
+either side of it:
 
 ```bash
 repwise --config /path/to/other.yaml update
@@ -23,6 +24,7 @@ stderr, so they stay visible when they do.
 - [check](#check) - find drift between config and Garmin
 - [fetch](#fetch) - download raw payloads, or the exercise catalog
 - [logout](#logout) - forget the cached Garmin session
+- [completion](#completion) - Tab completion for bash and zsh
 - [Exit codes](#exit-codes)
 
 ## update
@@ -583,6 +585,60 @@ No cached session in /home/you/.config/repwise, so nothing to do.
 It opens no session, and needs no network. It does read your config, because
 that is where the token store's location is written; `--config PATH` applies as
 it does everywhere else.
+
+## completion
+
+Writes a Tab completion script to stdout, for `bash` or `zsh`.
+
+```bash
+repwise completion bash
+repwise completion zsh
+```
+
+Load it from your shell's startup file:
+
+```bash
+# ~/.bashrc
+source <(repwise completion bash)
+
+# ~/.zshrc, after compinit
+source <(repwise completion zsh)
+```
+
+That regenerates the script on every shell, so an upgrade needs nothing done
+to it. To avoid the cost instead, write it out once - and remember to do it
+again after upgrading:
+
+```bash
+repwise completion bash > ~/.local/share/bash-completion/completions/repwise
+repwise completion zsh  > ~/.zsh/completions/_repwise   # a directory on $fpath
+```
+
+Under zsh, either has to come after `compinit`, which is what defines the
+`compdef` the script ends with. Sourced too early it says so rather than
+failing quietly.
+
+What it completes:
+
+| Typed | Offered |
+| --- | --- |
+| `repwise <TAB>` | the commands |
+| `repwise update --<TAB>` | that command's options, and no others |
+| `repwise --config <TAB>` | files |
+| `repwise import -o <TAB>` | files |
+| `repwise fetch <TAB>` | `exercises` |
+| `repwise completion <TAB>` | `bash`, `zsh` |
+
+**Workout and activity ids are deliberately not completed.** The only place to
+look one up is Garmin, and that means a login: `repwise list` is how you find a
+workout id, and a press of Tab should not reach the network or prompt for a
+password. For the same reason the command itself reads no config, opens no
+session and needs no network, so it is safe in a startup file that runs in
+whatever directory a shell happens to open in.
+
+The script is generated from the same parser that produces `--help`, so it
+describes the version of repwise that printed it. It cannot list a flag that
+does not exist, or miss one that does.
 
 ## Exit codes
 

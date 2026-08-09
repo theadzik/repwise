@@ -38,6 +38,17 @@ python3 -m venv .venv
 That gives you a `repwise` command inside the virtualenv. Everything also works
 as `python -m repwise` if you would rather not install.
 
+For Tab completion of commands, options and the files they name, add one line
+to your shell's startup file:
+
+```bash
+echo 'source <(repwise completion bash)' >> ~/.bashrc   # bash
+echo 'source <(repwise completion zsh)'  >> ~/.zshrc    # zsh, after compinit
+```
+
+See [completion](commands.md#completion) for what it completes and what it
+deliberately does not.
+
 Python 3.14 or newer is required. `garminconnect` only asks for `>=3.12`; the
 higher floor is this project's own, so that the source can use deferred
 annotation evaluation and argparse's colour and did-you-mean output.

@@ -43,6 +43,9 @@ only by you - **and until it expires it is as good as being logged in.**
 
 **Nothing is written to Garmin without `--apply`.** A dry run is the default.
 
+For Tab completion, add `source <(repwise completion bash)` to `~/.bashrc`, or
+`source <(repwise completion zsh)` to `~/.zshrc` after `compinit`.
+
 The full walkthrough is in [Getting started][getting-started].
 
 ## What it does

@@ -12,7 +12,7 @@ import pytest
 from builders import FIXTURE
 
 from repwise import cli
-from repwise.cli import HANDLERS, build_parser, main
+from repwise.cli import COMPLETION, HANDLERS, build_parser, main
 from repwise.errors import ExitCode, GarminError, RateLimited
 from repwise.log import PACKAGE
 
@@ -77,8 +77,12 @@ def command_names(parser: argparse.ArgumentParser) -> set[str]:
 
 
 def test_every_command_that_parses_has_somewhere_to_go():
-    """Adding a subparser without a handler would be a KeyError at runtime."""
-    assert command_names(build_parser()) == set(HANDLERS)
+    """Adding a subparser without a handler would be a KeyError at runtime.
+
+    `completion` is the documented exception: it is answered before a config
+    is loaded, so it is dispatched by name rather than through the table.
+    """
+    assert command_names(build_parser()) == set(HANDLERS) | {COMPLETION}
 
 
 @pytest.mark.parametrize("command", sorted(HANDLERS))
@@ -101,6 +105,44 @@ def test_the_handler_is_given_the_loaded_config(config, dispatch):
 def test_the_handlers_exit_code_is_the_processs(config, dispatch):
     dispatch(ExitCode.NOTHING_USABLE)
     assert main(["--config", config, "check"]) == ExitCode.NOTHING_USABLE
+
+
+# --- `completion`, which is dispatched before there is a config -----------
+
+
+def test_completion_needs_no_config(capsys, tmp_path, monkeypatch):
+    """The documented way to use it runs from a shell's startup file.
+
+    That is whatever directory a shell opened in, with no workouts.yaml in it
+    and none to be found above it, so needing one would make the command
+    useless where it is meant to be used.
+    """
+    monkeypatch.delenv("REPWISE_CONFIG", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["completion", "bash"]) == ExitCode.OK
+    assert "complete -F _repwise repwise" in capsys.readouterr().out
+
+
+def test_completion_opens_no_session(capsys, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    def refuse(settings):
+        raise AssertionError("connect() was called")
+
+    monkeypatch.setattr(cli, "connect", refuse)
+
+    assert main(["completion", "zsh"]) == ExitCode.OK
+    assert "compdef _repwise repwise" in capsys.readouterr().out
+
+
+def test_completion_refuses_a_shell_it_cannot_write(capsys):
+    """Better than printing a script that would not load."""
+    with pytest.raises(SystemExit):
+        main(["completion", "fish"])
+
+    assert "invalid choice" in capsys.readouterr().err
 
 
 # --- `fetch`, which is two downloads sharing a positional -----------------
