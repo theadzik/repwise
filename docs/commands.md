@@ -104,7 +104,7 @@ twice since the last run, the earlier one is skipped - replay it with
 `--activity` and its id, which `--dump` filenames and Garmin Connect URLs both
 contain. Do that before the later session's run, or apply them in order.
 Re-processing an activity is safe: the second pass reads its own applied target
-and reports "missed target ... repeat" rather than advancing again.
+and reports "missed target" rather than advancing again.
 
 ### Reading the output
 
@@ -113,9 +113,9 @@ Activity: Workout A (1234567890)
 Updating: Workout A -> workout 111111111
 
   # EXERCISE                     ACTION  SETS       BEFORE      AFTER      CONFIG         WHY
-* 1 Barbell Back Squat           advance 3 -> 4  8 x 30 kg  ->  9 x 30 kg  sets rest note add 1 rep (8 -> 9)
-* 2 Sit-up                       hold    3         11 reps  ->  11 reps    note           missed target (10/11 on worst set), repeat
-* 3 Weighted Standing Calf Raise advance 4      12 x 30 kg  ->  13 x 30 kg note           add 1 rep (12 -> 13)
+* 1 Barbell Back Squat           advance 3 -> 4  8 x 30 kg  ->  9 x 30 kg  sets rest note add 1 rep
+* 2 Sit-up                       hold    3         11 reps  ==  11 reps    note           missed target, 10 on the worst set
+* 3 Weighted Standing Calf Raise advance 4      12 x 30 kg  ->  13 x 30 kg note           add 1 rep
 * 4 Plank                        hold    3                                 note           from workouts.yaml
 + 5 Leg Press                    build   3                  ->  6 x 60 kg                 new in workouts.yaml
 -   FACE_PULL                    drop                                                     no longer in workouts.yaml
@@ -252,7 +252,7 @@ Garmin separates exercises with a wait for the lap button. Set
 `rest_between_exercises` on a workout and each of those becomes a countdown:
 
 ```text
-* Between exercises retime lap button  ->  30 s rest 8 gap(s), from workouts.yaml
+*   Between exercises retime      lap button  ->  30 s rest        8 gap(s), from workouts.yaml
 ```
 
 One row for the workout, however many gaps it has, because the config says it
@@ -269,7 +269,7 @@ An exercise's `rest` in `workouts.yaml` is written to the Garmin workout, so
 the file is where you change how long you rest:
 
 ```text
-* 1 Barbell Back Squat advance 3    8 x 30 kg  ->  9 x 30 kg  rest   add 1 rep (8 -> 9)
+* 1 Barbell Back Squat advance 4    8 x 30 kg  ->  9 x 30 kg rest   add 1 rep
 ```
 
 `rest` in the CONFIG column is the whole report of it: the file says how long,
@@ -299,7 +299,7 @@ behaving unlike the others in the same workout. An exercise's `rest` means
 every set of it, so a group set to skip is put back:
 
 ```text
-* 3 Weighted Standing Calf Raise hold 4                       last-rest from workouts.yaml
+* 3 Weighted Standing Calf Raise hold   4                      last-rest from workouts.yaml
 ```
 
 Applied to every exercise, whether or not it declares a `rest`: how long to
@@ -329,7 +329,7 @@ A note that would move puts `note` in the exercise's CONFIG column, so a run
 whose targets all held still still says what it is about to write:
 
 ```text
-* 1 Barbell Back Squat hold 3    7 x 30 kg  ->  7 x 30 kg  note   up to date
+* 1 Barbell Back Squat hold   4    7 x 30 kg  ==  7 x 30 kg note   up to date
 ```
 
 The note itself is not printed: `workouts.yaml` decides it, and the shape above

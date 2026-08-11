@@ -199,11 +199,13 @@ def _achieved(spec: ExerciseSpec, weight: float, reps: list[int]) -> Target:
 
 
 def _missed(spec: ExerciseSpec, current: Target, floor: int) -> str:
-    """Why a session that fell short leaves the target where it was."""
-    if current.lead:
-        asked = current.spread(spec.sets, spec.rep_step)
-        return f"missed target ({floor} on worst set vs {asked}), repeat"
-    return f"missed target ({floor}/{current.reps} on worst set), repeat"
+    """Why a session that fell short leaves the target where it was.
+
+    What was asked is not repeated here: the report shows it, unchanged, in
+    the columns beside this. What the session actually managed is the part
+    only this can say.
+    """
+    return f"missed target, {floor} on the worst set"
 
 
 def _deload(
@@ -229,7 +231,7 @@ def _deload(
     bottom = Target(spec.rep_low, weight)
 
     if _ladder(spec, current) <= _ladder(spec, bottom):
-        stalled = f"stalled at {spec.rep_low} on every set"
+        stalled = "stalled at the bottom of the range"
         if spec.bodyweight or spec.weight_step <= 0:
             return current, f"{stalled}, and there is no load to take off"
         lighter = weight - spec.weight_step
@@ -238,11 +240,7 @@ def _deload(
                 current,
                 f"{stalled}, already at the {spec.min_weight:g} kg minimum",
             )
-        return (
-            Target(spec.rep_low, lighter),
-            f"{stalled}, -{spec.weight_step:g} kg to {lighter:g} kg "
-            f"and climb the range again",
-        )
+        return Target(spec.rep_low, lighter), f"{stalled}, take a step off the load"
 
     # At least one rung down, and no higher than the session managed: a near
     # miss eases by one, and a bad miss drops straight to where you actually
@@ -253,11 +251,13 @@ def _deload(
     if _ladder(spec, eased) < _ladder(spec, bottom):
         eased = bottom  # the range has a floor, and this is it
 
-    return (
-        eased,
-        f"missed {current.spread(spec.sets, spec.rep_step)} twice, ease to "
-        f"{eased.spread(spec.sets, spec.rep_step)}",
-    )
+    # Where it eased *to* is in the report's own columns; how far down that is,
+    # and why that far, is what has to be said here.
+    if eased == bottom:
+        return eased, "missed twice, ease to the bottom of the range"
+    if eased == down:
+        return eased, "missed twice, ease by one set"
+    return eased, "missed twice, ease to where the session landed"
 
 
 def _advance(
@@ -289,16 +289,15 @@ def _advance(
         if spec.bodyweight:
             return (
                 Target(spec.rep_high, weight),
-                "at top of range (bodyweight, add load or hold)",
+                "top of the range, and bodyweight, so nothing to add",
             )
         # The step goes on top of the load actually used, so a session at a
         # different weight moves the prescription by more than one step. Name
-        # what was planned, otherwise the jump looks arbitrary.
-        lifted = f" at {weight:g} kg (planned {current.weight:g} kg)" if rebased else ""
+        # what was lifted, otherwise the jump looks arbitrary.
+        lifted = f" at {weight:g} kg" if rebased else ""
         return (
             Target(spec.rep_low, weight + spec.weight_step),
-            f"hit {floor} on every set{lifted}, +{spec.weight_step:g} kg "
-            f"and reset to {spec.rep_low}",
+            f"hit {floor} on every set{lifted}, top of the range",
         )
 
     # Rule 2, one set at a time. A unit is a `rep_step` on a single set, filled
@@ -314,35 +313,29 @@ def _advance(
         units = min(units, spec.sets - lead)
     lead += units
 
-    moved = f" at {weight:g} kg" if rebased else ""
-    # The step is taken from what was performed, not from the stored target, so
-    # overshooting the target moves the prescription by more than one step. Say
-    # where the new baseline came from, otherwise the jump looks arbitrary.
+    # What each of these adds is a reason the report cannot read off its own
+    # columns: which load the target now belongs to, that the session beat what
+    # it was asked for, and that a stall is being climbed out of.
+    moved = ", rebased on the load you used" if rebased else ""
     beat = ""
     if not rebased and floor > current.reps:
-        beat = f"beat target ({floor} on every set vs {current.reps}), "
+        beat = f"beat target ({floor} on every set), "
     stalled = f"hit after {streak} miss{'es' if streak > 1 else ''}, " if streak else ""
+    plural = "" if spec.rep_step == 1 else "s"
 
     if lead >= spec.sets:
         # Every set is asked for the same figure again, which is a flat target
         # one step up. Capped, so an off-step target cannot overshoot the range.
         reps = min(base + spec.rep_step, spec.rep_high)
-        new = Target(reps, weight)
-        plural = "" if spec.rep_step == 1 else "s"
         return (
-            new,
-            f"{beat}{stalled}add {spec.rep_step} rep{plural} "
-            f"({current.spread(spec.sets, spec.rep_step)} -> "
-            f"{new.spread(spec.sets, spec.rep_step)}){moved}",
+            Target(reps, weight),
+            f"{beat}{stalled}add {spec.rep_step} rep{plural}{moved}",
         )
 
-    new = Target(base, weight, lead)
-    plural = "" if spec.rep_step == 1 else "s"
     return (
-        new,
-        f"{beat}{stalled}add {spec.rep_step} rep{plural} on {units} of "
-        f"{spec.sets} sets ({current.spread(spec.sets, spec.rep_step)} -> "
-        f"{new.spread(spec.sets, spec.rep_step)}){moved}",
+        Target(base, weight, lead),
+        f"{beat}{stalled}add {spec.rep_step} rep{plural} on "
+        f"{units} of {spec.sets} sets{moved}",
     )
 
 
@@ -362,7 +355,7 @@ def next_target(
     Returns the new target plus a short human-readable reason.
     """
     if not performed:
-        return current, "no sets logged, target unchanged"
+        return current, "no sets logged"
 
     # Judge everything at the load actually used, which may not be the load the
     # workout still has stored.
@@ -386,8 +379,7 @@ def next_target(
         return (
             current,
             f"only {floor} at {weight:g} kg, below the "
-            f"{spec.rep_low}-{spec.rep_high} range, keep "
-            f"{current.reps} x {current.weight:g} kg",
+            f"{spec.rep_low}-{spec.rep_high} range",
         )
 
     # Too few sets at that load to judge progression, so bank the load and
@@ -397,7 +389,7 @@ def next_target(
         reps = floor if rebased else current.reps
         return (
             Target(reps, weight),
-            f"only {len(at_weight)}/{spec.sets} sets at {weight:g} kg, consolidate",
+            f"only {len(at_weight)} of {spec.sets} sets logged, consolidate",
         )
 
     # Rule 4: every prescribed set must meet what was asked of it to count as a

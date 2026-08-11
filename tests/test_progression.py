@@ -84,7 +84,7 @@ def test_missing_sets_counts_as_failure():
     """Only two sets logged when five were prescribed."""
     target, why = next_target(LUNGE, Target(9, 4.0), [P(9, 4.0), P(9, 4.0)])
     assert target == Target(9, 4.0)
-    assert "2/5 sets" in why
+    assert "2 of 5 sets" in why
 
 
 def test_bodyweight_does_not_add_weight():
@@ -113,7 +113,7 @@ def test_overshoot_on_some_sets_does_not_accelerate():
 def test_overshoot_on_every_set_advances_by_what_was_done():
     target, why = next_target(SQUAT, Target(7, 20.0), [P(8, 20.0)] * 4)
     assert target == Target(9, 20.0), why
-    assert "beat target (8 on every set vs 7)" in why
+    assert "beat target (8 on every set)" in why
 
 
 def test_matching_the_target_exactly_does_not_mention_beating_it():
@@ -176,23 +176,19 @@ def test_bottom_of_range_to_top_at_a_heavier_load_adds_load_again():
     """Planned 6 x 20, did 10 x 22.5: the session's load is the new baseline."""
     target, why = next_target(FOUR_SET_SQUAT, Target(6, 20.0), [P(10, 22.5)] * 4)
     assert target == Target(6, 25.0), why
-    assert why == (
-        "hit 10 on every set at 22.5 kg (planned 20 kg), +2.5 kg and reset to 6"
-    )
+    assert why == "hit 10 on every set at 22.5 kg, top of the range"
 
 
 def test_top_of_range_at_a_heavier_load_adds_load_from_what_was_lifted():
     """Planned 10 x 20, did 10 x 22.5: step up from 22.5, not from 20."""
     target, why = next_target(FOUR_SET_SQUAT, Target(10, 20.0), [P(10, 22.5)] * 4)
     assert target == Target(6, 25.0), why
-    assert why == (
-        "hit 10 on every set at 22.5 kg (planned 20 kg), +2.5 kg and reset to 6"
-    )
+    assert why == "hit 10 on every set at 22.5 kg, top of the range"
 
 
 def test_top_of_range_at_the_planned_load_does_not_mention_the_load():
     _, why = next_target(FOUR_SET_SQUAT, Target(10, 20.0), [P(10, 20.0)] * 4)
-    assert why == "hit 10 on every set, +2.5 kg and reset to 6"
+    assert why == "hit 10 on every set, top of the range"
 
 
 def test_dropping_weight_rebases_downward():
@@ -208,7 +204,7 @@ def test_heavier_load_below_range_keeps_the_previous_target():
     """The 3 kg pair was taken, so 4 kg x 8 - short of a 12-15 range."""
     target, why = next_target(LATERAL_RAISE, Target(13, 3.0), [P(8, 4.0)] * 3)
     assert target == Target(13, 3.0), why
-    assert why == "only 8 at 4 kg, below the 12-15 range, keep 13 x 3 kg"
+    assert why == "only 8 at 4 kg, below the 12-15 range"
 
 
 def test_heavier_load_at_the_bottom_of_the_range_is_adopted():
@@ -236,7 +232,7 @@ def test_partial_sets_within_range_are_still_banked():
     """Rule 5 does not swallow the consolidate case when the reps are fine."""
     target, why = next_target(LATERAL_RAISE, Target(13, 3.0), [P(12, 4.0)] * 2)
     assert target == Target(12, 4.0), why
-    assert "2/3 sets" in why
+    assert "2 of 3 sets" in why
 
 
 def test_dropping_below_the_range_is_not_adopted_either():
@@ -249,7 +245,7 @@ def test_same_load_below_the_range_still_reads_as_a_missed_target():
     """Rule 4 owns the unchanged-load case, so its wording is unaffected."""
     target, why = next_target(LATERAL_RAISE, Target(13, 3.0), [P(8, 3.0)] * 3)
     assert target == Target(13, 3.0)
-    assert "missed target (8/13 on worst set), repeat" in why
+    assert "missed target, 8 on the worst set" in why
 
 
 def test_heavier_load_can_still_top_out_the_range():
@@ -318,7 +314,7 @@ def test_rep_step_still_earns_the_weight_jump_at_the_top():
 def test_rep_step_defaults_to_one():
     assert SQUAT.rep_step == 1
     _, why = next_target(SQUAT, Target(7, 20.0), [P(7, 20.0)] * 3)
-    assert "add 1 rep " in why, "singular wording for the default step"
+    assert "add 1 rep" in why, "singular wording for the default step"
 
 
 # --- granular progression -------------------------------------------------
@@ -342,7 +338,7 @@ def test_a_hit_after_two_misses_moves_only_two_sets():
     assert target == Target(8, 20.0, lead=2), why
     assert target.spread(4) == "8+2"
     assert "hit after 2 misses" in why
-    assert "add 1 rep on 2 of 4 sets (8 -> 8+2)" in why
+    assert "add 1 rep on 2 of 4 sets" in why
 
 
 def test_a_hit_after_one_miss_moves_all_but_one():
@@ -393,7 +389,7 @@ def test_missing_the_high_sets_of_a_ramp_is_a_miss():
     ramped = Target(8, 20.0, lead=2)
     target, why = next_target(FOUR_SET_SQUAT, ramped, [P(8, 20.0)] * 4)
     assert target == ramped
-    assert "missed target (8 on worst set vs 8+2), repeat" in why
+    assert "missed target, 8 on the worst set" in why
 
 
 def test_beating_a_ramp_everywhere_levels_it_and_advances_from_there():
@@ -542,11 +538,11 @@ LIGHT_RAISE = spec(
 def test_the_first_miss_is_a_bad_day_and_repeats():
     target, why = next_target(BARBELL_SQUAT, Target(9, 20.0), [P(8, 20.0)] * 3)
     assert target == Target(9, 20.0), why
-    assert "repeat" in why
+    assert "missed target" in why
 
 
 def test_the_second_miss_in_a_row_eases_the_target():
-    """9,9,9 missed twice becomes 9,9,8 - one set easier, where you landed."""
+    """`9` missed twice becomes `8+2` - one set easier, where you landed."""
     target, why = next_target(
         BARBELL_SQUAT, Target(9, 20.0), [P(9, 20.0), P(9, 20.0), P(8, 20.0)], streak=1
     )
@@ -584,7 +580,7 @@ def test_at_the_bottom_of_the_range_the_weight_comes_off():
         BARBELL_SQUAT, Target(6, 20.0), [P(5, 20.0)] * 3, streak=1
     )
     assert target == Target(6, 17.5), why
-    assert "-2.5 kg" in why
+    assert "take a step off the load" in why
 
 
 def test_a_deload_climbs_the_range_again_rather_than_starting_at_the_top():

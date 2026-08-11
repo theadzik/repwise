@@ -287,9 +287,19 @@ def render(built: list[Row]) -> list[str]:
             f"{row.after:<{width['after']}} {row.config:<{width['config']}} {row.why}"
         ).rstrip()
 
-    return [line(HEADING, "      ")] + [
-        line(row, "  ->  " if row.after else "      ") for row in built
-    ]
+    return [line(HEADING, "      ")] + [line(row, joins(row)) for row in built]
+
+
+def joins(row: Row) -> str:
+    """What sits between the two value columns.
+
+    `==` where the two agree, because a target being asked for again is a
+    result in its own right - the session was read, judged, and the number
+    stands - and an arrow to the same figure reads like a change that isn't.
+    """
+    if not row.after:
+        return "      "
+    return "  ==  " if row.before == row.after else "  ->  "
 
 
 def report_plan(plan: Plan) -> None:

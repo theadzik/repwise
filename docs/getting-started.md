@@ -120,9 +120,9 @@ Activity: Workout B (1234567890)
 Updating: Workout B -> workout 111111111
 
   # EXERCISE               ACTION  SETS     BEFORE      AFTER     CONFIG WHY
-* 1 Barbell Deadlift       advance 3    10 x 60 kg  ->  6 x 65 kg        hit 10 on every set, +5 kg and reset to 6
-* 2 Dumbbell Lateral Raise advance 3     12 x 8 kg  ->  13 x 8 kg note   add 1 rep (12 -> 13)
-  3 Sit-up                 hold    3       11 reps  ->  11 reps          missed target (10/11 on worst set), repeat
+* 1 Barbell Deadlift       advance 3    10 x 60 kg  ->  6 x 65 kg        hit 10 on every set, top of the range
+* 2 Dumbbell Lateral Raise advance 3     12 x 8 kg  ->  13 x 8 kg note   add 1 rep
+  3 Sit-up                 hold    3       11 reps  ==  11 reps          missed target, 10 on the worst set
 ! Standing Calf Raise: not found in the activity, skipped
 
 Dry run: 2 step(s) would change. Re-run with --apply.

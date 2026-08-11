@@ -196,7 +196,8 @@ pair was taken, would come back as `9 x 4 kg` - a target below the range you
 programmed, off the back of a jump you had not earned. What you get instead is:
 
 ```text
-  Dumbbell Lateral Raise      13 x 3 kg  ->  13 x 3 kg   (only 8 at 4 kg, below the 12-15 range, keep 13 x 3 kg)
+  # EXERCISE               ACTION SETS    BEFORE      AFTER     CONFIG WHY
+  1 Dumbbell Lateral Raise hold   3    13 x 3 kg  ==  13 x 3 kg        only 8 at 4 kg, below the 12-15 range
 ```
 
 This is checked before the set count, so a heavier load that was only managed
@@ -204,7 +205,7 @@ for some of its sets is not banked either.
 
 It applies in both directions - a deload rebases downward only while it still
 lands in the range - but only when the load changed. At an unchanged load a
-short session is already rule 4's "missed target, repeat".
+short session is already rule 4's "missed target".
 
 Persistent rejections mean `weight_step` is too big for the range: at 3 kg a
 1 kg dumbbell step is a 33% jump, which a 12-15 range cannot absorb. Widen the
