@@ -339,7 +339,8 @@ def sync_other_workouts(
 
         logger.info("")
         logger.info(f"Also in {other.key} (workout {other.garmin_workout_id}):")
-        report_plan(plan, force_flag="*")
+        logger.info("")
+        report_plan(plan)
         plans.append(plan)
 
     return plans

@@ -169,6 +169,10 @@ class StructureChange:
     #: so that the report can say in the added exercise's own place what would
     #: otherwise be a line here, a line further down, and a paragraph below.
     replaces: str | None = None
+    #: Where it used to sit, on a move. The report gives where an exercise is
+    #: now a column of its own, so where it came from is the new thing to say
+    #: about one that moved.
+    previous: int | None = None
 
     @property
     def garmin_name(self) -> str:
@@ -736,7 +740,11 @@ def _reconcile(
 
     at = {id(steps[0]): position for position, steps in enumerate(outers)}
     for ident in _out_of_order(kept, was, at):
-        structure.append(StructureChange("moved", labels[ident], at[ident] + 1))
+        structure.append(
+            StructureChange(
+                "moved", labels[ident], at[ident] + 1, previous=was[ident] + 1
+            )
+        )
 
     if structure:
         set_exercise_steps(

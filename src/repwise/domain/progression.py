@@ -51,10 +51,16 @@ class Target:
         return [self.reps + rep_step] * higher + [self.reps] * (sets - higher)
 
     def spread(self, sets: int, rep_step: int = 1) -> str:
-        """How to write this target: `8` when flat, `9,9,8,8` when ramped."""
+        """How to write this target: `8` when flat, `8+2` when it is ramped.
+
+        `8+2` is eight reps on every set with two of them asked for a step
+        more. Written that way rather than set by set - `9,9,8,8` - because
+        those are the two numbers the rules move, and spelling every set out
+        grows with the set count while saying nothing extra.
+        """
         if not self.lead:
             return str(self.reps)
-        return ",".join(str(reps) for reps in self.per_set(sets, rep_step))
+        return f"{self.reps}+{min(self.lead, sets)}"
 
 
 @dataclass(frozen=True)
@@ -108,8 +114,8 @@ def hit(spec: ExerciseSpec, target: Target, reps: list[int]) -> bool:
     of them have to reach the higher one.
 
     The higher rung is counted rather than compared set by set, so the order
-    the watch happened to log them in does not decide it. Against a 9,9,8,8
-    target, 8,9,9,8 is two nines and two eights, which is what was asked.
+    the watch happened to log them in does not decide it. Against a target of
+    `8+2`, 8,9,9,8 is two nines and two eights, which is what was asked.
     """
     if not reps:
         return False
@@ -165,8 +171,8 @@ def _ladder(spec: ExerciseSpec, target: Target) -> int:
     """Where a target sits on the ladder, so two of them can be compared.
 
     Rungs are counted rather than measured: `lead` is a fraction of a rep
-    spread across the sets, so a plain rep count could not order `9,9,8,8`
-    against `9,8,8,8`.
+    spread across the sets, so a plain rep count could not order `8+2` against
+    `8+1`.
     """
     return target.reps * spec.sets + min(target.lead, spec.sets - 1)
 

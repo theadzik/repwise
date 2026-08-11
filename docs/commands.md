@@ -109,57 +109,45 @@ and reports "missed target ... repeat" rather than advancing again.
 ### Reading the output
 
 ```text
-Activity: Workout B (1234567890)
-Updating: Workout B -> workout 111111111
+Activity: Workout A (1234567890)
+Updating: Workout A -> workout 111111111
 
-* Barbell Deadlift          10 x 60 kg  ->  6 x 65 kg    (hit 10 on every set, +5 kg and reset to 6)
-  Sit-up                       11 reps  ->  11 reps      (missed target (10/11 on worst set), repeat)
-* Standing Calf Raise         12 x 0 kg  ->  12 x 20 kg  (add 1 rep (12 -> 13))
+  # EXERCISE                     ACTION  SETS       BEFORE      AFTER      CONFIG         WHY
+* 1 Barbell Back Squat           advance 3 -> 4  8 x 30 kg  ->  9 x 30 kg  sets rest note add 1 rep (8 -> 9)
+* 2 Sit-up                       hold    3         11 reps  ->  11 reps    note           missed target (10/11 on worst set), repeat
+* 3 Weighted Standing Calf Raise advance 4      12 x 30 kg  ->  13 x 30 kg note           add 1 rep (12 -> 13)
+* 4 Plank                        hold    3                                 note           from workouts.yaml
++ 5 Leg Press                    build   3                  ->  6 x 60 kg                 new in workouts.yaml
+-   FACE_PULL                    drop                                                     no longer in workouts.yaml
+! Plank: not found in the activity, skipped
 
-Also in Workout A (workout 222222222):
-* Standing Calf Raise         12 x 0 kg  ->  12 x 20 kg  (synced from Workout B)
-
-Activity: Workout A (1234567891)
-Updating: Workout A -> workout 222222222
-
-* Barbell Back Squat         7 x 30 kg  ->  8 x 30 kg    (add 1 rep (7 -> 8))
-  ! Plank: not found in the activity, skipped
-
-Dry run: 4 step(s) would change. Re-run with --apply.
+Dry run: 2 step(s) would change, 2 exercise(s) would be added, removed or moved, 1 set count(s) would change, 1 rest time(s) would change, 4 note(s) would be refreshed. Re-run with --apply.
 ```
 
-One block per workout that had a session, oldest first, each headed by the
+One table per workout that had a session, oldest first, each headed by the
 activity it learned from. A workout the config changed but no session touched
-gets a block of its own, headed `Shaping:` or `Creating:` instead.
+gets a table of its own, headed `Shaping:` or `Creating:` instead.
 
-| Marker | Meaning |
+**One exercise, one row**, in the order `exercises` puts it in, whatever the run
+decided about it. Every column says one thing:
+
+| Column | What it holds |
 | --- | --- |
-| `*` | This step would change |
-| *(space)* | Unchanged, with the reason why |
-| `!` | Warning: the exercise was skipped, and why |
-| `+` `-` `~` | An exercise added, removed, or moved. See [ordering](#ordering-adding-and-removing) |
-
-Targets print in the unit the exercise is measured in - `6 x 65 kg` for loaded
-work, `11 reps` for bodyweight, `47 s` for timed holds.
-
-**One exercise, one line**, in the order `exercises` puts it in. Everything the
-run decided about it is on that line: the columns go to the target it earned,
-or to the first thing the config moved when no session touched it, and anything
-else is named in the brackets beside it:
-
-```text
-~ Face Pull                                          no note  ->  8-12 reps | +5 kg (moved to position 2; note from workouts.yaml)
-* Barbell Back Squat                               8 x 30 kg  ->  9 x 30 kg         (hit 8 on every set; sets, rest, note from workouts.yaml)
-```
-
-So `sets`, `rest` and `note` say that those will be rewritten from
-`workouts.yaml` without repeating what the file already tells you; the closing
-line counts them. A structural marker wins over `*`, because an exercise
-arriving, leaving or moving is the larger fact about it.
+| *(marker)* | `*` this run writes it, *(space)* read and left alone, `+` `-` `~` added, dropped or moved. See [ordering](#ordering-adding-and-removing) |
+| `#` | Where it sits in the workout. Blank for an exercise being dropped |
+| ACTION | What is happening: `advance` `hold` `ease` for a target, `build` `drop` `move` for the shape, `retime` for the rest between exercises |
+| SETS | What the workout prescribes, and `3 -> 4` when you change it |
+| BEFORE, AFTER | The target, in the unit the exercise is measured in - `6 x 65 kg` loaded, `11 reps` bodyweight, `47 s` for a timed hold. See [coming back from a stall](progression.md#coming-back-from-a-stall) for `8+2` |
+| CONFIG | What `workouts.yaml` would rewrite here: `sets`, `rest`, `note`, `last-rest`. The file itself says what to, so only the fact is worth a column |
+| WHY | The session's verdict, or where an exercise came from, or the config being the reason |
 
 An exercise the config no longer names comes after the ones it does, the rest
 between exercises last of all, and warnings after everything, since those are
-the lines that go to stderr.
+the lines that go to stderr. Columns are as wide as their widest cell, so a
+workout of short names is not read across a gap of spaces.
+
+An `ACTION` of `hold` with nothing in `CONFIG` and a blank marker is the one row
+you can skip: read, judged, nothing to write.
 
 The closing line counts everything else the run would touch:
 
@@ -184,8 +172,9 @@ about. `update --apply` builds it, and writes the id it is given back into
 ```text
 Creating: Workout C
 
-+ Front Squat                                                 ->  4 x 6 x 40 kg     (new at position 1)
-+ Romanian Deadlift                                           ->  3 x 8 x 60 kg     (new at position 2)
+  # EXERCISE          ACTION SETS BEFORE      AFTER     CONFIG WHY
++ 1 Front Squat       build  4            ->  6 x 40 kg        new in workouts.yaml
++ 2 Romanian Deadlift build  3            ->  8 x 60 kg        new in workouts.yaml
 
 Created Workout C (workout 1234567890)
 Recorded its id in /home/you/workouts.yaml
@@ -211,19 +200,17 @@ The order of `exercises` in the config is the order of the workout. Reordering,
 adding and removing all show up under their own markers:
 
 ```text
-+ Front Squat                                                 ->  3 x 8 x 20 kg     (new at position 4)
-- Leg Curl                                                                          (removed: no longer in workouts.yaml)
-~ Plank                                                                             (moved to position 1)
+  # EXERCISE    ACTION SETS BEFORE      AFTER     CONFIG WHY
+~ 1 Plank       move   3                                 from position 3
++ 3 Front Squat build  4            ->  8 x 20 kg        new in workouts.yaml
+-   LEG_CURL    drop                                     no longer in workouts.yaml
 ```
 
-They print in the same columns as a target, so what a new exercise starts at
-lines up with the numbers around it.
-
-| Marker | Meaning |
-| --- | --- |
-| `+` | The config names an exercise Garmin does not have, so it is built |
-| `-` | Garmin has one the config no longer names, so it is dropped |
-| `~` | It is still there, in a different place |
+| Marker | ACTION | Meaning |
+| --- | --- | --- |
+| `+` | `build` | The config names an exercise Garmin does not have, so it is built at the bottom of its range |
+| `-` | `drop` | Garmin has one the config no longer names, so it is dropped. It has no `#`, being nowhere in the workout now |
+| `~` | `move` | It is still there, in a different place. `#` is where it is now, and WHY says where it came from |
 
 **An exercise moved keeps everything it had** - its target, its sets, its rest
 and its notes travel with it, because the step itself is moved rather than
@@ -231,21 +218,20 @@ rebuilt.
 
 **An exercise removed loses its target for good.** There is nowhere else that
 number is stored. The dry run lists every removal before anything is written,
-which is the moment to check that a `-` line is a decision and not a typo in a
+which is the moment to check that a `-` row is a decision and not a typo in a
 `garmin_name`.
 
 A plan that removes one exercise and adds another that looks like the same
 movement says so, because that is what a mistyped `garmin_name` produces. It is
-one line, where the new exercise sits, plus a warning at the end:
+one row, where the new exercise sits, plus a warning at the end:
 
 ```text
-+ Lat Pull-down                                               ->  3 x 8 x 50 kg     (replaces LAT_PULLDOWN, new at position 3)
-  ! Lat Pull-down replaces LAT_PULLDOWN: if that is a renamed garmin_name
-    rather than a swap, its target is lost
++ 3 Lat Pull-down build  3            ->  8 x 50 kg        replaces LAT_PULLDOWN
+! Lat Pull-down replaces LAT_PULLDOWN: if that is a renamed garmin_name rather than a swap, its target is lost
 ```
 
-The removal has no `-` line of its own: the exercise taking over from it says
-so already.
+The removal has no `-` row of its own: the exercise taking over from it says so
+already.
 
 It is a warning rather than a refusal, because deliberately swapping a movement
 for a variant of it looks identical from here. Matching a name and matching a
@@ -266,10 +252,10 @@ Garmin separates exercises with a wait for the lap button. Set
 `rest_between_exercises` on a workout and each of those becomes a countdown:
 
 ```text
-* Between exercises                    lap button  ->  30 s rest     (8 gap(s), from workouts.yaml)
+* Between exercises retime lap button  ->  30 s rest 8 gap(s), from workouts.yaml
 ```
 
-One line for the workout, however many gaps it has, because the config says it
+One row for the workout, however many gaps it has, because the config says it
 once. Leave the key out and Garmin's own steps are left alone, whether they
 wait for the button or were given a time in Connect.
 
@@ -283,10 +269,12 @@ An exercise's `rest` in `workouts.yaml` is written to the Garmin workout, so
 the file is where you change how long you rest:
 
 ```text
-* Barbell Back Squat            120 s rest  ->  150 s rest    (rest from workouts.yaml)
+* 1 Barbell Back Squat advance 3    8 x 30 kg  ->  9 x 30 kg  rest   add 1 rep (8 -> 9)
 ```
 
-Like the notes below, this is config-driven rather than earned: nothing in a
+`rest` in the CONFIG column is the whole report of it: the file says how long,
+and repeating that here would only say it twice. Like the notes below, this is
+config-driven rather than earned: nothing in a
 session moves a rest, so an edit to the file is on its own a reason to write a
 workout. Leaving `rest` out of an exercise is having no opinion about it, and
 Garmin's own value is kept.
@@ -298,7 +286,7 @@ would change how the workout is performed rather than correct a value, so it is
 reported and left alone:
 
 ```text
-  ! Barbell Back Squat: rest is not a fixed time in Garmin, left alone (wanted 150s)
+! Barbell Back Squat: rest is not a fixed time in Garmin, left alone (wanted 150s)
 ```
 
 Set that step to a timed rest in Garmin Connect if you want the config to drive
@@ -311,7 +299,7 @@ behaving unlike the others in the same workout. An exercise's `rest` means
 every set of it, so a group set to skip is put back:
 
 ```text
-* Weighted Standing Calf Raise  no last rest  ->  rest after every set  (was skipping the last rest)
+* 3 Weighted Standing Calf Raise hold 4                       last-rest from workouts.yaml
 ```
 
 Applied to every exercise, whether or not it declares a `rest`: how long to
@@ -337,28 +325,22 @@ or a `weight_step` updates them. That is a reason to write a workout in its own
 right: a config edit moves no target, and without it the notes would go stale
 until your next session happened to earn something.
 
-A note that would move is named on the exercise's own line, so a run whose
-targets all held still still says what it is about to write:
+A note that would move puts `note` in the exercise's CONFIG column, so a run
+whose targets all held still still says what it is about to write:
 
 ```text
-* Barbell Back Squat                               7 x 30 kg  ->  7 x 30 kg         (up to date; note from workouts.yaml)
+* 1 Barbell Back Squat hold 3    7 x 30 kg  ->  7 x 30 kg  note   up to date
 ```
 
-The target keeps the columns, since that is the number the line is read for.
-Where nothing was trained there is no target to show and the note takes them
-instead, in full - and a step with nothing in its notes field reads `no note`
-on the left:
-
-```text
-* Barbell Back Squat                       6-10 reps | +2.5 kg  ->  6-12 reps | +2.5 kg (note from workouts.yaml)
-```
+The note itself is not printed: `workouts.yaml` decides it, and the shape above
+says what it will read.
 
 **A note you wrote yourself is never overwritten.** If a step's notes hold
 anything that is not in the shape above - a coaching cue, say - the tool
 reports it and leaves it alone:
 
 ```text
-  ! Barbell Back Squat: has its own note, left alone (wanted '6-10 reps | +5 kg')
+! Barbell Back Squat: has its own note, left alone (wanted '6-10 reps | +5 kg')
 ```
 
 Clear the field in Garmin Connect if you would rather have the generated note

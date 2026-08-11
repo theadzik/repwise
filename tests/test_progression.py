@@ -340,14 +340,14 @@ def test_a_hit_after_two_misses_moves_only_two_sets():
         FOUR_SET_SQUAT, Target(8, 20.0), [P(8, 20.0)] * 4, streak=2
     )
     assert target == Target(8, 20.0, lead=2), why
-    assert target.spread(4) == "9,9,8,8"
+    assert target.spread(4) == "8+2"
     assert "hit after 2 misses" in why
-    assert "add 1 rep on 2 of 4 sets (8 -> 9,9,8,8)" in why
+    assert "add 1 rep on 2 of 4 sets (8 -> 8+2)" in why
 
 
 def test_a_hit_after_one_miss_moves_all_but_one():
     target, _ = next_target(FOUR_SET_SQUAT, Target(8, 20.0), [P(8, 20.0)] * 4, streak=1)
-    assert target.spread(4) == "9,9,9,8"
+    assert target.spread(4) == "8+3"
 
 
 def test_a_hit_always_earns_at_least_one_set():
@@ -355,7 +355,7 @@ def test_a_hit_always_earns_at_least_one_set():
     target, why = next_target(
         FOUR_SET_SQUAT, Target(8, 20.0), [P(8, 20.0)] * 4, streak=9
     )
-    assert target.spread(4) == "9,8,8,8", why
+    assert target.spread(4) == "8+1", why
 
 
 def test_a_ramped_target_levels_up_before_the_base_moves():
@@ -385,7 +385,7 @@ def test_a_ramp_can_widen_a_step_at_a_time_while_stalling():
         [P(9, 20.0)] * 2 + [P(8, 20.0)] * 2,
         streak=3,
     )
-    assert target.spread(4) == "9,9,9,8"
+    assert target.spread(4) == "8+3"
 
 
 def test_missing_the_high_sets_of_a_ramp_is_a_miss():
@@ -393,7 +393,7 @@ def test_missing_the_high_sets_of_a_ramp_is_a_miss():
     ramped = Target(8, 20.0, lead=2)
     target, why = next_target(FOUR_SET_SQUAT, ramped, [P(8, 20.0)] * 4)
     assert target == ramped
-    assert "missed target (8 on worst set vs 9,9,8,8), repeat" in why
+    assert "missed target (8 on worst set vs 8+2), repeat" in why
 
 
 def test_beating_a_ramp_everywhere_levels_it_and_advances_from_there():
@@ -429,12 +429,12 @@ def test_a_ramp_steps_by_rep_step():
     """Per-side counting ramps 18,18,16,16 rather than 17,17,16,16."""
     target, _ = next_target(LUNGE_DOUBLED, Target(16, 4.0), [P(16, 4.0)] * 4, streak=2)
     assert target == Target(16, 4.0, lead=2)
-    assert target.spread(4, rep_step=2) == "18,18,16,16"
+    assert target.spread(4, rep_step=2) == "16+2"
 
 
 def test_a_timed_hold_ramps_in_seconds():
     target, _ = next_target(PLANK, Target(47, 0.0), held(47, 47, 47), streak=1)
-    assert target.spread(3) == "48,48,47"
+    assert target.spread(3) == "47+2"
 
 
 # --- how a target is written ----------------------------------------------
@@ -551,7 +551,7 @@ def test_the_second_miss_in_a_row_eases_the_target():
         BARBELL_SQUAT, Target(9, 20.0), [P(9, 20.0), P(9, 20.0), P(8, 20.0)], streak=1
     )
     assert target == Target(8, 20.0, lead=2), why
-    assert target.spread(3) == "9,9,8"
+    assert target.spread(3) == "8+2"
     assert "ease" in why
 
 
@@ -634,7 +634,7 @@ def test_a_deload_and_the_climb_back_are_the_same_ladder():
     eased, _ = next_target(
         BARBELL_SQUAT, Target(9, 20.0), [P(9, 20.0), P(9, 20.0), P(8, 20.0)], streak=1
     )
-    assert eased.spread(3) == "9,9,8"
+    assert eased.spread(3) == "8+2"
 
     back, _ = next_target(
         BARBELL_SQUAT, eased, [P(9, 20.0), P(9, 20.0), P(8, 20.0)], streak=0

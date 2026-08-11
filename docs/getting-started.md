@@ -119,10 +119,11 @@ Garmin, and prints what it would change:
 Activity: Workout B (1234567890)
 Updating: Workout B -> workout 111111111
 
-* Barbell Deadlift          10 x 60 kg  ->  6 x 65 kg    (hit 10 on every set, +5 kg and reset to 6)
-* Dumbbell Lateral Raise      12 x 8 kg  ->  13 x 8 kg   (add 1 rep (12 -> 13))
-  Sit-up                       11 reps  ->  11 reps      (missed target (10/11 on worst set), repeat)
-  ! Standing Calf Raise: not found in the activity, skipped
+  # EXERCISE               ACTION  SETS     BEFORE      AFTER     CONFIG WHY
+* 1 Barbell Deadlift       advance 3    10 x 60 kg  ->  6 x 65 kg        hit 10 on every set, +5 kg and reset to 6
+* 2 Dumbbell Lateral Raise advance 3     12 x 8 kg  ->  13 x 8 kg note   add 1 rep (12 -> 13)
+  3 Sit-up                 hold    3       11 reps  ->  11 reps          missed target (10/11 on worst set), repeat
+! Standing Calf Raise: not found in the activity, skipped
 
 Dry run: 2 step(s) would change. Re-run with --apply.
 ```
@@ -130,7 +131,7 @@ Dry run: 2 step(s) would change. Re-run with --apply.
 **Nothing has been written.** A dry run is the default, and `update` cannot
 write without `--apply`.
 
-Read the reasons in brackets. If a target moved in a way you did not expect,
+Read the WHY column. If a target moved in a way you did not expect,
 [progression](progression.md) explains every decision the tool can make. If an
 exercise was skipped, the name in your config probably does not match Garmin's;
 see [configuration](configuration.md#finding-your-exercise-identifiers).

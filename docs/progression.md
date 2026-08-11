@@ -46,21 +46,26 @@ session earns one per set, which is the whole target moving exactly as it
 always has. A stall behind it buys fewer, and the sets that miss out stay where
 they were:
 
-| Sets | Missed before | Advance | `8,8,8,8` becomes |
+| Sets | Missed before | Advance | `8` becomes |
 | --- | --- | --- | --- |
-| 4 | none | 4 | `9,9,9,9` |
-| 4 | once | 3 | `9,9,9,8` |
-| 4 | twice | 2 | `9,9,8,8` |
-| 4 | three times or more | 1 | `9,8,8,8` |
+| 4 | none | 4 | `9` |
+| 4 | once | 3 | `8+3` |
+| 4 | twice | 2 | `8+2` |
+| 4 | three times or more | 1 | `8+1` |
+
+**`8+2` is eight reps on every set, with two of them asked for nine.** That is
+how an uneven target is written throughout - in the report, in the reasons and
+here - rather than set by set as `9,9,8,8`: the base and how many sets are a
+step ahead are the two numbers the rules move.
 
 A hit always earns at least one set, however long the stall, or there would be
 no way out of one.
 
-**The sets level up before the base moves.** From `9,9,8,8`, a clean session
-goes to `9,9,9,9` rather than `10,10,9,9`: an uneven target is a way through a
-stall rather than a shape to keep, so it closes at the first opportunity even
-when the session earned more than it needed. Only once every set agrees again
-does the figure itself go up.
+**The sets level up before the base moves.** From `8+2`, a clean session goes
+to `9` rather than `9+2`: an uneven target is a way through a stall rather than
+a shape to keep, so it closes at the first opportunity even when the session
+earned more than it needed. Only once every set agrees again does the figure
+itself go up.
 
 Two things end a run of misses besides hitting the target:
 
@@ -109,8 +114,8 @@ A worked stall, squat 6-10 x 3 sets, 2.5 kg step:
 | Session | Target | Performed | Next | Why |
 | --- | --- | --- | --- | --- |
 | 1 | `9` | 9,9,8 | `9` | First miss, bad day, repeat |
-| 2 | `9` | 9,9,8 | `9,9,8` | Missed twice, ease one set |
-| 3 | `9,9,8` | 9,9,8 | `9` | Hit it, levels up |
+| 2 | `9` | 9,9,8 | `8+2` | Missed twice, ease one set |
+| 3 | `8+2` | 9,9,8 | `9` | Hit it, levels up |
 
 And a stall that runs out of range:
 
@@ -223,7 +228,8 @@ actually performed:
 
 Case 4 is judged set by set rather than against a single figure, since an
 uneven target does not ask the same of all of them. It is counted rather than
-matched in order - `8,9,9,8` against `9,9,8,8` is two nines and two eights,
+matched in order - 8,9,9,8 against a target of `8+2` is two nines and two
+eights,
 which is what was asked - because the watch logs what you did, not which set
 was meant to be the hard one.
 
@@ -263,11 +269,11 @@ The same squat, coming back from a stall rather than progressing smoothly:
 
 | Stored target | Performed | Missed before | Next target | Why |
 | --- | --- | --- | --- | --- |
-| 8 x 20 | 8,8,8,8 @ 20 | twice | `9,9,8,8` x 20 | Two sets earned, two held back |
-| `9,9,8,8` x 20 | 9,9,8,8 @ 20 | none | 9 x 20 | Levelled up, flat again |
-| `9,9,8,8` x 20 | 9,9,8,8 @ 20 | three times | `9,9,9,8` x 20 | One more set levelled |
-| `9,9,8,8` x 20 | 8,8,8,8 @ 20 | - | `9,9,8,8` x 20 | The two nines were missed |
-| `9,9,8,8` x 20 | 10,10,10,10 @ 20 | - | 6 x 22.5 | Topped the range regardless |
+| 8 x 20 | 8,8,8,8 @ 20 | twice | `8+2` x 20 | Two sets earned, two held back |
+| `8+2` x 20 | 9,9,8,8 @ 20 | none | 9 x 20 | Levelled up, flat again |
+| `8+2` x 20 | 9,9,8,8 @ 20 | three times | `8+3` x 20 | One more set levelled |
+| `8+2` x 20 | 8,8,8,8 @ 20 | - | `8+2` x 20 | The two nines were missed |
+| `8+2` x 20 | 10,10,10,10 @ 20 | - | 6 x 22.5 | Topped the range regardless |
 
 ## Timed holds
 
