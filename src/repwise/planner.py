@@ -7,7 +7,7 @@ can inspect a plan and discard it -- which is what a dry run does.
 """
 
 from collections.abc import Container
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .domain.matching import ExerciseIndex, normalise
@@ -164,6 +164,11 @@ class StructureChange:
     #: Garmin's category for it, kept so that an addition and a removal can be
     #: recognised as the same movement under two names.
     category: str | None = None
+    #: The exercise being dropped that this one looks like a renaming of. Only
+    #: ever set on an addition, and only where `_same_movement` paired the two,
+    #: so that the report can say in the added exercise's own place what would
+    #: otherwise be a line here, a line further down, and a paragraph below.
+    replaces: str | None = None
 
     @property
     def garmin_name(self) -> str:
@@ -199,6 +204,21 @@ class Plan:
     @property
     def moved(self) -> list[Change]:
         return [change for change in self.changes if change.moved]
+
+    @property
+    def reshaped(self) -> list[StructureChange]:
+        """The structural changes that are worth a line of their own.
+
+        Which is all of them except a removal some addition already says it
+        replaces: that has been reported in the added exercise's own line, and
+        counting it separately would promise a line nothing prints.
+        """
+        replaced = {change.replaces for change in self.structure if change.replaces}
+        return [
+            change
+            for change in self.structure
+            if not (change.kind == "removed" and change.name in replaced)
+        ]
 
     @property
     def writable(self) -> bool:
@@ -574,29 +594,48 @@ def _same_movement(added: StructureChange, removed: StructureChange) -> bool:
     return bool(new and old and (new in old or old in new))
 
 
-def _renames(structure: list[StructureChange]) -> list[str]:
-    """Warn where a removal and an addition are probably the same exercise.
+def _pair_renames(structure: list[StructureChange]) -> list[StructureChange]:
+    """Note on each addition the removal it is probably the same exercise as.
 
     Removing one and building another is what a mistyped `garmin_name` looks
     like from in here, and it is not a cheap mistake: the target lives in the
     step being dropped, and nothing else remembers it.
 
-    Reported rather than prevented, because it is also what deliberately
-    swapping one movement for a variant of it looks like, and this cannot tell
-    the two apart. The dry run is where the difference gets noticed.
+    Paired one to one, so that a workout swapping two exercises at once does
+    not read as either of them replacing both. The pairing is carried on the
+    change rather than turned into prose here, because where a warning belongs
+    on the page is the report's business - see `report_plan`.
     """
-    warnings = []
-    for added in [change for change in structure if change.kind == "added"]:
-        for removed in [change for change in structure if change.kind == "removed"]:
-            if not _same_movement(added, removed):
-                continue
-            warnings.append(
-                f"{added.name}: added while {removed.name} is removed, and the "
-                f"two look like the same exercise. If that is a renamed "
-                f"garmin_name rather than a swap, the target on "
-                f"{removed.name} is about to be lost with it"
-            )
-    return warnings
+    unclaimed = [change for change in structure if change.kind == "removed"]
+
+    paired = list(structure)
+    for position, change in enumerate(paired):
+        if change.kind != "added":
+            continue
+        removed = next(
+            (each for each in unclaimed if _same_movement(change, each)), None
+        )
+        if removed is None:
+            continue
+        unclaimed.remove(removed)
+        paired[position] = replace(change, replaces=removed.name)
+    return paired
+
+
+def _renames(structure: list[StructureChange]) -> list[str]:
+    """Say out loud that a paired addition may be losing a target.
+
+    Reported rather than prevented, because a rename is also what deliberately
+    swapping one movement for a variant of it looks like, and this cannot tell
+    the two apart. The dry run is where the difference gets noticed, so the
+    line only has to be short enough to be read there.
+    """
+    return [
+        f"{change.name} replaces {change.replaces}: if that is a renamed "
+        f"garmin_name rather than a swap, its target is lost"
+        for change in structure
+        if change.replaces
+    ]
 
 
 def _index_blocks(blocks: list[ExerciseBlock]) -> ExerciseIndex[ExerciseBlock]:
@@ -795,6 +834,7 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
     added: set[int] = set()
 
     _reconcile(workout, payload, structure, added, trusted)
+    structure = _pair_renames(structure)
     shaped.warnings.extend(_renames(structure))
     gaps = _refresh_gaps(workout, payload)
 

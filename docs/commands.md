@@ -142,6 +142,12 @@ gets a block of its own, headed `Shaping:` or `Creating:` instead.
 Targets print in the unit the exercise is measured in - `6 x 65 kg` for loaded
 work, `11 reps` for bodyweight, `47 s` for timed holds.
 
+Within a block the lines follow the workout: an exercise's own lines - what it
+is, what it asks for, its sets, its rest, its note - sit together, in the order
+`exercises` puts it in. An exercise the config no longer names comes after the
+ones it does, and warnings after everything, since those are the lines that go
+to stderr.
+
 The closing line counts everything else the run would touch:
 
 ```text
@@ -165,8 +171,8 @@ about. `update --apply` builds it, and writes the id it is given back into
 ```text
 Creating: Workout C
 
-+ Front Squat                              new at position 1, 4 x 6 x 40 kg
-+ Romanian Deadlift                        new at position 2, 3 x 8 x 60 kg
++ Front Squat                                                 ->  4 x 6 x 40 kg     (new at position 1)
++ Romanian Deadlift                                           ->  3 x 8 x 60 kg     (new at position 2)
 
 Created Workout C (workout 1234567890)
 Recorded its id in /home/you/workouts.yaml
@@ -192,10 +198,13 @@ The order of `exercises` in the config is the order of the workout. Reordering,
 adding and removing all show up under their own markers:
 
 ```text
-+ Front Squat                              new at position 4, 3 x 8 x 20 kg
-- Leg Curl                                 removed: no longer in workouts.yaml
-~ Plank                                    moved to position 1
++ Front Squat                                                 ->  3 x 8 x 20 kg     (new at position 4)
+- Leg Curl                                                                          (removed: no longer in workouts.yaml)
+~ Plank                                                                             (moved to position 1)
 ```
+
+They print in the same columns as a target, so what a new exercise starts at
+lines up with the numbers around it.
 
 | Marker | Meaning |
 | --- | --- |
@@ -213,13 +222,17 @@ which is the moment to check that a `-` line is a decision and not a typo in a
 `garmin_name`.
 
 A plan that removes one exercise and adds another that looks like the same
-movement says so, because that is what a mistyped `garmin_name` produces:
+movement says so, because that is what a mistyped `garmin_name` produces. It is
+one line, where the new exercise sits, plus a warning at the end:
 
 ```text
-  ! Lat Pull-down: added while LAT_PULLDOWN is removed, and the two look like
-    the same exercise. If that is a renamed garmin_name rather than a swap, the
-    target on LAT_PULLDOWN is about to be lost with it
++ Lat Pull-down                                               ->  3 x 8 x 50 kg     (replaces LAT_PULLDOWN, new at position 3)
+  ! Lat Pull-down replaces LAT_PULLDOWN: if that is a renamed garmin_name
+    rather than a swap, its target is lost
 ```
+
+The removal has no `-` line of its own: the exercise taking over from it says
+so already.
 
 It is a warning rather than a refusal, because deliberately swapping a movement
 for a variant of it looks identical from here. Matching a name and matching a

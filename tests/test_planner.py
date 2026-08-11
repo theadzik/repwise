@@ -605,7 +605,7 @@ def test_a_rename_caught_by_the_shared_category_is_warned_about():
     plan = plan_workout(a_workout(exercises=[typo, front]), built)
 
     assert {c.kind for c in plan.structure} == {"added", "removed"}
-    assert any("about to be lost" in w for w in plan.warnings)
+    assert any("its target is lost" in w for w in plan.warnings)
 
 
 def test_a_rename_caught_by_the_name_alone_is_warned_about():
@@ -616,7 +616,54 @@ def test_a_rename_caught_by_the_name_alone_is_warned_about():
 
     plan = plan_workout(a_workout(exercises=[weighted]), built)
 
-    assert any("about to be lost" in w for w in plan.warnings)
+    assert any("its target is lost" in w for w in plan.warnings)
+
+
+def test_the_addition_carries_the_removal_it_looks_like_a_rename_of():
+    """Which is what lets the report say it once, where the exercise now sits."""
+    plain = replace(CALF, garmin_name="LEG_CURL", garmin_category=None)
+    weighted = replace(plain, garmin_name="WEIGHTED_LEG_CURL")
+    built = payload(group_of(plain, 12, 20.0))
+
+    plan = plan_workout(a_workout(exercises=[weighted]), built)
+
+    added = [c for c in plan.structure if c.kind == "added"]
+    assert [c.replaces for c in added] == ["LEG_CURL"]
+
+
+def test_a_paired_removal_is_not_a_change_of_its_own():
+    """One exercise replacing another is one line, and so one thing counted."""
+    plain = replace(CALF, garmin_name="LEG_CURL", garmin_category=None)
+    weighted = replace(plain, garmin_name="WEIGHTED_LEG_CURL")
+    built = payload(group_of(plain, 12, 20.0))
+
+    plan = plan_workout(a_workout(exercises=[weighted]), built)
+
+    assert len(plan.structure) == 2
+    assert [c.kind for c in plan.reshaped] == ["added"]
+
+
+def test_two_renames_at_once_are_paired_off_one_to_one():
+    """Neither addition may claim both removals, or each would warn twice."""
+    curl = replace(CALF, garmin_name="LEG_CURL", garmin_category=None)
+    press = replace(
+        CALF, name="Leg Press", garmin_name="LEG_PRESS", garmin_category=None
+    )
+    built = payload(group_of(curl, 12, 20.0), group_of(press, 12, 40.0))
+
+    plan = plan_workout(
+        a_workout(
+            exercises=[
+                replace(curl, garmin_name="WEIGHTED_LEG_CURL"),
+                replace(press, garmin_name="WEIGHTED_LEG_PRESS"),
+            ]
+        ),
+        built,
+    )
+
+    added = [c for c in plan.structure if c.kind == "added"]
+    assert [c.replaces for c in added] == ["LEG_CURL", "LEG_PRESS"]
+    assert len(plan.warnings) == 2
 
 
 def test_swapping_in_a_different_movement_is_not_warned_about():
