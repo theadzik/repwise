@@ -735,7 +735,7 @@ def _reconcile(
             )
 
     at = {id(steps[0]): position for position, steps in enumerate(outers)}
-    for ident in _out_of_order(kept, was):
+    for ident in _out_of_order(kept, was, at):
         structure.append(StructureChange("moved", labels[ident], at[ident] + 1))
 
     if structure:
@@ -744,7 +744,9 @@ def _reconcile(
         )
 
 
-def _out_of_order(kept: list[int], was: dict[int, int]) -> list[int]:
+def _out_of_order(
+    kept: list[int], was: dict[int, int], now: dict[int, int]
+) -> list[int]:
     """The fewest exercises whose moving accounts for the new order.
 
     Everything that held its relative place is left out of the report, and what
@@ -752,28 +754,40 @@ def _out_of_order(kept: list[int], was: dict[int, int]) -> list[int]:
     plank from last to first reads as every other exercise moving down one -
     true of their positions, and useless to read.
 
+    More than one run can be the longest: swap two exercises around a third and
+    any two of them explain it, so which two are named is a real choice. It
+    goes to the run holding the exercises that are still at the position they
+    were at, which is the one that names the exercises you actually moved -
+    otherwise swapping the second and fourth can report the third, which never
+    moved at all, and say nothing about the fourth, which crossed it.
+
     Longest increasing subsequence, quadratic, over a handful of exercises.
     """
     if not kept:
         return []
 
     before = [was[ident] for ident in kept]
-    longest = [1] * len(before)
+    #: Whether each is at the same position as before, which only breaks ties.
+    still = [int(was[ident] == now[ident]) for ident in kept]
+    #: What a run is judged on: how many exercises it holds, and then how many
+    #: of those never moved. Longer always wins; the second only settles a tie.
+    best = [(1, stayed) for stayed in still]
     came_from = [-1] * len(before)
     for later in range(len(before)):
         for earlier in range(later):
-            if (
-                before[earlier] < before[later]
-                and longest[earlier] + 1 > longest[later]
-            ):
-                longest[later] = longest[earlier] + 1
+            if before[earlier] >= before[later]:
+                continue
+            length, stayed = best[earlier]
+            through = (length + 1, stayed + still[later])
+            if through > best[later]:
+                best[later] = through
                 came_from[later] = earlier
 
-    at = max(range(len(before)), key=lambda position: longest[position])
+    end = max(range(len(before)), key=lambda position: best[position])
     in_place = set()
-    while at != -1:
-        in_place.add(at)
-        at = came_from[at]
+    while end != -1:
+        in_place.add(end)
+        end = came_from[end]
 
     return [ident for position, ident in enumerate(kept) if position not in in_place]
 

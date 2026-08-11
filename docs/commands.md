@@ -142,11 +142,24 @@ gets a block of its own, headed `Shaping:` or `Creating:` instead.
 Targets print in the unit the exercise is measured in - `6 x 65 kg` for loaded
 work, `11 reps` for bodyweight, `47 s` for timed holds.
 
-Within a block the lines follow the workout: an exercise's own lines - what it
-is, what it asks for, its sets, its rest, its note - sit together, in the order
-`exercises` puts it in. An exercise the config no longer names comes after the
-ones it does, and warnings after everything, since those are the lines that go
-to stderr.
+**One exercise, one line**, in the order `exercises` puts it in. Everything the
+run decided about it is on that line: the columns go to the target it earned,
+or to the first thing the config moved when no session touched it, and anything
+else is named in the brackets beside it:
+
+```text
+~ Face Pull                                          no note  ->  8-12 reps | +5 kg (moved to position 2; note from workouts.yaml)
+* Barbell Back Squat                               8 x 30 kg  ->  9 x 30 kg         (hit 8 on every set; sets, rest, note from workouts.yaml)
+```
+
+So `sets`, `rest` and `note` say that those will be rewritten from
+`workouts.yaml` without repeating what the file already tells you; the closing
+line counts them. A structural marker wins over `*`, because an exercise
+arriving, leaving or moving is the larger fact about it.
+
+An exercise the config no longer names comes after the ones it does, the rest
+between exercises last of all, and warnings after everything, since those are
+the lines that go to stderr.
 
 The closing line counts everything else the run would touch:
 
@@ -242,7 +255,10 @@ category both have to fail before it can happen at all, so filling in
 
 Only genuine moves are reported. Adding an exercise at the top shifts the
 position of everything under it without any of that being a move, so those
-lines do not appear.
+lines do not appear. Where more than one set of moves explains the new order -
+swapping the second exercise with the fourth is two moves whichever two you
+name - the ones reported are those no longer at the position they were at, so
+the exercise they crossed is left out of it.
 
 ### Rest between exercises
 
@@ -321,15 +337,21 @@ or a `weight_step` updates them. That is a reason to write a workout in its own
 right: a config edit moves no target, and without it the notes would go stale
 until your next session happened to earn something.
 
-A note that would move is reported like any other change the config makes, so
-a run whose targets all held still still names what it is about to write:
+A note that would move is named on the exercise's own line, so a run whose
+targets all held still still says what it is about to write:
 
 ```text
-  Barbell Back Squat            7 x 30 kg  ->  7 x 30 kg       (up to date)
-* Barbell Back Squat  6-10 reps | +2.5 kg  ->  6-12 reps | +2.5 kg (note from workouts.yaml)
+* Barbell Back Squat                               7 x 30 kg  ->  7 x 30 kg         (up to date; note from workouts.yaml)
 ```
 
-A step with nothing in its notes field reads `no note` on the left.
+The target keeps the columns, since that is the number the line is read for.
+Where nothing was trained there is no target to show and the note takes them
+instead, in full - and a step with nothing in its notes field reads `no note`
+on the left:
+
+```text
+* Barbell Back Squat                       6-10 reps | +2.5 kg  ->  6-12 reps | +2.5 kg (note from workouts.yaml)
+```
 
 **A note you wrote yourself is never overwritten.** If a step's notes hold
 anything that is not in the shape above - a coaching cue, say - the tool

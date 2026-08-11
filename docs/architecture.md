@@ -169,11 +169,11 @@ That is also why the report helpers are in `app/report.py` rather than in
 session while the next one is still being fetched; what it emits is a log
 record, and where that record lands is `main()`'s business alone.
 
-Within one plan the lines are built before any is emitted, because a plan is
-read in the order the workout is performed rather than the order the planner
-decided things in. Each helper renders one line and knows nothing about where
-it goes; `report_plan` puts them in the config's order, so everything about an
-exercise appears where that exercise is.
+A plan is turned inside out on its way to the page. The planner carries a list
+per kind of change, which is how they are decided; a plan is read per exercise,
+in the order the workout is performed. So `report_plan` gathers everything
+about one exercise into one `Gathered`, writes it as one line, and puts the
+lines in the config's order.
 
 ## Data flow
 

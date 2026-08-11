@@ -5,10 +5,11 @@ describes: INFO is the report the user asked for and lands on stdout, WARNING
 and above are problems and land on stderr. A use case therefore emits its
 report without knowing where the report goes - only `main()` decides that.
 
-A plan is read as the workout is performed, top to bottom, so the lines are
-built before any of them is logged and laid out in that order rather than in
-the order the planner happened to decide things. Each kind of change therefore
-renders itself and says nothing about where it goes; `report_plan` places it.
+One exercise gets one line, wherever workouts.yaml puts it. Everything a plan
+decided about it - where it now sits, what it asks for, how many sets, resting
+how long, described how - is gathered first and written once, so the report is
+read down the page as the workout is performed rather than as the planner
+happened to decide things.
 """
 
 import logging
@@ -42,23 +43,30 @@ SEVERITY = {
 #: set by set - `9,9,8,8 x 30 kg` - so that a ramp does not push every reason
 #: beside it out of line.
 COLUMN = 17
+#: How wide the name is. The longest exercise name anyone writes, near enough,
+#: and what keeps the columns beside it in line when one is longer.
+NAME = 40
 
-#: The order one exercise's own lines go in, when it has more than one. What
-#: the step is comes before what it asks of you, which comes before how it is
-#: described - the same shape the whole report used to have, kept per exercise.
-SHAPE, TARGET, SETS, REST, SKIP, NOTE = range(6)
+#: The marker each kind of structural change prints under. Deliberately not
+#: `*`: these change what the workout is, not what it asks of you.
+STRUCTURE = {"added": "+", "removed": "-", "moved": "~"}
 
 
-@dataclass(frozen=True)
-class Line:
-    """One rendered line, and where in the workout it belongs.
+@dataclass
+class Gathered:
+    """Everything one plan decided about one exercise.
 
-    `at` is the exercise's place in workouts.yaml and then the rank above, so
-    that sorting on it alone puts every line under the exercise it is about.
+    Filled from the lists a `Plan` carries, which are each about one kind of
+    change; this is the same information the other way round, by exercise,
+    which is how it is read.
     """
 
-    at: tuple[int, int]
-    text: str
+    shape: StructureChange | None = None
+    change: Change | None = None
+    sets: SetChange | None = None
+    rest: RestChange | None = None
+    skip: SkipChange | None = None
+    note: NoteChange | None = None
 
 
 def describe(spec: ExerciseSpec, target: Target) -> str:
@@ -76,71 +84,21 @@ def describe(spec: ExerciseSpec, target: Target) -> str:
     return f"{figure} x {target.weight:g} kg"
 
 
-def report_change(change: Change, force_flag: str | None = None) -> str:
-    flag = force_flag or ("*" if change.moved else " ")
-    return (
-        f"{flag} {change.spec.name:<40}"
-        f" {describe(change.spec, change.old):>{COLUMN}}"
-        f"  ->  {describe(change.spec, change.new):<{COLUMN}} ({change.reason})"
-    )
+def report_line(marker: str, name: str, old: str, new: str, detail: str) -> str:
+    """The one shape every line of a plan has.
 
-
-def report_prescribed(name: str, old: str, new: str, source: str) -> str:
-    """A number workouts.yaml moved, in the same columns as a target.
-
-    Shown like a target rather than hidden like a note: these change how the
-    workout is performed, and are on the watch from the next sync.
+    An exercise being dropped or moved has no figure to show, so it gets an
+    empty column rather than an arrow into one; a newly built exercise has an
+    after and no before, which is exactly what it is.
     """
-    return f"* {name:<40} {old:>{COLUMN}}  ->  {new:<{COLUMN}} ({source})"
-
-
-def report_note(change: NoteChange) -> str:
-    """The one-line note the watch shows, which workouts.yaml also decides.
-
-    Shown rather than hidden because a config edit that only touches the
-    programming - a rep range, a weight step - moves no target at all, and the
-    run would otherwise say every exercise is up to date while still having a
-    reason to write.
-    """
-    return report_prescribed(
-        change.spec.name,
-        change.old or "no note",
-        change.new,
-        "note from workouts.yaml",
-    )
-
-
-def report_rest(change: RestChange) -> str:
-    return report_prescribed(
-        change.spec.name,
-        f"{change.old} s rest",
-        f"{change.new} s rest",
-        "rest from workouts.yaml",
-    )
-
-
-def report_sets(change: SetChange) -> str:
-    return report_prescribed(
-        change.spec.name,
-        f"{change.old} sets",
-        f"{change.new} sets",
-        "sets from workouts.yaml",
-    )
-
-
-def report_skips(change: SkipChange) -> str:
-    """A group that had been dropping the rest after its final set."""
-    return report_prescribed(
-        change.spec.name,
-        "no last rest",
-        "rest after every set",
-        "was skipping the last rest",
-    )
+    arrow = "  ->  " if new else "      "
+    return f"{marker} {name:<{NAME}} {old:>{COLUMN}}{arrow}{new:<{COLUMN}} ({detail})"
 
 
 def report_gaps(change: GapChange) -> str:
     """The rest between exercises: one line for the workout, not one per gap."""
-    return report_prescribed(
+    return report_line(
+        "*",
         "Between exercises",
         change.before,
         f"{change.new} s rest",
@@ -148,95 +106,137 @@ def report_gaps(change: GapChange) -> str:
     )
 
 
-#: The marker each kind of structural change prints under. Deliberately not
-#: `*`: these change what the workout is, not what it asks of you.
-STRUCTURE = {"added": "+", "removed": "-", "moved": "~"}
+def shape_detail(shape: StructureChange) -> str:
+    """Why a structural line is there, in the words the marker needs explaining.
 
-
-def report_shaped(marker: str, name: str, target: str, detail: str) -> str:
-    """A structural change, in the same columns as a target.
-
-    The before column is always empty - none of these moves a figure to
-    another figure - so what a newly built exercise starts at lands under the
-    targets around it and is read the same way, and why the line is there goes
-    where every other reason goes. An exercise being dropped or moved has no
-    figure at all, and shows an empty column rather than an arrow into one.
+    An addition that looks like a rename names what it takes over from, so the
+    removal it pairs with needs no line of its own: one line, in the new
+    exercise's place, saying both halves of what happened.
     """
-    arrow = "  ->  " if target else "      "
-    return f"{marker} {name:<40} {'':>{COLUMN}}{arrow}{target:<{COLUMN}} ({detail})"
+    if shape.kind == "removed":
+        return "removed: no longer in workouts.yaml"
+    if shape.kind != "added":
+        return f"moved to position {shape.position}"
+    if shape.replaces:
+        return f"replaces {shape.replaces}, new at position {shape.position}"
+    return f"new at position {shape.position}"
 
 
-def report_structure(change: StructureChange) -> str:
-    """An exercise the config added, dropped, or put somewhere else.
+def prescribed(each: Gathered) -> list[tuple[str, str, str]]:
+    """What workouts.yaml moved on this exercise: what it is called, and its
+    before and after.
 
-    An addition that looks like a rename carries the exercise it takes over
-    from, so the removal it pairs with needs no line of its own: one line, in
-    the new exercise's place, saying both halves of what happened.
+    In the order the columns are offered to them, so an exercise with no target
+    to show shows the first of these instead. The skip is here for its figures
+    only - it is not something the config asks for, but something it stops.
     """
-    target = ""
-    if change.kind == "added" and change.spec and change.target:
-        target = f"{change.spec.sets} x {describe(change.spec, change.target)}"
-        detail = f"new at position {change.position}"
-        if change.replaces:
-            detail = f"replaces {change.replaces}, {detail}"
-    elif change.kind == "removed":
-        detail = "removed: no longer in workouts.yaml"
-    else:
-        detail = f"moved to position {change.position}"
-
-    return report_shaped(STRUCTURE.get(change.kind, " "), change.name, target, detail)
+    entries = []
+    if each.sets:
+        entries.append(("sets", f"{each.sets.old} sets", f"{each.sets.new} sets"))
+    if each.rest:
+        entries.append(("rest", f"{each.rest.old} s rest", f"{each.rest.new} s rest"))
+    if each.skip:
+        entries.append(("last rest", "no last rest", "rest after every set"))
+    if each.note:
+        entries.append(("note", each.note.old or "no note", each.note.new))
+    return entries
 
 
-def _places(plan: Plan) -> dict[str, int]:
-    """Where each exercise sits in workouts.yaml, by the name lines print under."""
-    return {spec.name: place for place, spec in enumerate(plan.workout.exercises)}
+def report_marker(
+    each: Gathered, config: list[tuple[str, str, str]], force: str | None
+) -> str:
+    """What the line is flagged with: what it is, before what it asks for.
+
+    A structural marker wins, because an exercise arriving, leaving or moving
+    is the larger fact about it; `*` then means something would be written, and
+    a blank that the exercise was read and left alone.
+    """
+    if each.shape:
+        return STRUCTURE.get(each.shape.kind, " ")
+    if each.change and force:
+        return force
+    if config or (each.change and each.change.moved):
+        return "*"
+    return " "
 
 
-def _lines(plan: Plan, force_flag: str | None) -> list[Line]:
-    """Every line the plan has to show, each tagged with where it belongs.
+def report_exercise(name: str, each: Gathered, force_flag: str | None = None) -> str:
+    """One exercise's whole line: the change worth showing, and the rest named.
+
+    The columns go to what was earned in a session, or failing that to what the
+    config moved, because a target is the number anyone reads a plan for. The
+    others are named beside it rather than spelled out: that they will be
+    written is the useful part, and the file itself says what to.
+    """
+    config = prescribed(each)
+    reasons = []
+    old = new = ""
+
+    if each.shape:
+        reasons.append(shape_detail(each.shape))
+        if each.shape.kind == "added" and each.shape.spec and each.shape.target:
+            spec, target = each.shape.spec, each.shape.target
+            new = f"{spec.sets} x {describe(spec, target)}"
+
+    if each.change:
+        old = describe(each.change.spec, each.change.old)
+        new = describe(each.change.spec, each.change.new)
+        reasons.append(each.change.reason)
+    elif not new and config:
+        _, old, new = config[0]
+
+    if each.skip:
+        reasons.append("was skipping the last rest")
+
+    detail = ", ".join(reasons)
+    named = [label for label, _, _ in config if label != "last rest"]
+    if named:
+        # Joined on with a semicolon, because the list itself is separated by
+        # commas: `hit 8 on every set; sets, note from workouts.yaml` is two
+        # things, and `hit 8 on every set, sets, note ...` looks like four.
+        asked = f"{', '.join(named)} from workouts.yaml"
+        detail = f"{detail}; {asked}" if detail else asked
+
+    return report_line(report_marker(each, config, force_flag), name, old, new, detail)
+
+
+def gather(plan: Plan) -> dict[str, Gathered]:
+    """Everything the plan says, by the exercise it says it about."""
+    found: dict[str, Gathered] = {}
+
+    def of(name: str) -> Gathered:
+        return found.setdefault(name, Gathered())
+
+    for shape in plan.reshaped:
+        of(shape.name).shape = shape
+    for change in plan.changes:
+        of(change.spec.name).change = change
+    for count in plan.sets:
+        of(count.spec.name).sets = count
+    for rest in plan.rests:
+        of(rest.spec.name).rest = rest
+    for skip in plan.skips:
+        of(skip.spec.name).skip = skip
+    for note in plan.notes:
+        of(note.spec.name).note = note
+    return found
+
+
+def report_plan(plan: Plan, force_flag: str | None = None) -> None:
+    """The whole plan, an exercise to a line, in the config's own order.
 
     An exercise the config no longer names has no place among the ones it does,
     so a removal goes after them; the rest between exercises belongs to the
     whole workout and goes last of all.
     """
-    places = _places(plan)
-    dropped = len(places)
+    places = {spec.name: place for place, spec in enumerate(plan.workout.exercises)}
+    gathered = gather(plan)
 
-    def place(name: str) -> int:
-        return places.get(name, dropped)
+    for name in sorted(gathered, key=lambda name: places.get(name, len(places))):
+        logger.info(report_exercise(name, gathered[name], force_flag))
 
-    lines = [
-        Line((place(change.name), SHAPE), report_structure(change))
-        for change in plan.reshaped
-    ]
-    lines += [
-        Line((place(change.spec.name), TARGET), report_change(change, force_flag))
-        for change in plan.changes
-    ]
-    lines += [
-        Line((place(count.spec.name), SETS), report_sets(count)) for count in plan.sets
-    ]
-    lines += [
-        Line((place(rest.spec.name), REST), report_rest(rest)) for rest in plan.rests
-    ]
-    lines += [
-        Line((place(skip.spec.name), SKIP), report_skips(skip)) for skip in plan.skips
-    ]
-    lines += [
-        Line((place(note.spec.name), NOTE), report_note(note)) for note in plan.notes
-    ]
     if plan.gaps:
-        lines.append(Line((dropped + 1, SHAPE), report_gaps(plan.gaps)))
-    return lines
-
-
-def report_plan(plan: Plan, force_flag: str | None = None) -> None:
-    # Sorted rather than emitted as they were decided, so that an exercise
-    # added halfway down the workout is reported halfway down the report.
-    # Stable, so two lines with the same claim on a place keep the order the
-    # planner put them in.
-    for line in sorted(_lines(plan, force_flag), key=lambda line: line.at):
-        logger.info(line.text)
+        logger.info(report_gaps(plan.gaps))
 
     # Last, and together: these are the only lines that go to stderr, so where
     # they land among the others is not ours to decide anyway.

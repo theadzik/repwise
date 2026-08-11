@@ -512,6 +512,25 @@ def test_moving_one_exercise_is_reported_as_one_move():
     ]
 
 
+def test_a_swap_reports_the_two_that_swapped_and_not_the_one_between():
+    """Either exercise of a swap, or the one they cross, explains the new order
+    in two moves. It goes to the two that are no longer where they were."""
+    built = payload(
+        group_of(SQUAT, 7, 20.0),
+        group_of(CURLS, 10, 7.0),
+        group_of(LATERAL, 12, 5.0),
+        group_of(CALF, 15, 20.0),
+    )
+    config = a_workout(exercises=[SQUAT, CALF, LATERAL, CURLS])
+
+    plan = plan_workout(config, built, ({}, {}))
+
+    assert [(c.name, c.position) for c in plan.structure] == [
+        ("Weighted Standing Calf Raise", 2),
+        ("Standing Alternating Dumbbell Curls", 4),
+    ], "the lateral raise never moved, so it is not one of the two"
+
+
 def test_a_moved_exercise_keeps_the_target_it_had():
     """The whole reason for moving the step rather than building a new one."""
     built = payload(group_of(SQUAT, 7, 20.0), group_of(CURLS, 13, 7.0))

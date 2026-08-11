@@ -13,7 +13,7 @@ from builders import spec
 from repwise.app.report import report_plan
 from repwise.domain.models import Workout
 from repwise.domain.progression import Target
-from repwise.planner import Change, NoteChange, Plan, StructureChange
+from repwise.planner import Change, NoteChange, Plan, SetChange, StructureChange
 
 FIRST = spec(name="Barbell Back Squat", garmin_name="BARBELL_BACK_SQUAT")
 MIDDLE = spec(name="Lat Pull-down", garmin_name="LAT_PULLDOWN_WIDE_GRIP")
@@ -25,13 +25,14 @@ def report_at_info(caplog):
     caplog.set_level(logging.INFO)
 
 
-def a_plan(*, structure=(), changes=(), notes=(), warnings=()):
+def a_plan(*, structure=(), changes=(), sets=(), notes=(), warnings=()):
     workout = Workout("Workout A", "1", ["trening a"], [FIRST, MIDDLE, LAST])
     return Plan(
         workout,
         {},
         list(changes),
         list(warnings),
+        sets=list(sets),
         notes=list(notes),
         structure=list(structure),
     )
@@ -96,8 +97,10 @@ def test_a_genuine_removal_is_reported_after_the_exercises_that_remain(caplog):
     assert lines(caplog)[-1].startswith("- MYSTERY_LIFT")
 
 
-def test_one_exercise_says_what_it_is_before_what_it_asks_for(caplog):
-    """Its own lines keep the order the whole report used to have."""
+def test_one_exercise_gets_one_line_whatever_moved_on_it(caplog):
+    """Where it sits, what it asks for and how it is described are all facts
+    about the same exercise, and reading it three times is reading it twice
+    too often."""
     plan = a_plan(
         structure=[StructureChange("moved", MIDDLE.name, 2)],
         changes=[Change(MIDDLE, Target(8, 30.0), Target(9, 30.0), "hit")],
@@ -106,7 +109,41 @@ def test_one_exercise_says_what_it_is_before_what_it_asks_for(caplog):
 
     report_plan(plan)
 
-    assert [line[0] for line in lines(caplog)] == ["~", "*", "*"]
+    assert lines(caplog) == [
+        "~ Lat Pull-down                                    8 x 30 kg  ->  9 x 30 kg  "
+        "       (moved to position 2, hit; note from workouts.yaml)"
+    ]
+
+
+def test_the_columns_go_to_the_target_and_the_rest_are_named(caplog):
+    """A target is the number a plan is read for; that the config also moved
+    the sets and the note is worth knowing, but the file itself says to what."""
+    plan = a_plan(
+        changes=[Change(FIRST, Target(8, 30.0), Target(9, 30.0), "hit 8 on every set")],
+        sets=[SetChange(FIRST, 3, 4)],
+        notes=[a_note(FIRST)],
+    )
+
+    report_plan(plan)
+
+    assert "8 x 30 kg  ->  9 x 30 kg" in lines(caplog)[0]
+    assert lines(caplog)[0].endswith(
+        "(hit 8 on every set; sets, note from workouts.yaml)"
+    )
+
+
+def test_a_marker_says_what_the_line_is_before_what_it_asks(caplog):
+    """An exercise arriving or moving is the larger fact about it, so its
+    marker wins over the `*` that says something would be written."""
+    plan = a_plan(
+        structure=[StructureChange("moved", FIRST.name, 1)],
+        changes=[Change(MIDDLE, Target(8, 30.0), Target(8, 30.0), "repeat")],
+        notes=[a_note(LAST)],
+    )
+
+    report_plan(plan)
+
+    assert [line[0] for line in lines(caplog)] == ["~", " ", "*"]
 
 
 def test_warnings_come_last_whatever_they_are_about(caplog):
