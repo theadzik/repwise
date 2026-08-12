@@ -135,7 +135,8 @@ repos:
         entry: >-
           this file is gitignored on purpose - it holds your Garmin workout ids
           or a raw activity dump. Unstage it rather than forcing it in.
-        files: ^(workouts\.yaml|dumps/.*|dump-.*\.json|workout-.*\.json)$
+        # One line: a folded scalar would put a space inside the alternation.
+        files: ^(workouts\.yaml|dumps/.*|dump-.*\.json|workout-.*\.json|activity-.*\.json|sets-.*\.json|executed-.*\.json)$
 
       # On push rather than on commit: the suite is offline and takes under a
       # second, but a failing test should not block saving work in progress.

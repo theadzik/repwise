@@ -109,7 +109,8 @@ keeping an exercise in sync when it appears in more than one workout.
 | `repwise list` | Show your Garmin workouts and their ids |
 | `repwise import` | Build a `workouts.yaml` from your Garmin workouts |
 | `repwise check` | Check that your config names exercises Garmin actually has, that it still names the ones your workouts hold, and that every rep range fits what its weight step is really worth |
-| `repwise fetch` | Download raw workout JSON |
+| `repwise fetch workouts` | Download raw workout JSON |
+| `repwise fetch activities` | Download the raw JSON of the sessions you performed: the summary, the sets your watch recorded, and the workout each was run against |
 | `repwise fetch exercises` | Refresh Garmin's list of every exercise it knows, which `check` and `update` read |
 | `repwise logout` | Delete the cached Garmin token, so the next run logs in again |
 

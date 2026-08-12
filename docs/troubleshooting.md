@@ -85,7 +85,7 @@ DEBUG   repwise.garmin.client: Resumed cached session.
 | `can be read by other users` | The token file or its directory has picked up looser permissions than it was written with. The warning names the `chmod` that fixes it. See [what is stored](#what-is-stored-and-what-it-is-worth) |
 | `no terminal to log in from` | A scheduled run found no cached session. Run it once by hand to cache the tokens |
 | Cloudflare challenge | Only affects browser automation. This tool goes through `garminconnect`, built on `curl_cffi`, which is not subject to it |
-| Every exercise looks like bodyweight | The weight is reading as zero. Check a `--dump` against [Garmin's API](garmin-api.md#weight-units) |
+| Every exercise looks like bodyweight | The weight is reading as zero. Check a [`fetch activities`](commands.md#fetch-activities) dump against [Garmin's API](garmin-api.md#weight-units) |
 | `--push` refused with exit 3 | `--push` needs `--apply`; without it nothing has been written, so there is nothing to send |
 | `No workouts.yaml found` | The message lists every path tried. Put one there, copy the example, or pass `--config PATH`. See [where the file lives](configuration.md#where-the-file-lives) |
 

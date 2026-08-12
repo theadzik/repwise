@@ -46,16 +46,36 @@ def test_update_accepts_its_flags():
     assert args.activity == "42"
 
 
-def test_fetch_takes_any_number_of_ids():
-    assert build_parser().parse_args(["fetch"]).workout_ids == []
-    assert build_parser().parse_args(["fetch", "1", "2"]).workout_ids == ["1", "2"]
+def test_fetch_takes_a_target_and_any_number_of_ids():
+    args = build_parser().parse_args(["fetch", "workouts", "1", "2"])
+    assert args.target == "workouts"
+    assert args.ids == ["1", "2"]
 
 
-def test_fetch_accepts_the_catalog_keyword_as_an_id():
-    """The parser stays declarative; which download it means is the handler's."""
-    assert build_parser().parse_args(["fetch", "exercises"]).workout_ids == [
-        "exercises"
-    ]
+def test_fetch_takes_a_target_on_its_own():
+    for target in ("workouts", "activities", "exercises"):
+        args = build_parser().parse_args(["fetch", target])
+        assert args.target == target
+        assert args.ids == []
+
+
+def test_fetch_still_parses_the_shape_that_takes_bare_ids():
+    """Deprecated, not removed: the handler is what warns and honours it."""
+    args = build_parser().parse_args(["fetch", "1", "2"])
+    assert args.target == "1"
+    assert args.ids == ["2"]
+
+
+def test_fetch_takes_nothing_at_all():
+    args = build_parser().parse_args(["fetch"])
+    assert args.target is None
+    assert args.ids == []
+
+
+def test_fetch_targets_are_not_argparse_choices():
+    """The parser stays declarative; which download a word means is the
+    handler's, and constraining it here would reject every id there is."""
+    assert build_parser().parse_args(["fetch", "nonsense"]).target == "nonsense"
 
 
 def test_a_command_is_required(capsys):

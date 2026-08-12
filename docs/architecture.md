@@ -18,7 +18,7 @@ src/repwise/
         matching.py        which exercise a name or category refers to
     app/                   one module per command, plus the report they print
         update.py          advance targets from the sessions trained
-        fetch.py           download definitions, or the exercise catalog
+        fetch.py           download definitions, sessions, or the catalog
         listing.py         show the account's workouts
         importing.py       Garmin workouts -> config text
         checking.py        config against Garmin

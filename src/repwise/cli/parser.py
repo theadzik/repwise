@@ -14,21 +14,24 @@ from typing import Any
 
 from .. import __version__
 
-#: `fetch` takes workout ids, and this word instead of them. Safe as a keyword
-#: rather than a flag because a Garmin workout id is a number, so nothing a
-#: user could legitimately pass here is ambiguous with it.
+#: What `fetch` can be asked to download, as the first word after it. Safe as
+#: keywords rather than flags because a Garmin id is a number, so no id a user
+#: could legitimately pass is ambiguous with one of these.
+WORKOUTS = "workouts"
+ACTIVITIES = "activities"
 CATALOG = "exercises"
+TARGETS = (WORKOUTS, ACTIVITIES, CATALOG)
 
 #: The shells `completion` knows how to write for. One renderer answers each,
 #: in `completion.py`.
 SHELLS = ("bash", "zsh")
 
 #: Words a positional accepts that argparse cannot be told about, keyed by the
-#: command whose positional accepts them. `fetch` takes any number of workout
-#: ids, so it has no `choices` to enumerate and cannot be given one without
-#: rejecting every id there is - but the single word that means something else
-#: to it is still worth completing, and this is what says so.
-SUGGESTIONS: dict[str, tuple[str, ...]] = {"fetch": (CATALOG,)}
+#: command whose positional accepts them. `fetch` reads its first word as a
+#: target *or* as an id, so it has no `choices` to enumerate and cannot be
+#: given one without rejecting every id there is - but the words that do mean
+#: something to it are still worth completing, and this is what says so.
+SUGGESTIONS: dict[str, tuple[str, ...]] = {"fetch": TARGETS}
 
 
 def add_verbose(
@@ -61,10 +64,10 @@ def build_parser() -> argparse.ArgumentParser:
             "examples:\n"
             "  repwise update            show what a run would change\n"
             "  repwise update --apply    write it back to Garmin\n"
-            "  repwise update --dump     save the raw Garmin JSON, change nothing\n"
             "  repwise update --apply --push   also send them to your watch\n"
             "  repwise update --activity 1234  replay one session you skipped\n"
-            "  repwise fetch             download the workout definitions\n"
+            "  repwise fetch workouts    download the workout definitions\n"
+            "  repwise fetch activities  download your recent strength sessions\n"
             "  repwise fetch exercises   refresh Garmin's exercise catalog\n"
             "  repwise list              show your Garmin workouts and ids\n"
             "  repwise import -o f.yaml  build config from Garmin workouts\n"
@@ -138,7 +141,8 @@ def build_parser() -> argparse.ArgumentParser:
     update.add_argument(
         "--dump",
         action="store_true",
-        help="also save the raw Garmin JSON payloads to dump_dir",
+        help="also save the raw Garmin JSON payloads to dump_dir "
+        f"(deprecated: use `repwise fetch {ACTIVITIES}`)",
     )
     update.add_argument(
         "--push",
@@ -149,23 +153,39 @@ def build_parser() -> argparse.ArgumentParser:
 
     fetch = sub.add_parser(
         "fetch",
-        help="download workout definitions, or Garmin's exercise catalog",
-        description="Save workout definitions as JSON into "
-        "settings.garmin.dump_dir, for inspecting Garmin's payloads or checking "
-        "connectivity. The single word `exercises` instead of any ids "
-        "downloads something else entirely: Garmin's list of every exercise it "
-        "knows and the category each is filed under, cached in "
+        help="download workouts, performed sessions, or Garmin's exercise catalog",
+        description="Save what Garmin holds as JSON, for inspecting its "
+        "payloads by hand or checking connectivity. The first word says which. "
+        "`workouts` downloads the definitions this tool writes targets into, "
+        "one file each. `activities` downloads the sessions you performed - "
+        "the summary, the sets your watch recorded and the workout each was "
+        "run against, three files each - and only strength ones, since the "
+        "rest hold no sets to read. Both take ids to narrow them, and both "
+        "land in settings.garmin.dump_dir; without ids, `workouts` downloads "
+        "every workout in your config and `activities` every strength session "
+        "within settings.garmin.activity_search_limit. `exercises` downloads "
+        "something else entirely: Garmin's list of every exercise it knows and "
+        "the category each is filed under, cached in "
         "settings.garmin.token_store and read by `check` to tell a real "
         "exercise name from a plausible-looking one. `check` downloads that "
         "itself the first time it needs it, so this is how you refresh a copy "
-        "that has gone stale, not something to run first.",
+        "that has gone stale, not something to run first. Ids with no word "
+        "before them are read as workout ids, which is how this command used "
+        "to be spelled; it still works, and goes in v2.",
     )
     fetch.add_argument(
-        "workout_ids",
+        "target",
+        nargs="?",
+        metavar="TARGET",
+        help=f"`{WORKOUTS}`, `{ACTIVITIES}` or `{CATALOG}`; a workout id here "
+        f"instead means `{WORKOUTS}` (deprecated)",
+    )
+    fetch.add_argument(
+        "ids",
         nargs="*",
         metavar="ID",
-        help="workout ids; defaults to every workout in the config. Or the "
-        "single word `exercises` to refresh the exercise catalog",
+        help="which workouts or activities to download; defaults to every "
+        "workout in the config, or every strength session found",
     )
     add_verbose(fetch)
 
