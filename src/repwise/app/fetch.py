@@ -92,8 +92,18 @@ def run_fetch_activities(
             return ExitCode.NOTHING_USABLE
 
     saved = 0
+    skipped = 0
     failed = False
     for activity_id in ids:
+        # Never true unless caching is on, so a run without it downloads
+        # everything it is asked for exactly as it always did. `--force` says
+        # so by opening a session with no cache behind it, which is why there
+        # is no flag to read here.
+        if session.is_cached(activity_id):
+            skipped += 1
+            logger.info(f"Already on disk: {activity_id}")
+            continue
+
         try:
             name, paths = _save_activity(session, config.garmin.dump_dir, activity_id)
         except GarminError as exc:
@@ -110,6 +120,8 @@ def run_fetch_activities(
     # Counted as they land rather than taken from `ids`, so that a run which
     # lost one to a failure does not claim to have saved it.
     logger.info(f"{saved} session(s) -> {config.garmin.dump_dir}")
+    if skipped:
+        logger.info(f"{skipped} already on disk; --force downloads them again.")
     return ExitCode.NOTHING_USABLE if failed else ExitCode.OK
 
 

@@ -37,6 +37,10 @@ class FakeSession:
         self.asked: list[str] = []
         self.limits: list[int | None] = []
 
+    def is_cached(self, activity_id):
+        """What a session with no dump directory behind it answers."""
+        return False
+
     def recent_activities(self, limit=None):
         self.limits.append(limit)
         return self.activities
@@ -236,3 +240,50 @@ def test_one_unreachable_workout_does_not_cost_the_others(config, caplog):
     assert run_fetch(session, config, ["123", "456"]) == ExitCode.NOTHING_USABLE
     assert written(config) == {"workout-456.json"}
     assert "FAILED 123" in caplog.text
+
+
+# --- what is already on disk ----------------------------------------------
+
+
+class CachingSession(FakeSession):
+    """A session that already holds some sessions, as a cached one would."""
+
+    def __init__(self, activities=(), holds=()):
+        super().__init__(activities)
+        self.held = {str(each) for each in holds}
+
+    def is_cached(self, activity_id):
+        return str(activity_id) in self.held
+
+
+def holding(activities=(), holds=()) -> Any:
+    return CachingSession(activities, holds)
+
+
+def test_a_session_already_on_disk_is_not_downloaded(config, caplog):
+    session = holding([activity("111"), activity("222")], holds=["111"])
+
+    with caplog.at_level(logging.INFO, logger="repwise.app.fetch"):
+        assert run_fetch_activities(session, config) == ExitCode.OK
+
+    assert session.asked == ["222"]
+    assert "Already on disk: 111" in caplog.text
+
+
+def test_the_summary_says_how_to_download_them_again(config, caplog):
+    session = holding([activity("111"), activity("222")], holds=["111"])
+
+    with caplog.at_level(logging.INFO, logger="repwise.app.fetch"):
+        run_fetch_activities(session, config)
+
+    assert "1 session(s)" in caplog.text
+    assert "--force" in caplog.text
+
+
+def test_nothing_is_said_about_force_when_nothing_was_skipped(config, caplog):
+    session = holding([activity("111")])
+
+    with caplog.at_level(logging.INFO, logger="repwise.app.fetch"):
+        run_fetch_activities(session, config)
+
+    assert "--force" not in caplog.text

@@ -187,6 +187,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="which workouts or activities to download; defaults to every "
         "workout in the config, or every strength session found",
     )
+    fetch.add_argument(
+        "--force",
+        action="store_true",
+        help=f"download sessions already in dump_dir again, rather than "
+        f"leaving them alone. Only means anything for `{ACTIVITIES}`, and "
+        "only with settings.garmin.activity_caching on",
+    )
     add_verbose(fetch)
 
     listing = sub.add_parser(
