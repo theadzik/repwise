@@ -450,6 +450,15 @@ def test_a_lead_wider_than_the_sets_is_clamped():
     assert Target(8, 20.0, lead=9).per_set(4) == [9, 9, 9, 9]
 
 
+def test_a_lead_on_every_set_reads_as_the_flat_target_it_is():
+    """`8+4` of four sets would name four sets of eight that are not there:
+    every set is asked for nine, which is what `per_set` builds."""
+    assert Target(8, 20.0, lead=4).per_set(4) == [9, 9, 9, 9]
+    assert Target(8, 20.0, lead=4).spread(4) == "9"
+    assert Target(8, 20.0, lead=9).spread(4) == "9"
+    assert Target(16, 4.0, lead=4).spread(4, rep_step=2) == "18"
+
+
 # --- what counts as a hit -------------------------------------------------
 
 

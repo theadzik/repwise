@@ -57,10 +57,19 @@ class Target:
         more. Written that way rather than set by set - `9,9,8,8` - because
         those are the two numbers the rules move, and spelling every set out
         grows with the set count while saying nothing extra.
+
+        A lead of every set is a flat target one step up, and is written as
+        one: `per_set` asks all of them for the higher figure, so `8+3` across
+        three sets would name three sets of eight that are not there. The rules
+        never build one, but a workout whose Garmin steps hold more sets than
+        the config asks for reads back as one.
         """
-        if not self.lead:
+        ahead = min(self.lead, sets)
+        if not ahead:
             return str(self.reps)
-        return f"{self.reps}+{min(self.lead, sets)}"
+        if ahead >= sets:
+            return str(self.reps + rep_step)
+        return f"{self.reps}+{ahead}"
 
 
 @dataclass(frozen=True)
