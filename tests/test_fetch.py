@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from repwise.app.fetch import run_fetch, run_fetch_activities
+from repwise.app.fetch import cache_activities, run_fetch, run_fetch_activities
 from repwise.domain.models import Config, GarminSettings
 from repwise.errors import ExitCode, GarminError, UsageError
 
@@ -287,3 +287,74 @@ def test_nothing_is_said_about_force_when_nothing_was_skipped(config, caplog):
         run_fetch_activities(session, config)
 
     assert "--force" not in caplog.text
+
+
+# --- filling the directory before a run works anything out ----------------
+
+
+@pytest.fixture
+def caching_config(tmp_path):
+    return Config(
+        workouts={},
+        garmin=GarminSettings(dump_dir=str(tmp_path), activity_caching=True),
+    )
+
+
+def test_nothing_is_filed_when_caching_is_off(config):
+    """Otherwise every run would download the whole search limit again."""
+    session = holding([activity("111"), activity("222")])
+
+    cache_activities(session, config, session.activities)
+
+    assert session.asked == []
+    assert written(config) == set()
+
+
+def test_every_strength_session_missing_is_filed(caching_config):
+    session = holding([activity("111"), activity("222")])
+
+    cache_activities(session, caching_config, session.activities)
+
+    assert session.asked == ["111", "222"]
+    assert written(caching_config) == {
+        "activity-111.json",
+        "sets-111.json",
+        "executed-111.json",
+        "activity-222.json",
+        "sets-222.json",
+        "executed-222.json",
+    }
+
+
+def test_a_session_already_filed_is_left_alone(caching_config):
+    session = holding([activity("111"), activity("222")], holds=["111"])
+
+    cache_activities(session, caching_config, session.activities)
+
+    assert session.asked == ["222"]
+
+
+def test_what_was_not_a_strength_session_is_not_filed(caching_config):
+    """A run holds no sets to learn from, so there is nothing to keep."""
+    session = holding([activity("222", sport=RUNNING_TYPE)])
+
+    cache_activities(session, caching_config, session.activities)
+
+    assert session.asked == []
+
+
+def test_one_session_that_cannot_be_filed_does_not_stop_the_rest(
+    caching_config, caplog
+):
+    """Filling a cache is not the work; whatever is missing is fetched later."""
+    session = holding([activity("111"), activity("222")])
+    session.failing = {"111"}
+
+    cache_activities(session, caching_config, session.activities)
+
+    assert "Could not file 111" in caplog.text
+    assert written(caching_config) == {
+        "activity-222.json",
+        "sets-222.json",
+        "executed-222.json",
+    }

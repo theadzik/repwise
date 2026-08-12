@@ -3,6 +3,7 @@ exercise catalog."""
 
 import logging
 import os
+from typing import Any
 
 from .. import dumps
 from ..domain.models import Config, GarminSettings
@@ -125,6 +126,46 @@ def run_fetch_activities(
     return ExitCode.NOTHING_USABLE if failed else ExitCode.OK
 
 
+def cache_activities(
+    session: GarminSession, config: Config, activities: list[dict[str, Any]]
+) -> None:
+    """Bring the dump directory level with the sessions Garmin just listed.
+
+    What `update` does before it works anything out, so that the run reads
+    those sessions off disk and every run after it reads them without asking
+    at all. Only the strength ones: the rest hold no sets to learn from.
+
+    Silent unless caching is on. A session with no cache behind it holds
+    nothing, so every activity would count as missing and this would download
+    the whole search limit on every single run.
+
+    One session that cannot be downloaded is logged and stepped over. This is
+    filling a cache, not doing the work: whatever is missing afterwards is
+    fetched again when something actually reads it, and fails there if it
+    still cannot be had.
+    """
+    if not config.garmin.activity_caching:
+        return
+
+    missing = [
+        str(activity["activityId"])
+        for activity in activities
+        if activity_sport(activity) == STRENGTH
+        and activity.get("activityId")
+        and not session.is_cached(str(activity["activityId"]))
+    ]
+    if not missing:
+        logger.debug("Every strength session Garmin listed is already on disk.")
+        return
+
+    logger.info(f"Filing {len(missing)} session(s) into {config.garmin.dump_dir}")
+    for activity_id in missing:
+        try:
+            _save_activity(session, config.garmin.dump_dir, activity_id)
+        except GarminError as exc:
+            logger.warning(f"Could not file {activity_id}: {exc}")
+
+
 def _save_activity(
     session: GarminSession, directory: str, activity_id: str
 ) -> tuple[str, list[str]]:
@@ -139,6 +180,12 @@ def _save_activity(
     A session performed against no workout is a fact worth recording, and it is
     what lets a missing file mean one thing only - that nobody has asked yet -
     which is what `dumps.ActivityCache` reads it as.
+
+    Behind a caching session the same bytes have just been written by the cache
+    itself, since that is what a miss does. Writing them again is what makes
+    this work identically with caching off, which is worth more than the write
+    it saves - once per session, of a file that is already open in the page
+    cache.
     """
     activity = session.activity(activity_id)
     executed = session.executed_workout(activity_id)

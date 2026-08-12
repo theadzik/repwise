@@ -18,7 +18,7 @@ from repwise.app.update import (
     sessions_before,
 )
 from repwise.config import ConfigError
-from repwise.domain.models import Config, Workout
+from repwise.domain.models import Config, GarminSettings, Workout
 from repwise.errors import ActivityNotFound, ExitCode, GarminError, UsageError
 from repwise.garmin.payloads import performed_sets
 
@@ -62,10 +62,16 @@ class FakeSession:
         self.pushed: list[str] = []
         self.queue_reads = 0
         self.queue_failure: Exception | None = None
+        #: Activities a caching session would already hold on disk.
+        self.held: set[str] = set()
 
     def create_workout(self, payload):
         self.created.append(payload)
         return self.next_id
+
+    def is_cached(self, activity_id):
+        """What a session with no dump directory behind it answers."""
+        return str(activity_id) in self.held
 
     def recent_activities(self, limit=None):
         return self.activities
@@ -97,8 +103,13 @@ class FakeSession:
         return [{"messageId": i} for i, _ in enumerate(self.pushed)]
 
 
-def an_activity(activity_id, name):
-    return {"activityId": activity_id, "activityName": name}
+def an_activity(activity_id, name, sport="strength_training"):
+    """A list entry. The sport is what decides whether it is worth filing."""
+    return {
+        "activityId": activity_id,
+        "activityName": name,
+        "activityType": {"typeKey": sport},
+    }
 
 
 def sets_of(*performed):
@@ -846,3 +857,42 @@ def test_a_second_run_does_not_deload_what_the_first_one_earned(stalling):
 
     assert after_one == [(1, 9.0), (2, 8.0)], "eased up by one set"
     assert after_two == after_one, "and stayed there"
+
+
+# --- filling dump_dir on the way past -------------------------------------
+
+
+def caching(tmp_path, workouts=None):
+    """config_ab, with the dump directory turned into a cache."""
+    base = workouts or config_ab()
+    return Config(
+        base.workouts,
+        garmin=GarminSettings(dump_dir=str(tmp_path), activity_caching=True),
+    )
+
+
+def test_a_run_files_the_sessions_garmin_listed(account, tmp_path):
+    """The point of the setting: after this, the run reads them off disk."""
+    run(account, caching(tmp_path))
+
+    written = {path.name for path in tmp_path.iterdir()}
+    assert "activity-900.json" in written
+    assert "sets-900.json" in written
+    assert "executed-900.json" in written
+
+
+def test_a_run_files_nothing_when_caching_is_off(account, tmp_path):
+    run(
+        account,
+        Config(config_ab().workouts, garmin=GarminSettings(dump_dir=str(tmp_path))),
+    )
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_session_already_filed_is_not_downloaded_again(account, tmp_path):
+    account.held = {str(a["activityId"]) for a in account.activities}
+
+    run(account, caching(tmp_path))
+
+    assert list(tmp_path.iterdir()) == [], "nothing was missing, so nothing was written"
