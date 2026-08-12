@@ -29,7 +29,10 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Install the project and its dev tooling
-        run: python -m pip install --quiet -e ".[dev]"
+        # `-e .` for the project and its runtime dependencies; `--group dev`
+        # for the tools that check it, which live in a PEP 735 group rather
+        # than an extra so that they are not part of what PyPI ships.
+        run: python -m pip install --quiet -e . --group dev
 
       # The hook environments, keyed on the two things that decide them: the
       # revs pinned in the config, and the interpreter the Python hooks are

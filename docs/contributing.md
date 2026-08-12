@@ -14,10 +14,19 @@ Read [architecture](architecture.md) first for the module layout, and
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
+.venv/bin/pip install -e . --group dev
 .venv/bin/pre-commit install
 cp workouts.example.yaml workouts.yaml
 ```
+
+Two halves to that install: `-e .` for repwise and its runtime dependencies,
+`--group dev` for the tools that check it. The tooling is a [PEP
+735](https://peps.python.org/pep-0735/) dependency group rather than a `[dev]`
+extra because an extra is part of the published package - anyone could
+`pip install repwise[dev]`, and the release workflow could not install
+commitizen without building repwise first. Groups are local to the repository
+and install on their own. It needs pip 25.1 or newer, which every Python 3.14
+ships with.
 
 Dependencies are pinned exactly in `pyproject.toml`. It is an application
 rather than a library, so a reproducible install matters more than being

@@ -11,7 +11,7 @@ The work is split in two, deliberately:
 | When | What runs | What it does |
 | --- | --- | --- |
 | Every commit | `cz check`, via pre-commit's `commit-msg` hook | Rejects a message that is not conventional |
-| When **Release** is dispatched | `.github/workflows/publish.yml` | Tags the release that just landed, uploads it to PyPI, then reads every commit since that tag and opens a self-merging pull request carrying the next one |
+| When **Release** is dispatched | `.github/workflows/publish.yml` | Reads every commit since the last tag, bumps the version, commits and tags it on `main`, and uploads the result to PyPI |
 
 A normal commit never changes the version. That is not a limitation of the
 tooling - see [why not bump on every
@@ -21,6 +21,7 @@ commit](#why-not-bump-on-every-commit).
 - [Commit message format](#commit-message-format)
 - [What each type does](#what-each-type-does)
 - [Cutting a release](#cutting-a-release)
+- [The release App](#the-release-app)
 - [Publishing to PyPI](#publishing-to-pypi)
 - [Why not bump on every commit](#why-not-bump-on-every-commit)
 - [Gotchas](#gotchas)
@@ -31,7 +32,7 @@ The hook is not active in a fresh clone until it is installed - the config is
 version controlled, but git hooks are per clone:
 
 ```bash
-.venv/bin/pip install -e ".[dev]"
+.venv/bin/pip install -e . --group dev
 .venv/bin/pre-commit install
 ```
 
@@ -104,50 +105,40 @@ changes shape under someone, and not otherwise.
 
 ## Cutting a release
 
-One click. Run the **Release** workflow from the Actions tab; everything else
-has already happened by then. The bump pull request titled
-`bump: version 0.4.0 → 0.5.0` opened by itself when the work merged, and merged
-itself once CI was green, so dispatching Release tags what is already on `main`
-and ships it.
+One click, one run. Dispatch the **Release** workflow from the Actions tab and
+it does the whole thing: works out the next version from the commits since the
+last tag, writes the version files and the changelog, commits and tags that on
+`main`, and uploads the result to PyPI. There is nothing to review and nothing
+to merge.
 
-What to do is therefore mostly *not* doing something. Close the bump pull
-request if this is not a release you want yet; it will be reopened, retitled to
-whatever the accumulated commits then deserve, on the next dispatch.
+The machinery is `.github/workflows/publish.yml`, which runs three jobs:
 
-The machinery is `.github/workflows/publish.yml`, which runs four jobs:
-
-1. **`tag`** - if the version in `pyproject.toml` has no tag yet, it tags the
-   head commit. This is what closes the release that has just merged. It then
-   asks PyPI whether that version is already there, which is what the next two
-   jobs are keyed on.
-2. **`build`** - builds the sdist and the wheel from the tagged tree and runs
-   `twine check --strict` over them.
+1. **`release`** - runs `cz bump --yes`, which writes the version files and the
+   changelog, makes the commit and cuts the tag in one step, then pushes the
+   commit and the tag to `main` in a single atomic push. It then asks PyPI
+   whether that version is already there, which is what the next two jobs are
+   keyed on.
+2. **`build`** - checks out the tag, builds the sdist and the wheel from it and
+   runs `twine check --strict` over them.
 3. **`publish`** - uploads them. See [publishing to PyPI](#publishing-to-pypi).
-4. **`release-pr`** - it runs `cz bump --version-files-only`, which writes the
-   version files and the changelog and stops there, making no commit and no
-   tag. It commits that itself, force-pushes the `release` branch, opens or
-   retitles the pull request, and enables auto-merge on it.
 
-They are one workflow rather than several so that they cannot race: the tag has
-to exist before `cz bump` runs, or the next version would be computed from
-commits that were already released. The dispatch is manual for the same reason
-the merge is - a release is a decision, and this is where it is taken.
+The push is atomic so that the commit and the tag land together or not at all.
+The alternative failure - `main` carrying a version whose tag does not exist,
+or a tag on a commit nobody else can see - is the one state with no clean
+recovery.
 
-Auto-merge is what makes CI, not a click, the thing that gates a release - so
-`ci.yml` must be a **required status check** on `main` for any of this to be
-safe. GitHub refuses to enable auto-merge on a pull request that is already
-mergeable, so if the required check is ever removed the `release-pr` job fails
-loudly rather than merging an ungated bump.
+`cz bump` can be run against `main` like this only because of who pushes: the
+[release App](#the-release-app) is a bypass actor on the `protect-default`
+ruleset. Nothing else in the repository can write to `main` directly, and the
+dispatch stays manual because a release is a decision.
 
-`cz bump` cannot simply be run against `main`, which is why the work is split
-this way. It writes the version files, commits and tags in one step, and the
-ruleset on `main` takes no direct pushes - so the bump has to arrive through a
-pull request, and merging rewrites it. A squash replaces the commit; a rebase
-replays it onto a new parent. Either way the commit the tag was cut against
-never reaches `main`, and the tag is left pointing into your clone alone.
-Separating the two is what fixes it: the bump travels as an ordinary pull
-request, and the tag is created afterwards against whatever commit the merge
-produced.
+**A release is not gated by CI.** Bypassing the ruleset bypasses its required
+status check too, so nothing runs `ci.yml` over the bump commit before it is
+tagged and shipped. What stands in for it is the state of `main` at the moment
+you dispatch: every commit under the bump was checked on the way in through a
+pull request, and the bump itself only touches generated files. Pushing it does
+start a CI run, but that run reports *after* the upload rather than gating it.
+So look at `main` before dispatching - a red `main` will release anyway.
 
 To see what the workflow will propose, without changing anything:
 
@@ -160,8 +151,10 @@ says so - `NO_COMMITS_FOUND` when there are no commits at all,
 `NO_COMMITS_TO_BUMP` when there are but none of them earn a release. The second
 case prints a misleading `bump: version 0.1.0 → 0.1.0` line first; it is not
 about to re-cut the existing tag, and the refusal on the next line is the real
-answer. The workflow treats both as nothing to release and opens no pull
-request.
+answer. The workflow treats both as nothing new to release: it pushes nothing,
+and falls back to whatever version `main` already carries - which is what makes
+a dispatch after a finished release a no-op, and a dispatch after a failed
+upload a retry.
 
 One bump touches four things:
 
@@ -170,7 +163,7 @@ One bump touches four things:
 | `[project].version` in `pyproject.toml` | `version_provider = "pep621"`, so this is the single source of truth |
 | `__version__` in `src/repwise/__init__.py` | Listed in `version_files`, kept in step |
 | `CHANGELOG.md` | Prepended, grouped by type, each entry linked to its commit |
-| A commit and a tag | `bump: version 0.1.0 → 0.2.0`, tagged `0.2.0` - the commit on the `release` branch, the tag once it has merged |
+| A commit and a tag | `bump: version 0.1.0 → 0.2.0`, tagged `0.2.0` - both made at once, on `main`, by the release App |
 
 Tags carry no `v` prefix - `0.2.0`, not `v0.2.0`. That is Commitizen's default
 and matches the 0.1.0 tag cut by hand before any of this existed, so
@@ -180,9 +173,8 @@ change of default. Switching to `v` later means setting
 the existing tag stays readable; there is no reason to.
 
 To override the computed version - a release that deserves a minor bump
-although every commit was a `fix`, say - prepare the bump by hand and open the
-pull request yourself. The workflow will overwrite the `release` branch on the
-next dispatch, so use a branch of your own:
+although every commit was a `fix`, say - prepare the bump by hand and merge it
+as an ordinary pull request, then dispatch **Release**:
 
 ```bash
 git switch -c release-minor
@@ -193,15 +185,55 @@ git commit -am "bump: version 1.4.0 → 1.5.0"
 
 `--version-files-only` is the flag that makes this safe to do locally: it
 writes the version files and the changelog and leaves the commit and the tag
-alone. `cz bump` without it would cut a tag here, which is the one thing that
-must not happen off `main`.
+alone. `cz bump` without it would cut a tag against a commit that is still
+going to be rewritten by the merge.
+
+The dispatch afterwards finds nothing to bump - `bump` is not a type that earns
+a release - so it takes the fallback: it tags the version `main` now carries
+and publishes that. Do this on its own, with nothing else waiting to be
+released, or the dispatch will find the other commits and bump straight past
+the version you chose.
+
+## The release App
+
+The `release` job does not use the built-in `GITHUB_TOKEN`. It trades a private
+key for an hour-long installation token from a GitHub App, and pushes the bump
+commit and its tag to `main` with that.
+
+The App exists because of the ruleset. `protect-default` allows no direct push
+to `main`, and `GITHUB_TOKEN` is not exempt from it - which is why releases
+used to travel as a self-merging pull request, and why the tag had to be cut in
+a later step against whatever commit the merge produced. Listing the App as a
+**bypass actor** on that ruleset removes the whole detour: `cz bump` makes the
+commit and the tag together, and the push lands both.
+
+| Where | Name | Value |
+| --- | --- | --- |
+| Variables | `RELEASE_APP_ID` | the App's numeric id |
+| Secrets | `RELEASE_APP_PRIVATE_KEY` | the whole `.pem`, `BEGIN` line included |
+
+The App is owned by `theadzik` and installed on this repository alone. The
+installation holds **contents: write** and **pull requests: write**; the
+workflow asks for `contents` by name rather than taking whatever the
+installation happens to hold, so widening the App later does not quietly widen
+the release job too. Pull requests are no longer used and the permission could
+be dropped from the installation.
+
+The bypass is granted to the App, not to a person, and it is what makes the
+release job the single most privileged thing in the repository: it can write
+`main` unreviewed and unchecked. That is the trade for a one-click release, and
+it is why the key is worth guarding and the dispatch is worth thinking about.
+
+To rotate the key: App settings → **Generate a private key**, then `gh secret
+set RELEASE_APP_PRIVATE_KEY < the-new.pem`, then delete the old one on the same
+page. Nothing else moves; the App id does not change.
 
 ## Publishing to PyPI
 
-There is no API token anywhere in this repository, and no secret to rotate. The
-`publish` job asks GitHub for a short-lived OpenID Connect token describing the
-run that is asking, and PyPI trades that for an upload token valid for fifteen
-minutes. This is [trusted
+No PyPI password exists, here or anywhere - there is nothing to leak and
+nothing to rotate. The `publish` job asks GitHub for a short-lived OpenID
+Connect token describing the run that is asking, and PyPI trades that for an
+upload token valid for fifteen minutes. This is [trusted
 publishing](https://docs.pypi.org/trusted-publishers/), and the claim PyPI
 actually checks is `job_workflow_ref`:
 
@@ -299,24 +331,32 @@ request is still where a human decides that a release happens.
   Title the PR conventionally too, or merge with rebase to keep the checked
   messages. This decides what the changelog says: after a squash it lists PR
   titles, after a rebase the individual commits.
-- **The workflow needs permission to open pull requests.** Settings → Actions →
-  General → Workflow permissions, "Allow GitHub Actions to create and approve
-  pull requests". Without it the `release-pr` job fails with *GitHub Actions is
-  not permitted to create or approve pull requests*, and only the bump PR is
-  lost - tagging is unaffected, and the bump can still be prepared by hand.
-- **Releases are only as good as the required check.** With `ci.yml` required,
-  a red run stops the bump merging. Drop that requirement and auto-merge stops
-  being possible at all, which is the intended failure: the job goes red rather
-  than quietly releasing whatever was pushed.
-- **A release you do not want is closed, not reverted.** The bump pull request
-  is rebuilt from `main` on every dispatch, so closing it costs nothing and the
-  next one proposes the release again, with whatever has accumulated since.
-- **A tag pushed by CI starts no further workflow.** Refs created with the
-  built-in `GITHUB_TOKEN` deliberately do not trigger runs, so a workflow keyed
-  on `push: tags` would never fire. That is why publishing is a job in
-  `publish.yml` next to the tagging step rather than a workflow of its own
-  watching for tags; the alternative is a GitHub App token, which is a secret
-  to hold and rotate for no gain here.
+- **The release depends on the App's bypass, not on workflow permissions.**
+  Settings → Actions → General → "Allow GitHub Actions to create and approve
+  pull requests" decides nothing here any more. What breaks the release
+  instead is the App: a key rotated in one place and not the other, an
+  installation removed from the repository, or the bypass actor dropped from
+  the `protect-default` ruleset. The last one fails at the push, after `cz`
+  has already made the commit and the tag locally - nothing reaches `main`,
+  and re-dispatching once the bypass is back does the same work again.
+- **Nothing checks the release before it ships.** The bypass skips the required
+  status check along with everything else, so a red `main` releases just as
+  happily as a green one. Look at `main` before dispatching; the CI run the
+  bump itself triggers reports after the upload, not before it.
+- **A release you do not want is a release you do not dispatch.** There is no
+  longer a pull request sitting open to close - nothing happens until you press
+  the button, and what it releases is whatever has accumulated by then.
+- **A release that went out wrong cannot be unwound.** The old flow could be
+  stopped at the merge; this one cannot. The tag is pushed and the upload
+  follows in the same run, and a version on PyPI is final (below). The fix is
+  always to release again, never to revert - and reverting the bump commit on
+  `main` would only leave the tag pointing at history no version claims.
+- **Publishing is a job here, not a workflow keyed on tags.** A `push: tags`
+  workflow would now fire, since the App's pushes do trigger runs where
+  `GITHUB_TOKEN`'s do not - but it buys nothing the `needs:` chain does not
+  already give, and it would hand PyPI publishing rights to any run keyed on a
+  ref the App can create. Keeping the upload in `publish.yml` also keeps the
+  `job_workflow_ref` claim that PyPI checks pointing at one file.
 - **A version on PyPI is final.** It cannot be replaced, re-uploaded or
   reused - deleting a release only frees the page, never the number. This is
   why `twine check --strict` runs before the upload and why the `publish` job

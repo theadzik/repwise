@@ -74,7 +74,8 @@ updates:
     groups:
       # Hook revs are lint tooling and cannot reach the Garmin integration, so
       # one PR for all of them. ruff and commitizen are pinned twice, here and
-      # in pyproject's dev extras, and Dependabot moves the two independently:
+      # in pyproject's dependency groups, and Dependabot moves the two
+      # independently:
       # expect a pair of PRs per release and check they agree before merging.
       pre-commit-hooks:
         patterns:
