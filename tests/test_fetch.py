@@ -111,12 +111,17 @@ def test_the_payloads_are_saved_unaltered(config):
     assert read(config, "executed-111.json") == [{"stepId": 1}]
 
 
-def test_a_session_run_against_no_workout_has_no_third_file(config):
-    """Garmin answers with an empty list, which is not worth a file."""
+def test_a_session_run_against_no_workout_records_that(config):
+    """Written rather than left out: absence has to mean "nobody asked"."""
     session = account([activity("111")])
 
     assert run_fetch_activities(session, config) == ExitCode.OK
-    assert written(config) == {"activity-111.json", "sets-111.json"}
+    assert written(config) == {
+        "activity-111.json",
+        "sets-111.json",
+        "executed-111.json",
+    }
+    assert read(config, "executed-111.json") == []
 
 
 def test_a_scan_keeps_the_strength_activities(config):
@@ -155,7 +160,11 @@ def test_ids_are_downloaded_without_a_scan(config):
     assert run_fetch_activities(session, config, ["999"]) == ExitCode.OK
     assert session.limits == [], "an id names a session, so nothing is searched"
     assert session.asked == ["999"]
-    assert written(config) == {"activity-999.json", "sets-999.json"}
+    assert written(config) == {
+        "activity-999.json",
+        "sets-999.json",
+        "executed-999.json",
+    }
 
 
 def test_an_id_is_downloaded_whatever_sport_it_was(config):
@@ -163,14 +172,22 @@ def test_an_id_is_downloaded_whatever_sport_it_was(config):
     session = account([activity("222", sport=RUNNING_TYPE)])
 
     assert run_fetch_activities(session, config, ["222"]) == ExitCode.OK
-    assert written(config) == {"activity-222.json", "sets-222.json"}
+    assert written(config) == {
+        "activity-222.json",
+        "sets-222.json",
+        "executed-222.json",
+    }
 
 
 def test_one_unreachable_session_does_not_cost_the_others(config, caplog):
     session = account([activity("111"), activity("222")], failing=["111"])
 
     assert run_fetch_activities(session, config) == ExitCode.NOTHING_USABLE
-    assert written(config) == {"activity-222.json", "sets-222.json"}
+    assert written(config) == {
+        "activity-222.json",
+        "sets-222.json",
+        "executed-222.json",
+    }
     assert "FAILED 111" in caplog.text
 
 

@@ -1,39 +1,17 @@
 """Download what Garmin holds as JSON: your workouts, your sessions, or its
 exercise catalog."""
 
-import json
 import logging
 import os
-from typing import Any
 
+from .. import dumps
 from ..domain.models import Config, GarminSettings
-from ..errors import ExitCode, GarminError, UsageError
+from ..errors import ExitCode, GarminError
 from ..garmin import catalog
 from ..garmin.client import STRENGTH, GarminSession
 from ..garmin.payloads import activity_sport
 
 logger = logging.getLogger(__name__)
-
-
-def save(payload: Any, directory: str, name: str) -> str:
-    """Write one payload as `name`.json into `directory`, and say where.
-
-    The name carries an id that came from the command line or from the config,
-    so it is checked rather than trusted. Writing into `directory` is the whole
-    of what this promises, and a separator in an id would break that promise
-    quietly - an absolute one would drop the directory altogether, since that
-    is what `os.path.join` does with it.
-    """
-    if name != os.path.basename(name):
-        raise UsageError(
-            f"Refusing to write `{name}.json`: a Garmin id is a number, and "
-            f"one carrying a path would land outside {directory}."
-        )
-
-    path = os.path.join(directory, f"{name}.json")
-    with open(path, "w") as fh:
-        json.dump(payload, fh, indent=2)
-    return path
 
 
 def run_fetch_exercises(settings: GarminSettings) -> ExitCode:
@@ -74,7 +52,7 @@ def run_fetch(
             failed = True
             continue
 
-        path = save(payload, config.garmin.dump_dir, f"workout-{workout_id}")
+        path = dumps.write(payload, config.garmin.dump_dir, dumps.WORKOUT, workout_id)
         logger.info(f"Saved {payload.get('workoutName', '(unnamed)')} -> {path}")
 
     return ExitCode.NOTHING_USABLE if failed else ExitCode.OK
@@ -144,17 +122,23 @@ def _save_activity(
     `activity-<id>.json` holds the same thing however it was asked for: the
     detail Garmin returns for one activity is fuller than the entry it returns
     for it in a list.
+
+    All three are written, including an executed workout that came back empty.
+    A session performed against no workout is a fact worth recording, and it is
+    what lets a missing file mean one thing only - that nobody has asked yet -
+    which is what `dumps.ActivityCache` reads it as.
     """
     activity = session.activity(activity_id)
-    paths = [
-        save(activity, directory, f"activity-{activity_id}"),
-        save(session.exercise_sets(activity_id), directory, f"sets-{activity_id}"),
-    ]
-
     executed = session.executed_workout(activity_id)
-    if executed:
-        paths.append(save(executed, directory, f"executed-{activity_id}"))
-    else:
+    if not executed:
         logger.debug(f"{activity_id} was not performed against a workout")
+
+    paths = [
+        dumps.write(activity, directory, dumps.ACTIVITY, activity_id),
+        dumps.write(
+            session.exercise_sets(activity_id), directory, dumps.SETS, activity_id
+        ),
+        dumps.write(executed, directory, dumps.EXECUTED, activity_id),
+    ]
 
     return activity.get("activityName") or "(unnamed)", paths
