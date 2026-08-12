@@ -100,6 +100,7 @@ def run_fetch_activities(
             )
             return ExitCode.NOTHING_USABLE
 
+    saved = 0
     failed = False
     for activity_id in ids:
         try:
@@ -110,11 +111,14 @@ def run_fetch_activities(
             failed = True
             continue
 
+        saved += 1
         written = ", ".join(os.path.basename(path) for path in paths)
         logger.info(f"Saved {name} -> {written}")
 
     logger.info("")
-    logger.info(f"{len(ids)} session(s) -> {config.garmin.dump_dir}")
+    # Counted as they land rather than taken from `ids`, so that a run which
+    # lost one to a failure does not claim to have saved it.
+    logger.info(f"{saved} session(s) -> {config.garmin.dump_dir}")
     return ExitCode.NOTHING_USABLE if failed else ExitCode.OK
 
 

@@ -1,6 +1,7 @@
 """Downloading Garmin's payloads to disk: which ones, and which files."""
 
 import json
+import logging
 import os
 from typing import Any
 
@@ -171,6 +172,16 @@ def test_one_unreachable_session_does_not_cost_the_others(config, caplog):
     assert run_fetch_activities(session, config) == ExitCode.NOTHING_USABLE
     assert written(config) == {"activity-222.json", "sets-222.json"}
     assert "FAILED 111" in caplog.text
+
+
+def test_the_count_at_the_end_is_of_what_was_saved(config, caplog):
+    """Two were asked for and one arrived, so saying two would be a lie."""
+    session = account([activity("111"), activity("222")], failing=["111"])
+
+    with caplog.at_level(logging.INFO, logger="repwise.app.fetch"):
+        run_fetch_activities(session, config)
+
+    assert "1 session(s)" in caplog.text
 
 
 # --- workouts, which keep the behaviour they had --------------------------
