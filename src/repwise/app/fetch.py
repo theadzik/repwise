@@ -7,7 +7,7 @@ import os
 from typing import Any
 
 from ..domain.models import Config, GarminSettings
-from ..errors import ExitCode, GarminError
+from ..errors import ExitCode, GarminError, UsageError
 from ..garmin import catalog
 from ..garmin.client import STRENGTH, GarminSession
 from ..garmin.payloads import activity_sport
@@ -16,7 +16,20 @@ logger = logging.getLogger(__name__)
 
 
 def save(payload: Any, directory: str, name: str) -> str:
-    """Write one payload as `name`.json into `directory`, and say where."""
+    """Write one payload as `name`.json into `directory`, and say where.
+
+    The name carries an id that came from the command line or from the config,
+    so it is checked rather than trusted. Writing into `directory` is the whole
+    of what this promises, and a separator in an id would break that promise
+    quietly - an absolute one would drop the directory altogether, since that
+    is what `os.path.join` does with it.
+    """
+    if name != os.path.basename(name):
+        raise UsageError(
+            f"Refusing to write `{name}.json`: a Garmin id is a number, and "
+            f"one carrying a path would land outside {directory}."
+        )
+
     path = os.path.join(directory, f"{name}.json")
     with open(path, "w") as fh:
         json.dump(payload, fh, indent=2)

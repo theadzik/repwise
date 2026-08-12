@@ -9,7 +9,7 @@ import pytest
 
 from repwise.app.fetch import run_fetch, run_fetch_activities
 from repwise.domain.models import Config, GarminSettings
-from repwise.errors import ExitCode, GarminError
+from repwise.errors import ExitCode, GarminError, UsageError
 
 STRENGTH_TYPE = {"typeId": 13, "typeKey": "strength_training"}
 RUNNING_TYPE = {"typeId": 1, "typeKey": "running"}
@@ -184,6 +184,16 @@ def test_the_count_at_the_end_is_of_what_was_saved(config, caplog):
     assert "1 session(s)" in caplog.text
 
 
+def test_an_activity_id_carrying_a_path_is_refused(config):
+    """`dump_dir` is where these go, and an id is not a way out of it."""
+    session = account([activity("111")])
+
+    with pytest.raises(UsageError):
+        run_fetch_activities(session, config, ["../escape"])
+
+    assert written(config) == set()
+
+
 # --- workouts, which keep the behaviour they had --------------------------
 
 
@@ -193,6 +203,14 @@ def test_workouts_are_saved_one_file_each(config):
     assert run_fetch(session, config, ["123"]) == ExitCode.OK
     assert written(config) == {"workout-123.json"}
     assert read(config, "workout-123.json")["workoutId"] == "123"
+
+
+def test_a_workout_id_carrying_a_path_is_refused(config):
+    """An absolute one is worse: os.path.join drops the directory entirely."""
+    with pytest.raises(UsageError):
+        run_fetch(account(), config, ["/tmp/escape"])
+
+    assert written(config) == set()
 
 
 def test_one_unreachable_workout_does_not_cost_the_others(config, caplog):
