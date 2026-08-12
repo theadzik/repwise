@@ -169,6 +169,14 @@ That is also why the report helpers are in `app/report.py` rather than in
 session while the next one is still being fetched; what it emits is a log
 record, and where that record lands is `main()`'s business alone.
 
+A plan is turned inside out on its way to the page, in three steps. The planner
+carries a list per kind of change, which is how they are decided; a plan is read
+per exercise, in the order the workout is performed. So `gather` collects
+everything about one exercise into a `Gathered`, `rows` turns each of those into
+a `Row` of finished text, and `render` sizes the columns to the rows in hand.
+Deciding what to say, saying it, and lining it up are three jobs, and only the
+last one knows how wide anything is.
+
 ## Data flow
 
 ```mermaid

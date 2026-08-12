@@ -339,7 +339,8 @@ def sync_other_workouts(
 
         logger.info("")
         logger.info(f"Also in {other.key} (workout {other.garmin_workout_id}):")
-        report_plan(plan, force_flag="*")
+        logger.info("")
+        report_plan(plan)
         plans.append(plan)
 
     return plans
@@ -552,7 +553,7 @@ def run_update(
     unskipped = counted(plans, lambda plan: (c.spec.garmin_name for c in plan.skips))
     # One per workout however many gap steps it touched: the config says it once.
     regaps = len({counted_as(plan.workout) for plan in plans if plan.gaps})
-    shaped = counted(plans, lambda plan: ((c.kind, c.name) for c in plan.structure))
+    shaped = counted(plans, lambda plan: ((c.kind, c.name) for c in plan.reshaped))
     structure = (
         f", {shaped} exercise(s) would be added, removed or moved" if shaped else ""
     )

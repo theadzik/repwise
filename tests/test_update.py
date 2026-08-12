@@ -577,20 +577,28 @@ def test_a_note_the_config_moved_is_reported_beside_the_exercise(annotated, capl
     with caplog.at_level(logging.INFO, logger="repwise.app.report"):
         run(annotated, only_workout_a(replace(SQUAT, rep_high=12)), activity="700")
 
-    assert "* Barbell Back Squat" in caplog.text
-    assert "6-10 reps | +2.5 kg  ->  6-12 reps | +2.5 kg" in caplog.text
-    assert "(note from workouts.yaml)" in caplog.text
+    lines = [line for line in caplog.messages if "Barbell Back Squat" in line]
+    assert len(lines) == 1, "one exercise, one row"
+    assert lines[0].startswith("* 1 Barbell Back Squat")
+    assert "note" in lines[0], "named in the config column"
 
 
-def test_a_step_that_had_no_note_says_so(annotated, caplog):
-    """An empty column would read as a note that says nothing."""
-    group = annotated.workouts["111"]["workoutSegments"][0]["workoutSteps"][0]
-    group["workoutSteps"][0]["description"] = None
+def test_a_note_is_the_whole_reason_where_nothing_was_trained(account, caplog):
+    """With no session behind it there is no target and no verdict, so the
+    config column is the only thing saying why the workout is being written."""
+    account.workouts["111"] = steps(
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 30.0), sets=SQUAT.sets)
+    )
+    untrained = Config(
+        {"Workout A": Workout("Workout A", "111", ["never trained"], [SQUAT])}
+    )
 
     with caplog.at_level(logging.INFO, logger="repwise.app.report"):
-        run(annotated, only_workout_a(SQUAT), activity="700")
+        run(account, untrained)
 
-    assert "no note  ->  6-10 reps | +2.5 kg" in caplog.text
+    row = next(line for line in caplog.messages if "Barbell Back Squat" in line)
+    assert row.startswith("* 1 Barbell Back Squat hold")
+    assert row.endswith("note   from workouts.yaml")
 
 
 def test_the_summary_still_counts_the_notes(annotated, caplog):

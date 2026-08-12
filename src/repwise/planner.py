@@ -7,7 +7,7 @@ can inspect a plan and discard it -- which is what a dry run does.
 """
 
 from collections.abc import Container
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .domain.matching import ExerciseIndex, normalise
@@ -164,6 +164,15 @@ class StructureChange:
     #: Garmin's category for it, kept so that an addition and a removal can be
     #: recognised as the same movement under two names.
     category: str | None = None
+    #: The exercise being dropped that this one looks like a renaming of. Only
+    #: ever set on an addition, and only where `_same_movement` paired the two,
+    #: so that the report can say in the added exercise's own place what would
+    #: otherwise be a line here, a line further down, and a paragraph below.
+    replaces: str | None = None
+    #: Where it used to sit, on a move. The report gives where an exercise is
+    #: now a column of its own, so where it came from is the new thing to say
+    #: about one that moved.
+    previous: int | None = None
 
     @property
     def garmin_name(self) -> str:
@@ -199,6 +208,21 @@ class Plan:
     @property
     def moved(self) -> list[Change]:
         return [change for change in self.changes if change.moved]
+
+    @property
+    def reshaped(self) -> list[StructureChange]:
+        """The structural changes that are worth a line of their own.
+
+        Which is all of them except a removal some addition already says it
+        replaces: that has been reported in the added exercise's own line, and
+        counting it separately would promise a line nothing prints.
+        """
+        replaced = {change.replaces for change in self.structure if change.replaces}
+        return [
+            change
+            for change in self.structure
+            if not (change.kind == "removed" and change.name in replaced)
+        ]
 
     @property
     def writable(self) -> bool:
@@ -574,29 +598,48 @@ def _same_movement(added: StructureChange, removed: StructureChange) -> bool:
     return bool(new and old and (new in old or old in new))
 
 
-def _renames(structure: list[StructureChange]) -> list[str]:
-    """Warn where a removal and an addition are probably the same exercise.
+def _pair_renames(structure: list[StructureChange]) -> list[StructureChange]:
+    """Note on each addition the removal it is probably the same exercise as.
 
     Removing one and building another is what a mistyped `garmin_name` looks
     like from in here, and it is not a cheap mistake: the target lives in the
     step being dropped, and nothing else remembers it.
 
-    Reported rather than prevented, because it is also what deliberately
-    swapping one movement for a variant of it looks like, and this cannot tell
-    the two apart. The dry run is where the difference gets noticed.
+    Paired one to one, so that a workout swapping two exercises at once does
+    not read as either of them replacing both. The pairing is carried on the
+    change rather than turned into prose here, because where a warning belongs
+    on the page is the report's business - see `report_plan`.
     """
-    warnings = []
-    for added in [change for change in structure if change.kind == "added"]:
-        for removed in [change for change in structure if change.kind == "removed"]:
-            if not _same_movement(added, removed):
-                continue
-            warnings.append(
-                f"{added.name}: added while {removed.name} is removed, and the "
-                f"two look like the same exercise. If that is a renamed "
-                f"garmin_name rather than a swap, the target on "
-                f"{removed.name} is about to be lost with it"
-            )
-    return warnings
+    unclaimed = [change for change in structure if change.kind == "removed"]
+
+    paired = list(structure)
+    for position, change in enumerate(paired):
+        if change.kind != "added":
+            continue
+        removed = next(
+            (each for each in unclaimed if _same_movement(change, each)), None
+        )
+        if removed is None:
+            continue
+        unclaimed.remove(removed)
+        paired[position] = replace(change, replaces=removed.name)
+    return paired
+
+
+def _renames(structure: list[StructureChange]) -> list[str]:
+    """Say out loud that a paired addition may be losing a target.
+
+    Reported rather than prevented, because a rename is also what deliberately
+    swapping one movement for a variant of it looks like, and this cannot tell
+    the two apart. The dry run is where the difference gets noticed, so the
+    line only has to be short enough to be read there.
+    """
+    return [
+        f"{change.name} replaces {change.replaces}: if that is a renamed "
+        f"garmin_name rather than a swap, its target is lost"
+        for change in structure
+        if change.replaces
+    ]
 
 
 def _index_blocks(blocks: list[ExerciseBlock]) -> ExerciseIndex[ExerciseBlock]:
@@ -696,8 +739,12 @@ def _reconcile(
             )
 
     at = {id(steps[0]): position for position, steps in enumerate(outers)}
-    for ident in _out_of_order(kept, was):
-        structure.append(StructureChange("moved", labels[ident], at[ident] + 1))
+    for ident in _out_of_order(kept, was, at):
+        structure.append(
+            StructureChange(
+                "moved", labels[ident], at[ident] + 1, previous=was[ident] + 1
+            )
+        )
 
     if structure:
         set_exercise_steps(
@@ -705,7 +752,9 @@ def _reconcile(
         )
 
 
-def _out_of_order(kept: list[int], was: dict[int, int]) -> list[int]:
+def _out_of_order(
+    kept: list[int], was: dict[int, int], now: dict[int, int]
+) -> list[int]:
     """The fewest exercises whose moving accounts for the new order.
 
     Everything that held its relative place is left out of the report, and what
@@ -713,28 +762,40 @@ def _out_of_order(kept: list[int], was: dict[int, int]) -> list[int]:
     plank from last to first reads as every other exercise moving down one -
     true of their positions, and useless to read.
 
+    More than one run can be the longest: swap two exercises around a third and
+    any two of them explain it, so which two are named is a real choice. It
+    goes to the run holding the exercises that are still at the position they
+    were at, which is the one that names the exercises you actually moved -
+    otherwise swapping the second and fourth can report the third, which never
+    moved at all, and say nothing about the fourth, which crossed it.
+
     Longest increasing subsequence, quadratic, over a handful of exercises.
     """
     if not kept:
         return []
 
     before = [was[ident] for ident in kept]
-    longest = [1] * len(before)
+    #: Whether each is at the same position as before, which only breaks ties.
+    still = [int(was[ident] == now[ident]) for ident in kept]
+    #: What a run is judged on: how many exercises it holds, and then how many
+    #: of those never moved. Longer always wins; the second only settles a tie.
+    best = [(1, stayed) for stayed in still]
     came_from = [-1] * len(before)
     for later in range(len(before)):
         for earlier in range(later):
-            if (
-                before[earlier] < before[later]
-                and longest[earlier] + 1 > longest[later]
-            ):
-                longest[later] = longest[earlier] + 1
+            if before[earlier] >= before[later]:
+                continue
+            length, stayed = best[earlier]
+            through = (length + 1, stayed + still[later])
+            if through > best[later]:
+                best[later] = through
                 came_from[later] = earlier
 
-    at = max(range(len(before)), key=lambda position: longest[position])
+    end = max(range(len(before)), key=lambda position: best[position])
     in_place = set()
-    while at != -1:
-        in_place.add(at)
-        at = came_from[at]
+    while end != -1:
+        in_place.add(end)
+        end = came_from[end]
 
     return [ident for position, ident in enumerate(kept) if position not in in_place]
 
@@ -795,6 +856,7 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
     added: set[int] = set()
 
     _reconcile(workout, payload, structure, added, trusted)
+    structure = _pair_renames(structure)
     shaped.warnings.extend(_renames(structure))
     gaps = _refresh_gaps(workout, payload)
 

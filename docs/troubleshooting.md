@@ -143,13 +143,13 @@ else that number is kept.
 Usually that is what you asked for. When it is not, the cause is almost always
 a `garmin_name` that no longer matches: the config names an exercise Garmin
 does not have, so it is built, and the one Garmin has goes unnamed, so it is
-dropped. A dry run shows both, one `+` line and one `-` line for what should
-have been the same exercise - and warns when the two look like one movement:
+dropped. A dry run shows a `+` row and a `-` row for what should have been the
+same exercise - and where the two look like one movement, says so on a single
+row in the exercise's own place, and warns at the end:
 
 ```text
-  ! Lat Pull-down: added while LAT_PULLDOWN is removed, and the two look like
-    the same exercise. If that is a renamed garmin_name rather than a swap, the
-    target on LAT_PULLDOWN is about to be lost with it
++ 3 Lat Pull-down build  3            ->  8 x 50 kg        replaces LAT_PULLDOWN
+! Lat Pull-down replaces LAT_PULLDOWN: if that is a renamed garmin_name rather than a swap, its target is lost
 ```
 
 Two things stop it getting that far. Filling in `garmin_category` bridges a
