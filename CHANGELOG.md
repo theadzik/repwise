@@ -1,3 +1,9 @@
+## 1.2.0 (2026-08-12)
+
+### Feat
+
+- Redesign how repwise update tables are displayed  (#42) ([7fae9e5](https://github.com/theadzik/repwise/commit/7fae9e5de2ad4ee041b581cbb606df6820061abd))
+
 ## 1.1.0 (2026-08-09)
 
 ### Feat
