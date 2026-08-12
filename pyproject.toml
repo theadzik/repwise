@@ -50,9 +50,23 @@ Documentation = "https://github.com/theadzik/repwise/tree/main/docs"
 Changelog = "https://github.com/theadzik/repwise/blob/main/CHANGELOG.md"
 Issues = "https://github.com/theadzik/repwise/issues"
 
-[project.optional-dependencies]
-dev = [
+# Development tooling, as PEP 735 groups rather than extras. An extra is part
+# of the package - installable by anyone from PyPI, and only alongside the
+# package itself. These are neither: nobody installing repwise wants mypy, and
+# the release workflow wants commitizen *without* building repwise at all.
+# Groups install on their own, which is what makes that possible.
+#
+# `release` is split out because the release workflow needs commitizen and
+# nothing else, and the version of commitizen decides the release rules - which
+# commit types bump what, how the changelog renders. Pinning it here and
+# including the group in `dev` means a local `cz bump --dry-run` and the
+# workflow cannot disagree about the answer.
+[dependency-groups]
+release = [
     "commitizen==4.17.0",
+]
+dev = [
+    { include-group = "release" },
     "mypy==2.3.0",
     "pre-commit==4.6.1",
     "pytest==9.1.1",
