@@ -458,6 +458,11 @@ def load_config(path: str | None = None) -> Config:
             garmin_raw.get("activity_search_limit") or defaults.activity_search_limit
         ),
         dump_dir=os.path.expanduser(garmin_raw.get("dump_dir") or defaults.dump_dir),
+        # Read with `.get(key, default)` rather than `or`, because `false` is a
+        # value here and not an absence: `or` cannot tell the two apart.
+        activity_caching=bool(
+            garmin_raw.get("activity_caching", defaults.activity_caching)
+        ),
     )
 
     # Unset means "ask Garmin", which is the better answer for anyone who

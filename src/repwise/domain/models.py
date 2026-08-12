@@ -110,6 +110,13 @@ class GarminSettings:
     token_store: str = "~/.config/repwise"
     activity_search_limit: int = 50
     dump_dir: str = "."
+    #: Whether the payloads already in `dump_dir` may be read instead of asked
+    #: for again. Off by default: a session Garmin holds is the truth, and a
+    #: tool that quietly prefers its own copy of it should be asked for, not
+    #: assumed. On, a run also files every session it sees, so the directory
+    #: fills itself. What makes that safe to trust is that Garmin's own totals
+    #: for a session are checked against the copy on disk - see `dumps.py`.
+    activity_caching: bool = False
 
 
 @dataclass(frozen=True)

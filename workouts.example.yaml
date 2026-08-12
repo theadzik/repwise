@@ -79,6 +79,11 @@ settings:
     activity_search_limit: 50
     # Where `fetch` writes its JSON.
     dump_dir: .
+    # Read a session from dump_dir instead of asking Garmin for it again, and
+    # file every session a run sees so the directory keeps itself current. A
+    # cached copy is dropped as soon as Garmin's totals for that session stop
+    # matching it, so correcting a set in Connect still reaches your targets.
+    activity_caching: false
 
   # kg added when an exercise tops out its rep range, by load type. An
   # exercise can override this with its own weight_step.

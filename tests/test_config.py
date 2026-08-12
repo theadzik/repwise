@@ -285,6 +285,7 @@ def test_garmin_settings_have_defaults(write_config, clean_home):
 
     assert config.garmin.token_store == str(clean_home / ".config" / "repwise")
     assert config.garmin.activity_search_limit == 50
+    assert config.garmin.activity_caching is False, "reading a copy is opt-in"
 
 
 def test_the_default_token_store_follows_the_config_home(
@@ -380,12 +381,24 @@ def test_garmin_settings_come_from_the_file(write_config):
     text = FIXTURE.replace(
         "settings:\n",
         "settings:\n  garmin:\n    token_store: /tmp/tokens\n"
-        "    activity_search_limit: 5\n",
+        "    activity_search_limit: 5\n    activity_caching: true\n",
         1,
     )
     config = load_config(write_config(text))
     assert config.garmin.token_store == "/tmp/tokens"
     assert config.garmin.activity_search_limit == 5
+    assert config.garmin.activity_caching is True
+
+
+def test_caching_turned_off_by_hand_is_not_read_as_unset(write_config):
+    """`false` is a value, and `or` would read it as an absent one."""
+    text = FIXTURE.replace(
+        "settings:\n",
+        "settings:\n  garmin:\n    activity_caching: false\n",
+        1,
+    )
+
+    assert load_config(write_config(text)).garmin.activity_caching is False
 
 
 # --- validation -----------------------------------------------------------
