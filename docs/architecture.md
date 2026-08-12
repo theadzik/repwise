@@ -35,9 +35,13 @@ src/repwise/
     checker.py             compare config against Garmin
     errors.py              why a run failed, and what it exits with
     log.py                 which stream a message lands on, and its level
+    dumps.py               the dump directory: how it is named, and - with
+                           activity_caching on - when a copy of a session may
+                           be believed rather than fetched again
     garmin/
         client.py          authentication, the Garmin session, and the cached
-                           token: what it is worth and how to be rid of it
+                           token: what it is worth and how to be rid of it.
+                           Also the session that reads dump_dir first
         payloads.py        Garmin's JSON <-> our types, and building it from
                            nothing for a workout Garmin does not have yet.
                            Also reads the workout an activity was run against
@@ -56,7 +60,10 @@ tests/
     test_checker.py        drift detection
     test_catalog.py        what the catalog says, and how it is cached
     test_checking.py       what `check` gathers before it can check
-    test_client.py         the session wrapper, and the token store
+    test_client.py         the session wrapper, the token store, and the one
+                           that reads dump_dir before it asks
+    test_dumps.py          the dump layout, and when a copy is believed
+    test_fetch.py          what each download writes, and what it skips
     test_logout.py         what signing out deletes, keeps and says
     test_cli.py            argument parsing and help
     test_completion.py     the generated scripts, and what bash makes of them
@@ -151,7 +158,16 @@ Four boundaries carry the weight:
   write is styled, or how it gets onto disk.
 
 Everything the application talks to Garmin through is `GarminSession` in
-`garmin/client.py`, so the `garminconnect` dependency stays in one place.
+`garmin/client.py`, so the `garminconnect` dependency stays in one place. With
+[`activity_caching`](configuration.md#reusing-what-is-on-disk) on, `connect()`
+builds a `CachedSession` instead, which answers the three per-session reads
+from `dump_dir` before it asks. Nothing above it can tell, which is the point:
+a use case decides what it needs, not where it comes from.
+
+`dumps.py` sits outside the arrows, like `log.py` and `errors.py` below. Both
+`garmin/` and `app/` write dumps, and the layout of that directory is one
+statement rather than each of them spelling it - which is what lets the session
+read back exactly what `fetch` wrote.
 
 `log.py` sits outside those arrows. Modules log through the standard library
 and never import it; only `main()` calls `configure()`, which decides what a
