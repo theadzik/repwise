@@ -145,15 +145,16 @@ def test_completion_refuses_a_shell_it_cannot_write(capsys):
     assert "invalid choice" in capsys.readouterr().err
 
 
-# --- `fetch`, which is two downloads sharing a positional -----------------
+# --- `fetch`, which is three downloads sharing a positional ---------------
 
 
 @pytest.fixture
 def fetching(monkeypatch):
-    """Record which of the two downloads a `fetch` invocation reached.
+    """Record which of the three downloads a `fetch` invocation reached.
 
-    Both are replaced, and so is `connect`: the routing is the whole question
-    here, and neither a session nor a network should be needed to answer it.
+    All three are replaced, and so is `connect`: the routing is the whole
+    question here, and neither a session nor a network should be needed to
+    answer it.
     """
     reached: dict[str, object] = {}
 
@@ -161,24 +162,39 @@ def fetching(monkeypatch):
         reached["workouts"] = workout_ids
         return ExitCode.OK
 
+    def activities(session, config, activity_ids):
+        reached["activities"] = activity_ids
+        return ExitCode.OK
+
     def exercises(settings):
         reached["exercises"] = settings
         return ExitCode.OK
 
     monkeypatch.setattr(cli, "run_fetch", workouts)
+    monkeypatch.setattr(cli, "run_fetch_activities", activities)
     monkeypatch.setattr(cli, "run_fetch_exercises", exercises)
     monkeypatch.setattr(cli, "connect", lambda settings: object())
     return reached
 
 
-def test_fetch_with_ids_downloads_workouts(config, fetching):
-    assert main(["--config", config, "fetch", "123"]) == ExitCode.OK
+def test_fetch_workouts_downloads_every_workout_in_the_config(config, fetching):
+    assert main(["--config", config, "fetch", "workouts"]) == ExitCode.OK
+    assert fetching == {"workouts": []}
+
+
+def test_fetch_workouts_with_ids_downloads_those(config, fetching):
+    assert main(["--config", config, "fetch", "workouts", "123"]) == ExitCode.OK
     assert fetching == {"workouts": ["123"]}
 
 
-def test_fetch_with_nothing_downloads_workouts(config, fetching):
-    assert main(["--config", config, "fetch"]) == ExitCode.OK
-    assert fetching == {"workouts": []}
+def test_fetch_activities_scans_for_them(config, fetching):
+    assert main(["--config", config, "fetch", "activities"]) == ExitCode.OK
+    assert fetching == {"activities": []}
+
+
+def test_fetch_activities_with_ids_downloads_those(config, fetching):
+    assert main(["--config", config, "fetch", "activities", "999"]) == ExitCode.OK
+    assert fetching == {"activities": ["999"]}
 
 
 def test_fetch_exercises_downloads_the_catalog(config, fetching):
@@ -205,6 +221,65 @@ def test_mixing_the_catalog_with_workout_ids_is_refused(config, fetching, capsys
     assert code == ExitCode.CONFIG
     assert fetching == {}, "neither download should have run"
     assert "takes no workout ids" in capsys.readouterr().err
+
+
+def test_a_target_after_an_id_is_refused(config, fetching, capsys):
+    """It says what the ids are, so it cannot be one of them."""
+    code = main(["--config", config, "fetch", "123", "activities"])
+
+    assert code == ExitCode.CONFIG
+    assert fetching == {}, "no download should have run"
+    assert "goes first" in capsys.readouterr().err
+
+
+# --- spellings on their way out -------------------------------------------
+
+
+def test_fetch_with_no_target_still_downloads_workouts(config, fetching, capsys):
+    assert main(["--config", config, "fetch"]) == ExitCode.OK
+    assert fetching == {"workouts": []}
+
+    err = capsys.readouterr().err
+    assert "deprecated" in err and "v2" in err
+    assert "fetch workouts" in err
+
+
+def test_fetch_with_bare_ids_still_downloads_those_workouts(config, fetching, capsys):
+    assert main(["--config", config, "fetch", "123", "456"]) == ExitCode.OK
+    assert fetching == {"workouts": ["123", "456"]}
+    assert "deprecated" in capsys.readouterr().err
+
+
+def test_naming_a_target_warns_about_nothing(config, fetching, capsys):
+    assert main(["--config", config, "fetch", "workouts"]) == ExitCode.OK
+    assert capsys.readouterr().err == ""
+
+
+def test_update_dump_warns_but_still_dumps(config, monkeypatch, capsys):
+    """The flag still works. The run that prints this is not the one to break."""
+    seen: dict[str, object] = {}
+
+    def updating(session, config, options):
+        seen["dump"] = options.dump
+        return ExitCode.OK
+
+    monkeypatch.setattr(cli, "run_update", updating)
+    monkeypatch.setattr(cli, "connect", lambda settings: object())
+
+    assert main(["--config", config, "update", "--dump"]) == ExitCode.OK
+    assert seen == {"dump": True}
+
+    err = capsys.readouterr().err
+    assert "deprecated" in err and "v2" in err
+    assert "fetch activities" in err
+
+
+def test_update_without_dump_warns_about_nothing(config, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "run_update", lambda *args: ExitCode.OK)
+    monkeypatch.setattr(cli, "connect", lambda settings: object())
+
+    assert main(["--config", config, "update"]) == ExitCode.OK
+    assert capsys.readouterr().err == ""
 
 
 # --- failures -------------------------------------------------------------

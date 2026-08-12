@@ -58,7 +58,6 @@ does the first column, and says so.
 repwise update                    # dry run, shows changes
 repwise update --apply            # write to Garmin
 repwise update --apply --push     # and send them to your watch
-repwise update --dump             # save raw JSON, change nothing
 repwise update --activity 1234    # use a specific activity
 ```
 
@@ -68,7 +67,14 @@ repwise update --activity 1234    # use a specific activity
 | `--apply` | Write to Garmin Connect: new targets, and any workout the config creates or reshapes |
 | `--push` | Queue the written workouts for your devices. Requires `--apply` |
 | `--activity ID` | Update from this one activity instead of scanning |
-| `--dump` | Also save the raw activity and workout JSON |
+| `--dump` | Also save the raw activity and workout JSON. **Deprecated**, see below |
+
+> **`--dump` is deprecated and goes in v2.** Downloading payloads is
+> [`fetch activities`](#fetch-activities)' job, and it does the same thing
+> without a second command's worth of behaviour attached: the same sets, the
+> same workout definition, plus the session summary, for any session rather
+> than only the one this run happened to judge. The flag still works and still
+> warns.
 
 **Dry run is the default.** Nothing is sent to Garmin without `--apply`, and
 nothing is written back to `workouts.yaml` either.
@@ -101,8 +107,9 @@ the more recent has the last word.
 
 Only the *latest* activity per workout is read. If you trained the same workout
 twice since the last run, the earlier one is skipped - replay it with
-`--activity` and its id, which `--dump` filenames and Garmin Connect URLs both
-contain. Do that before the later session's run, or apply them in order.
+`--activity` and its id, which Garmin Connect URLs and
+[`fetch activities`](#fetch-activities) filenames both contain. Do that before
+the later session's run, or apply them in order.
 Re-processing an activity is safe: the second pass reads its own applied target
 and reports "missed target" rather than advancing again.
 
@@ -524,19 +531,66 @@ them, with what each would become.
 
 ## fetch
 
-Downloads workout definitions as JSON. Mostly a connectivity check and a way to
-inspect Garmin's schema by hand.
+Downloads what Garmin holds as JSON. Mostly a connectivity check and a way to
+inspect Garmin's schema by hand. The first word says what to download:
 
 ```bash
-repwise fetch                   # every workout in workouts.yaml
-repwise fetch 111111111         # a specific workout
+repwise fetch workouts          # the definitions this tool writes targets into
+repwise fetch activities        # the sessions you performed
+repwise fetch exercises         # Garmin's exercise catalog
 ```
 
-Files land in `settings.garmin.dump_dir`.
+`workouts` and `activities` both take ids to narrow them, and both land in
+`settings.garmin.dump_dir`. `exercises` is a different download altogether and
+is described [below](#fetch-exercises).
+
+> **`repwise fetch` with no word, or with bare ids, is deprecated.** It still
+> means `fetch workouts`, warns, and goes in v2. Spell out the target.
+
+### fetch workouts
+
+```bash
+repwise fetch workouts          # every workout in workouts.yaml
+repwise fetch workouts 111111111
+```
+
+One file per workout, `workout-<id>.json`. A workout in your config that Garmin
+does not hold yet has no definition to download, so it is skipped rather than
+reported.
+
+### fetch activities
+
+```bash
+repwise fetch activities              # every strength session found
+repwise fetch activities 1234567890   # one session, by id
+```
+
+Three files per session, because Garmin keeps it as three payloads and none of
+them is the other two:
+
+| File | What it holds |
+| --- | --- |
+| `activity-<id>.json` | The summary: what the session was called, when, how long |
+| `sets-<id>.json` | What your watch recorded, set by set - reps, and [weight in grams](garmin-api.md#weight-units) |
+| `executed-<id>.json` | The workout that session was *run against* |
+
+The third is the only record of what a past session was **asked** for: the
+definition Garmin stores holds the target for the *next* one, because
+[`update`](#update) rewrote it once that session was read. A session performed
+against no workout has no third file.
+
+Without ids, the recent activities are scanned and the strength ones kept -
+`settings.garmin.activity_search_limit` is how far back that reaches, and
+raising it is how you get at older sessions. An id is downloaded as given,
+whatever sport it was: naming one says more about what you want than its type
+does, and an id is also the only way to reach a session past the search limit.
+
+This replaces [`update --dump`](#update), which saved two of the three and only
+for the session that run was judging.
 
 ### fetch exercises
 
-The single word `exercises` instead of any ids downloads something else
+The single word `exercises` downloads something else
 entirely: [Garmin's exercise catalog](garmin-api.md#the-exercise-catalog),
 every exercise it knows and the category each is filed under.
 
@@ -556,8 +610,8 @@ refresh a stale copy, not something to run first.** Refreshing is
 unconditional; a copy already there is replaced.
 
 The catalog is a public file, so this is the one command that opens no session
-and needs no login. It cannot be combined with workout ids: the two downloads
-share a word and nothing else.
+and needs no login. It cannot be combined with ids: it shares a command with
+the other two downloads and nothing else.
 
 ## logout
 

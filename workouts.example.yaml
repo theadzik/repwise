@@ -64,8 +64,8 @@
 #      garmin_workout_id and let `repwise update --apply` build them for you.
 #   2. Take each garmin_workout_id from its Connect URL, e.g.
 #      https://connect.garmin.com/modern/workout/111111111
-#   3. Run `repwise update --dump` after a session and read exerciseName and
-#      category off the dumped workout JSON.
+#   3. Run `repwise fetch activities` after a session and read exerciseName
+#      and category off the dumped JSON.
 
 settings:
   garmin:
@@ -74,9 +74,10 @@ settings:
     # $XDG_CONFIG_HOME/repwise (usually ~/.config/repwise).
     # What lands there is as good as being logged in, so keep it private and out of backups.
     # token_store: ~/.config/repwise
-    # How many recent activities to scan when looking for the last session.
+    # How many recent activities to scan for the last session, and for the
+    # strength sessions `repwise fetch activities` downloads.
     activity_search_limit: 50
-    # Where --dump and `fetch` write their JSON.
+    # Where `fetch` writes its JSON.
     dump_dir: .
 
   # kg added when an exercise tops out its rep range, by load type. An

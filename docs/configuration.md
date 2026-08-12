@@ -46,7 +46,7 @@ settings:
   garmin:
     token_store: ~/.config/repwise  # OAuth tokens, and the exercise catalog
     activity_search_limit: 50       # recent activities scanned for a match
-    dump_dir: .                     # where --dump and `fetch` write JSON
+    dump_dir: .                     # where `fetch` writes JSON
 
   weight_steps:        # kg added when a range is topped out, by load type
     barbell: 2.5
@@ -66,8 +66,8 @@ settings:
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `garmin.token_store` | `$XDG_CONFIG_HOME/repwise`, i.e. `~/.config/repwise` | Where the OAuth tokens are cached, and where [`fetch exercises`](commands.md#fetch-exercises) caches the exercise catalog. Beside your config by default, so one directory is everything this tool owns. The token is as good as being logged in until it expires, so the directory is kept private to you - see [what is stored](troubleshooting.md#what-is-stored-and-what-it-is-worth). [`repwise logout`](commands.md#logout) empties it. Tokens already in `~/.garminconnect`, where the default used to point, are still used until you move them - [see upgrading](troubleshooting.md#upgrading-from-a-version-that-defaulted-to-garminconnect), which 2.0 stops doing |
-| `garmin.activity_search_limit` | `50` | How many recent activities to scan for a name match, and for the sessions behind it |
-| `garmin.dump_dir` | `.` | Where `--dump` and `fetch` write JSON |
+| `garmin.activity_search_limit` | `50` | How many recent activities to scan for a name match, for the sessions behind it, and for the strength sessions [`fetch activities`](commands.md#fetch-activities) downloads |
+| `garmin.dump_dir` | `.` | Where [`fetch`](commands.md#fetch) writes JSON |
 | `weight_steps` | - | kg added per load type when a rep range is topped out |
 | `min_weights` | none | The lightest each load type can go. A [deload](progression.md#deloading) stops here rather than prescribing a weight you cannot make up. A load type left out has no floor |
 | `bodyweight` | your Garmin weigh-ins | Your weight in kg, when you would rather state it than have it read. Only ever an input to [`check`](#does-the-range-fit-the-step); no target depends on it |
@@ -404,12 +404,14 @@ Every problem in the file is reported at once, rather than one per run:
 guess, dump a real session and read them off:
 
 ```bash
-repwise update --dump   # writes dump-workout-*.json and dump-sets-*.json
+repwise fetch activities   # writes activity-*.json, sets-*.json, executed-*.json
 ```
 
-Each executable step in the workout dump carries `exerciseName` and `category`;
-copy those into `workouts.yaml`. [`repwise check`](commands.md#check) finds any
-that do not match, and is worth running after editing these by hand.
+Each executable step in `executed-*.json` carries `exerciseName` and
+`category`; copy those into `workouts.yaml`. The `sets-*.json` beside it says
+what your watch actually detected, which is worth comparing when a name does
+not match. [`repwise check`](commands.md#check) finds any that do not match,
+and is worth running after editing these by hand.
 
 For an exercise no workout of yours holds yet, the authority is [Garmin's
 exercise catalog](garmin-api.md#the-exercise-catalog), which `check` downloads

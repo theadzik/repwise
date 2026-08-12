@@ -11,9 +11,12 @@ venv/
 workouts*.yaml
 !workouts.example.yaml
 
-# Garmin payloads saved by `fetch` and `update --dump`
+# Garmin payloads saved by `fetch` and by the deprecated `update --dump`
 dumps/
 workout-*.json
+activity-*.json
+sets-*.json
+executed-*.json
 dump-*.json
 
 *_cache/

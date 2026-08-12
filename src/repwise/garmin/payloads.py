@@ -671,6 +671,18 @@ def executed_exercises(snapshot: list[dict[str, Any]]) -> list[ExecutedExercise]
 # --- logged activities -----------------------------------------------------
 
 
+def activity_sport(activity: dict[str, Any]) -> str | None:
+    """What sport a performed activity was, as a list of them reports it.
+
+    Three payloads spell this three ways for the same answer: a workout says
+    `sportType.sportTypeKey`, an activity in a list says `activityType.typeKey`,
+    and that same activity fetched on its own says `activityTypeDTO.typeKey`.
+    The list shape is the one read here, because listing is where the question
+    gets asked - filtering a scan before deciding what to download.
+    """
+    return (activity.get("activityType") or {}).get("typeKey")
+
+
 def performed_sets(
     sets_payload: dict[str, Any],
 ) -> tuple[dict[str, list[PerformedSet]], dict[str, list[PerformedSet]]]:
