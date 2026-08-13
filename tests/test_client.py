@@ -10,7 +10,14 @@ from garminconnect import GarminConnectTooManyRequestsError
 
 from repwise.domain.models import GarminSettings
 from repwise.errors import ExitCode, GarminError, NoTerminal, RateLimited
-from repwise.garmin.client import STRENGTH, GarminSession, connect, forget
+from repwise.garmin import client
+from repwise.garmin.client import (
+    STRENGTH,
+    CachedSession,
+    GarminSession,
+    connect,
+    forget,
+)
 
 #: The permission checks are about POSIX modes; what Windows reports is not one.
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
@@ -359,3 +366,154 @@ def test_an_account_that_has_never_weighed_in_reads_as_unknown():
     s, _ = weighing({"totalAverage": {"weight": None}, "dateWeightList": []})
 
     assert s.bodyweight() is None
+
+
+# --- a session that reads dump_dir before it asks -------------------------
+
+
+class ActivityStub:
+    """One account's sessions, and a count of what was actually asked for."""
+
+    def __init__(self, activities=()):
+        self.activities = list(activities)
+        self.asked: list[str] = []
+
+    def get_activities(self, start, limit):
+        return self.activities
+
+    def get_activity(self, activity_id):
+        self.asked.append(f"activity {activity_id}")
+        return {"activityId": activity_id, "activityName": "Training A"}
+
+    def get_activity_exercise_sets(self, activity_id):
+        self.asked.append(f"sets {activity_id}")
+        return {"exerciseSets": [{"setType": "ACTIVE"}]}
+
+    def connectapi(self, url, params=None):
+        self.asked.append(f"executed {url}")
+        return []
+
+
+def listed(activity_id="111", reps=40):
+    return {
+        "activityId": activity_id,
+        "activityName": "Training A",
+        "totalSets": 4,
+        "totalReps": reps,
+        "totalVolume": 800.0,
+    }
+
+
+def caching(tmp_path, activities=()) -> tuple[CachedSession, ActivityStub]:
+    api = ActivityStub(activities)
+    settings = GarminSettings(dump_dir=str(tmp_path), activity_caching=True)
+    return CachedSession(api, settings), api
+
+
+def test_the_first_read_of_a_session_asks_garmin(tmp_path):
+    s, api = caching(tmp_path, [listed()])
+
+    s.recent_activities()
+    s.activity("111")
+    s.exercise_sets("111")
+    s.executed_workout("111")
+
+    assert len(api.asked) == 3
+
+
+def test_the_second_read_of_a_session_asks_nobody(tmp_path):
+    s, api = caching(tmp_path, [listed()])
+    s.recent_activities()
+    s.activity("111")
+    s.exercise_sets("111")
+    s.executed_workout("111")
+    api.asked.clear()
+
+    assert s.activity("111")["activityName"] == "Training A"
+    assert s.exercise_sets("111")["exerciseSets"][0]["setType"] == "ACTIVE"
+    assert s.executed_workout("111") == []
+    assert api.asked == [], "everything was already on disk"
+
+
+def test_a_session_edited_in_connect_is_read_again(tmp_path):
+    """Fixing a rep count in Connect should reach the next run's targets."""
+    s, api = caching(tmp_path, [listed()])
+    s.recent_activities()
+    s.exercise_sets("111")
+    s.activity("111")
+
+    later, api = caching(tmp_path, [listed(reps=41)])
+    later.recent_activities()
+    later.exercise_sets("111")
+
+    assert api.asked == ["sets 111"]
+
+
+def test_a_plain_session_holds_nothing(tmp_path):
+    """`is_cached` is asked by callers that only want to report a skip."""
+    plain = GarminSession(ActivityStub(), GarminSettings(dump_dir=str(tmp_path)))
+
+    assert plain.is_cached("111") is False
+
+
+def test_a_cached_session_says_what_it_holds(tmp_path):
+    s, _ = caching(tmp_path, [listed()])
+    s.recent_activities()
+
+    assert s.is_cached("111") is False
+
+    s.activity("111")
+    s.exercise_sets("111")
+
+    assert s.is_cached("111") is False, "the executed workout is still unasked"
+
+    s.executed_workout("111")
+
+    assert s.is_cached("111") is True
+
+
+class LoginStub(ActivityStub):
+    """An account whose cached token still works, so `connect` resumes."""
+
+    def login(self, store):
+        return True
+
+
+def connecting(monkeypatch, tmp_path, **settings):
+    """Let `connect` resume without a network, and say what -v was told."""
+    monkeypatch.setattr(client, "Garmin", lambda *a, **k: LoginStub())
+    store = tmp_path / "store"
+    store.mkdir()
+    store.chmod(0o700)
+    return GarminSettings(token_store=str(store), dump_dir=str(tmp_path), **settings)
+
+
+def test_a_run_that_reads_nothing_says_why(monkeypatch, tmp_path, caplog):
+    """A run downloading everything looks the same however it got that way."""
+    settings = connecting(monkeypatch, tmp_path)
+
+    with caplog.at_level(logging.DEBUG, logger="repwise.garmin.client"):
+        session = connect(settings)
+
+    assert not isinstance(session, CachedSession)
+    assert "activity_caching is off" in caplog.text
+
+
+def test_a_run_that_reads_dump_dir_says_so(monkeypatch, tmp_path, caplog):
+    settings = connecting(monkeypatch, tmp_path, activity_caching=True)
+
+    with caplog.at_level(logging.DEBUG, logger="repwise.garmin.client"):
+        session = connect(settings)
+
+    assert isinstance(session, CachedSession)
+    assert "are read from there" in caplog.text
+
+
+def test_force_is_not_reported_as_the_setting_being_off(monkeypatch, tmp_path, caplog):
+    settings = connecting(monkeypatch, tmp_path, activity_caching=True)
+
+    with caplog.at_level(logging.DEBUG, logger="repwise.garmin.client"):
+        connect(settings, cache=False)
+
+    assert "--force" in caplog.text
+    assert "activity_caching is off" not in caplog.text

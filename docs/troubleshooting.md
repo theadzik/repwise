@@ -87,6 +87,7 @@ DEBUG   repwise.garmin.client: Resumed cached session.
 | Cloudflare challenge | Only affects browser automation. This tool goes through `garminconnect`, built on `curl_cffi`, which is not subject to it |
 | Every exercise looks like bodyweight | The weight is reading as zero. Check a [`fetch activities`](commands.md#fetch-activities) dump against [Garmin's API](garmin-api.md#weight-units) |
 | `--push` refused with exit 3 | `--push` needs `--apply`; without it nothing has been written, so there is nothing to send |
+| A correction made in Connect changed nothing | With [`activity_caching`](configuration.md#reusing-what-is-on-disk) on, a session is re-read when Garmin's totals for it move. An edit that moves none of them is invisible; `repwise fetch activities --force`, or deleting that session's files from `dump_dir`, downloads it again |
 | `No workouts.yaml found` | The message lists every path tried. Put one there, copy the example, or pass `--config PATH`. See [where the file lives](configuration.md#where-the-file-lives) |
 
 `garth` is deprecated and unmaintained after Garmin's March 2026 auth change.

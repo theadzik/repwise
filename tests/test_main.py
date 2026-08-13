@@ -173,28 +173,46 @@ def fetching(monkeypatch):
     monkeypatch.setattr(cli, "run_fetch", workouts)
     monkeypatch.setattr(cli, "run_fetch_activities", activities)
     monkeypatch.setattr(cli, "run_fetch_exercises", exercises)
-    monkeypatch.setattr(cli, "connect", lambda settings: object())
+
+    def connect(settings, cache=True):
+        reached["cache"] = cache
+        return object()
+
+    monkeypatch.setattr(cli, "connect", connect)
     return reached
 
 
 def test_fetch_workouts_downloads_every_workout_in_the_config(config, fetching):
     assert main(["--config", config, "fetch", "workouts"]) == ExitCode.OK
-    assert fetching == {"workouts": []}
+    assert fetching["workouts"] == []
 
 
 def test_fetch_workouts_with_ids_downloads_those(config, fetching):
     assert main(["--config", config, "fetch", "workouts", "123"]) == ExitCode.OK
-    assert fetching == {"workouts": ["123"]}
+    assert fetching["workouts"] == ["123"]
 
 
 def test_fetch_activities_scans_for_them(config, fetching):
     assert main(["--config", config, "fetch", "activities"]) == ExitCode.OK
-    assert fetching == {"activities": []}
+    assert fetching["activities"] == []
 
 
 def test_fetch_activities_with_ids_downloads_those(config, fetching):
     assert main(["--config", config, "fetch", "activities", "999"]) == ExitCode.OK
-    assert fetching == {"activities": ["999"]}
+    assert fetching["activities"] == ["999"]
+
+
+def test_fetch_opens_a_session_that_may_read_dump_dir(config, fetching):
+    main(["--config", config, "fetch", "activities"])
+
+    assert fetching["cache"] is True, "the config decides; this does not refuse it"
+
+
+def test_force_opens_a_session_that_reads_nothing(config, fetching):
+    """A download that must replace what is on disk cannot answer from it."""
+    main(["--config", config, "fetch", "activities", "--force"])
+
+    assert fetching["cache"] is False
 
 
 def test_fetch_exercises_downloads_the_catalog(config, fetching):
@@ -237,7 +255,7 @@ def test_a_target_after_an_id_is_refused(config, fetching, capsys):
 
 def test_fetch_with_no_target_still_downloads_workouts(config, fetching, capsys):
     assert main(["--config", config, "fetch"]) == ExitCode.OK
-    assert fetching == {"workouts": []}
+    assert fetching["workouts"] == []
 
     err = capsys.readouterr().err
     assert "deprecated" in err and "v2" in err
@@ -246,7 +264,7 @@ def test_fetch_with_no_target_still_downloads_workouts(config, fetching, capsys)
 
 def test_fetch_with_bare_ids_still_downloads_those_workouts(config, fetching, capsys):
     assert main(["--config", config, "fetch", "123", "456"]) == ExitCode.OK
-    assert fetching == {"workouts": ["123", "456"]}
+    assert fetching["workouts"] == ["123", "456"]
     assert "deprecated" in capsys.readouterr().err
 
 

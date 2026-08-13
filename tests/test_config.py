@@ -285,6 +285,7 @@ def test_garmin_settings_have_defaults(write_config, clean_home):
 
     assert config.garmin.token_store == str(clean_home / ".config" / "repwise")
     assert config.garmin.activity_search_limit == 50
+    assert config.garmin.activity_caching is False, "reading a copy is opt-in"
 
 
 def test_the_default_token_store_follows_the_config_home(
@@ -380,12 +381,24 @@ def test_garmin_settings_come_from_the_file(write_config):
     text = FIXTURE.replace(
         "settings:\n",
         "settings:\n  garmin:\n    token_store: /tmp/tokens\n"
-        "    activity_search_limit: 5\n",
+        "    activity_search_limit: 5\n    activity_caching: true\n",
         1,
     )
     config = load_config(write_config(text))
     assert config.garmin.token_store == "/tmp/tokens"
     assert config.garmin.activity_search_limit == 5
+    assert config.garmin.activity_caching is True
+
+
+def test_caching_turned_off_by_hand_is_not_read_as_unset(write_config):
+    """`false` is a value, and `or` would read it as an absent one."""
+    text = FIXTURE.replace(
+        "settings:\n",
+        "settings:\n  garmin:\n    activity_caching: false\n",
+        1,
+    )
+
+    assert load_config(write_config(text)).garmin.activity_caching is False
 
 
 # --- validation -----------------------------------------------------------
@@ -739,3 +752,93 @@ def test_bodyweight_is_unset_so_that_garmin_is_asked(write_config):
 def test_bodyweight_can_be_stated_instead(write_config):
     text = FIXTURE.replace("settings:\n", "settings:\n  bodyweight: 81.5\n")
     assert load_config(write_config(text)).bodyweight == 81.5
+
+
+# --- a cache pointed at a directory that moves ----------------------------
+
+
+def caching_config(write_config, dump_dir, on=True):
+    text = FIXTURE.replace(
+        "settings:\n",
+        f"settings:\n  garmin:\n    dump_dir: {dump_dir}\n"
+        f"    activity_caching: {'true' if on else 'false'}\n",
+        1,
+    )
+    return write_config(text)
+
+
+def loading(path, caplog) -> str:
+    with caplog.at_level(logging.WARNING, logger="repwise.config"):
+        load_config(path)
+    return caplog.text
+
+
+def test_a_relative_dump_dir_with_caching_on_is_warned_about(write_config, caplog):
+    """Each directory you run from would be its own empty cache."""
+    warned = loading(caching_config(write_config, "."), caplog)
+
+    assert "relative to wherever repwise is run from" in warned
+    assert "dump_dir: ~/.local/share/repwise/dumps" in warned
+
+
+def test_a_relative_dump_dir_is_still_honoured(write_config, caplog):
+    """Warned, not refused: running from one directory is a coherent thing."""
+    config = load_config(caching_config(write_config, "./dumps"))
+
+    assert config.garmin.dump_dir == "./dumps"
+
+
+def test_an_absolute_dump_dir_is_not_warned_about(write_config, caplog):
+    warned = loading(caching_config(write_config, "/tmp/dumps"), caplog)
+
+    assert warned == ""
+
+
+def test_a_dump_dir_under_home_counts_as_absolute(write_config, caplog):
+    """`~` is expanded as the config is read, so it names one directory."""
+    warned = loading(caching_config(write_config, "~/dumps"), caplog)
+
+    assert warned == ""
+
+
+def test_a_relative_dump_dir_without_caching_is_left_alone(write_config, caplog):
+    """Nothing is being read back, so it is somewhere to drop files and no more."""
+    warned = loading(caching_config(write_config, ".", on=False), caplog)
+
+    assert warned == ""
+
+
+# --- a setting that wants a yes or a no -----------------------------------
+
+
+def flagged(write_config, value):
+    return write_config(
+        FIXTURE.replace(
+            "settings:\n",
+            f"settings:\n  garmin:\n    activity_caching: {value}\n",
+            1,
+        )
+    )
+
+
+def test_a_quoted_false_is_refused_rather_than_read_as_true(write_config):
+    """`bool("false")` is true, which would turn the cache on for a typo."""
+    with pytest.raises(ConfigError, match="should be true or false"):
+        load_config(flagged(write_config, '"false"'))
+
+
+def test_a_number_is_refused_too(write_config):
+    with pytest.raises(ConfigError, match="should be true or false"):
+        load_config(flagged(write_config, "1"))
+
+
+def test_a_key_written_with_nothing_after_it_means_the_default(write_config):
+    """Not an answer, so not a `false` either - it is unfinished."""
+    assert load_config(flagged(write_config, "")).garmin.activity_caching is False
+
+
+def test_yaml_spells_yes_and_no_several_ways_and_all_of_them_work(write_config):
+    """YAML 1.1 booleans: the loader resolves these, so the config need not."""
+    for spelling in ("true", "True", "yes", "on"):
+        config = load_config(flagged(write_config, spelling))
+        assert config.garmin.activity_caching is True, spelling

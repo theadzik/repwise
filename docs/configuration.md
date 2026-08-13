@@ -46,7 +46,8 @@ settings:
   garmin:
     token_store: ~/.config/repwise  # OAuth tokens, and the exercise catalog
     activity_search_limit: 50       # recent activities scanned for a match
-    dump_dir: .                     # where `fetch` writes JSON
+    dump_dir: ~/.local/share/repwise/dumps   # where `fetch` writes JSON
+    activity_caching: false         # read sessions from dump_dir, and file new ones
 
   weight_steps:        # kg added when a range is topped out, by load type
     barbell: 2.5
@@ -67,7 +68,8 @@ settings:
 | --- | --- | --- |
 | `garmin.token_store` | `$XDG_CONFIG_HOME/repwise`, i.e. `~/.config/repwise` | Where the OAuth tokens are cached, and where [`fetch exercises`](commands.md#fetch-exercises) caches the exercise catalog. Beside your config by default, so one directory is everything this tool owns. The token is as good as being logged in until it expires, so the directory is kept private to you - see [what is stored](troubleshooting.md#what-is-stored-and-what-it-is-worth). [`repwise logout`](commands.md#logout) empties it. Tokens already in `~/.garminconnect`, where the default used to point, are still used until you move them - [see upgrading](troubleshooting.md#upgrading-from-a-version-that-defaulted-to-garminconnect), which 2.0 stops doing |
 | `garmin.activity_search_limit` | `50` | How many recent activities to scan for a name match, for the sessions behind it, and for the strength sessions [`fetch activities`](commands.md#fetch-activities) downloads |
-| `garmin.dump_dir` | `.` | Where [`fetch`](commands.md#fetch) writes JSON |
+| `garmin.dump_dir` | `.` | Where [`fetch`](commands.md#fetch) writes JSON, and what `garmin.activity_caching` reads back. A relative path is resolved against the directory you run repwise in, not against this file, so the bare default gives you one directory per place you run from - **name an absolute path.** `~` is expanded |
+| `garmin.activity_caching` | `false` | Answer for a performed session from `dump_dir` instead of asking Garmin again, and file every session a run sees. See [reusing what is on disk](#reusing-what-is-on-disk) |
 | `weight_steps` | - | kg added per load type when a rep range is topped out |
 | `min_weights` | none | The lightest each load type can go. A [deload](progression.md#deloading) stops here rather than prescribing a weight you cannot make up. A load type left out has no floor |
 | `bodyweight` | your Garmin weigh-ins | Your weight in kg, when you would rather state it than have it read. Only ever an input to [`check`](#does-the-range-fit-the-step); no target depends on it |
@@ -397,6 +399,88 @@ Every problem in the file is reported at once, rather than one per run:
   - workouts.yaml:Workout B: exercise 'Plank' has load 'kettlebell', which
     has no entry in settings.weight_steps
 ```
+
+## Reusing what is on disk
+
+`activity_caching` turns `dump_dir` from a place dumps land into the copy this
+tool prefers:
+
+```yaml
+settings:
+  garmin:
+    dump_dir: ~/.local/share/repwise/dumps
+    activity_caching: true
+```
+
+**Name an absolute path.** `dump_dir` is relative to the directory you run
+repwise in, so a bare `.` is a different cache every time you run from
+somewhere else - each one cold, each one downloading the search limit again
+and leaving its own pile of dumps behind. `~` is expanded.
+
+Somewhere durable, too, rather than under `$XDG_CACHE_HOME`: what accumulates
+here stops being a cache the moment a session scrolls out of Garmin's search
+window, because then the copy on disk is the only one left.
+
+With it on, [`update`](commands.md#update) fetches the list of recent
+activities as it always did, downloads every strength session in that list it
+does not already hold, and works everything out from disk. The first run pays
+for the search limit. Every run after it asks Garmin for the list and nothing
+else, because the sessions it reads back are already there.
+
+[`fetch activities`](commands.md#fetch-activities) follows the same rule and
+downloads only what is missing.
+
+**A session is three files, and all three have to be there.** `update` reads
+the sets and the executed workout and never the summary, so the index that
+records what has been filed - `activity-index.json`, beside the payloads -
+tracks each one separately. Delete any of them and it is downloaded again;
+delete the index and everything is.
+
+`-v` says what the cache did with every payload, which is how to tell a cache
+that is working from one that quietly never hits:
+
+```text
+DEBUG   repwise.dumps: Cache hit for sets-23896913928.json
+DEBUG   repwise.dumps: Cache miss for executed-23896913928.json: that payload
+                       has never been asked for
+DEBUG   repwise.dumps: Filing executed-23896913928.json
+```
+
+A miss says which of the three reasons it was: the session has never been
+filed, that one payload of it has not, or the file has been deleted since.
+
+### When a copy stops being true
+
+A session that is over does not change. What changes is what your watch got
+wrong and you corrected in Connect afterwards: a rep it missed, a set it
+invented.
+
+Garmin reports `totalSets`, `totalReps` and `totalVolume` for every strength
+activity in the list of recent ones, and that list is fetched anyway - so an
+edit is detectable without spending a request on it. The index records those
+three numbers for each session it files, and drops the session as soon as
+Garmin's copy of them stops matching:
+
+```text
+1 cached session(s) no longer match Garmin and will be downloaded again.
+```
+
+Under `-v` that line is preceded by which session and which number moved:
+
+```text
+DEBUG   repwise.dumps: Cache stale for 23896913928: totalReps 240 -> 241
+```
+
+The session is then downloaded again, and your correction reaches the next
+target. This is why the setting is safe to leave on. What it cannot see is an
+edit that moves none of the three - renaming a session, or swapping which
+exercise a set was filed under without changing the reps. For those,
+[`repwise fetch activities --force`](commands.md#fetch-activities) downloads
+everything again regardless.
+
+A session older than `activity_search_limit` is in no list, so nothing
+contradicts it and the copy on disk stands. That is the point of keeping them:
+history that has scrolled out of Garmin's window is still yours to read.
 
 ## Finding your exercise identifiers
 

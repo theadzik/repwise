@@ -1,39 +1,18 @@
 """Download what Garmin holds as JSON: your workouts, your sessions, or its
 exercise catalog."""
 
-import json
 import logging
 import os
 from typing import Any
 
+from .. import dumps
 from ..domain.models import Config, GarminSettings
-from ..errors import ExitCode, GarminError, UsageError
+from ..errors import ExitCode, GarminError
 from ..garmin import catalog
 from ..garmin.client import STRENGTH, GarminSession
 from ..garmin.payloads import activity_sport
 
 logger = logging.getLogger(__name__)
-
-
-def save(payload: Any, directory: str, name: str) -> str:
-    """Write one payload as `name`.json into `directory`, and say where.
-
-    The name carries an id that came from the command line or from the config,
-    so it is checked rather than trusted. Writing into `directory` is the whole
-    of what this promises, and a separator in an id would break that promise
-    quietly - an absolute one would drop the directory altogether, since that
-    is what `os.path.join` does with it.
-    """
-    if name != os.path.basename(name):
-        raise UsageError(
-            f"Refusing to write `{name}.json`: a Garmin id is a number, and "
-            f"one carrying a path would land outside {directory}."
-        )
-
-    path = os.path.join(directory, f"{name}.json")
-    with open(path, "w") as fh:
-        json.dump(payload, fh, indent=2)
-    return path
 
 
 def run_fetch_exercises(settings: GarminSettings) -> ExitCode:
@@ -74,7 +53,7 @@ def run_fetch(
             failed = True
             continue
 
-        path = save(payload, config.garmin.dump_dir, f"workout-{workout_id}")
+        path = dumps.write(payload, config.garmin.dump_dir, dumps.WORKOUT, workout_id)
         logger.info(f"Saved {payload.get('workoutName', '(unnamed)')} -> {path}")
 
     return ExitCode.NOTHING_USABLE if failed else ExitCode.OK
@@ -114,8 +93,18 @@ def run_fetch_activities(
             return ExitCode.NOTHING_USABLE
 
     saved = 0
+    skipped = 0
     failed = False
     for activity_id in ids:
+        # Never true unless caching is on, so a run without it downloads
+        # everything it is asked for exactly as it always did. `--force` says
+        # so by opening a session with no cache behind it, which is why there
+        # is no flag to read here.
+        if session.is_cached(activity_id):
+            skipped += 1
+            logger.info(f"Already on disk: {activity_id}")
+            continue
+
         try:
             name, paths = _save_activity(session, config.garmin.dump_dir, activity_id)
         except GarminError as exc:
@@ -132,7 +121,49 @@ def run_fetch_activities(
     # Counted as they land rather than taken from `ids`, so that a run which
     # lost one to a failure does not claim to have saved it.
     logger.info(f"{saved} session(s) -> {config.garmin.dump_dir}")
+    if skipped:
+        logger.info(f"{skipped} already on disk; --force downloads them again.")
     return ExitCode.NOTHING_USABLE if failed else ExitCode.OK
+
+
+def cache_activities(
+    session: GarminSession, config: Config, activities: list[dict[str, Any]]
+) -> None:
+    """Bring the dump directory level with the sessions Garmin just listed.
+
+    What `update` does before it works anything out, so that the run reads
+    those sessions off disk and every run after it reads them without asking
+    at all. Only the strength ones: the rest hold no sets to learn from.
+
+    Silent unless caching is on. A session with no cache behind it holds
+    nothing, so every activity would count as missing and this would download
+    the whole search limit on every single run.
+
+    One session that cannot be downloaded is logged and stepped over. This is
+    filling a cache, not doing the work: whatever is missing afterwards is
+    fetched again when something actually reads it, and fails there if it
+    still cannot be had.
+    """
+    if not config.garmin.activity_caching:
+        return
+
+    missing = [
+        str(activity["activityId"])
+        for activity in activities
+        if activity_sport(activity) == STRENGTH
+        and activity.get("activityId")
+        and not session.is_cached(str(activity["activityId"]))
+    ]
+    if not missing:
+        logger.debug("Every strength session Garmin listed is already on disk.")
+        return
+
+    logger.info(f"Filing {len(missing)} session(s) into {config.garmin.dump_dir}")
+    for activity_id in missing:
+        try:
+            _save_activity(session, config.garmin.dump_dir, activity_id)
+        except GarminError as exc:
+            logger.warning(f"Could not file {activity_id}: {exc}")
 
 
 def _save_activity(
@@ -144,17 +175,29 @@ def _save_activity(
     `activity-<id>.json` holds the same thing however it was asked for: the
     detail Garmin returns for one activity is fuller than the entry it returns
     for it in a list.
+
+    All three are written, including an executed workout that came back empty.
+    A session performed against no workout is a fact worth recording, and it is
+    what lets a missing file mean one thing only - that nobody has asked yet -
+    which is what `dumps.ActivityCache` reads it as.
+
+    Behind a caching session the same bytes have just been written by the cache
+    itself, since that is what a miss does. Writing them again is what makes
+    this work identically with caching off, which is worth more than the write
+    it saves - once per session, of a file that is already open in the page
+    cache.
     """
     activity = session.activity(activity_id)
-    paths = [
-        save(activity, directory, f"activity-{activity_id}"),
-        save(session.exercise_sets(activity_id), directory, f"sets-{activity_id}"),
-    ]
-
     executed = session.executed_workout(activity_id)
-    if executed:
-        paths.append(save(executed, directory, f"executed-{activity_id}"))
-    else:
+    if not executed:
         logger.debug(f"{activity_id} was not performed against a workout")
+
+    paths = [
+        dumps.write(activity, directory, dumps.ACTIVITY, activity_id),
+        dumps.write(
+            session.exercise_sets(activity_id), directory, dumps.SETS, activity_id
+        ),
+        dumps.write(executed, directory, dumps.EXECUTED, activity_id),
+    ]
 
     return activity.get("activityName") or "(unnamed)", paths

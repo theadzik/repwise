@@ -87,6 +87,16 @@ searching back `settings.garmin.activity_search_limit` activities. Prefixes are
 matched case-insensitively, so `["workout a", "trening a"]` catches either
 spelling.
 
+With
+[`activity_caching`](configuration.md#reusing-what-is-on-disk) on, that same
+list decides what to file: every strength session in it that `dump_dir` does
+not already hold is downloaded before anything is worked out, and the run then
+reads sessions off disk rather than asking for them one at a time.
+
+```text
+Filing 2 session(s) into ./dumps
+```
+
 **Train A, then B, then run once and both advance.** You do not have to run the
 tool between sessions. A workout with no matching activity in that window keeps
 whatever targets it has, and is still brought in line with the config.
@@ -563,6 +573,7 @@ reported.
 ```bash
 repwise fetch activities              # every strength session found
 repwise fetch activities 1234567890   # one session, by id
+repwise fetch activities --force      # including ones already on disk
 ```
 
 Three files per session, because Garmin keeps it as three payloads and none of
@@ -587,6 +598,23 @@ does, and an id is also the only way to reach a session past the search limit.
 
 This replaces [`update --dump`](#update), which saved two of the three and only
 for the session that run was judging.
+
+With
+[`activity_caching`](configuration.md#reusing-what-is-on-disk) on, a session
+the dump directory already holds whole is left alone:
+
+```text
+Already on disk: 23801650013
+Saved Training B -> activity-23896913928.json, sets-…, executed-…
+
+1 session(s) -> ./dumps
+1 already on disk; --force downloads them again.
+```
+
+`--force` opens a session that reads nothing off disk, so everything named is
+downloaded and replaced. It is the answer to an edit in Connect that
+[the totals cannot see](configuration.md#when-a-copy-stops-being-true); with
+caching off it changes nothing, because nothing was being skipped.
 
 ### fetch exercises
 

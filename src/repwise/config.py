@@ -11,6 +11,7 @@ for rather than computed from this module's location - see `search_path()`.
 import logging
 import os
 from dataclasses import dataclass, field
+from typing import Any
 
 from .domain.models import BODYWEIGHT, Config, ExerciseSpec, GarminSettings, Workout
 from .errors import ConfigError
@@ -122,6 +123,53 @@ def _token_store(declared: str | None) -> str:
         "regardless of what is in the old directory."
     )
     return legacy
+
+
+def _flag(declared: Any, key: str, default: bool) -> bool:
+    """A yes-or-no setting, read as one rather than coerced into one.
+
+    YAML has booleans, so a setting that wants one should insist: `bool()`
+    would read the string `"false"` as true and turn a feature on for someone
+    who wrote it in quotes, which is the kind of mistake a config file should
+    not be able to make quietly.
+
+    Absent and null both mean the default, because neither of them is an
+    answer - a key written with nothing after it is a key someone has not
+    finished writing, not a `false`.
+    """
+    if declared is None:
+        return default
+    if not isinstance(declared, bool):
+        raise ConfigError(
+            f"settings.garmin.{key} should be true or false, not "
+            f"{declared!r}. Unquoted, so that YAML reads it as a boolean."
+        )
+    return declared
+
+
+def _warn_if_wandering(garmin: GarminSettings) -> None:
+    """Say when the cache has been pointed at a directory that moves.
+
+    A relative `dump_dir` is resolved against the working directory, so it
+    names a different place for every place you run from. As somewhere to drop
+    dumps that is untidy and no worse. As a cache it does not work at all: each
+    directory starts empty, downloads the whole search limit to fill itself,
+    and keeps its own copy of a history that is supposed to be one thing.
+
+    Warned rather than refused. It is a coherent thing to ask for if you only
+    ever run from one directory, and this is not the moment to decide that for
+    someone.
+    """
+    if not garmin.activity_caching or os.path.isabs(garmin.dump_dir):
+        return
+
+    logger.warning(
+        f"settings.garmin.activity_caching is on, but dump_dir is "
+        f"{garmin.dump_dir!r}, which is relative to wherever repwise is run "
+        f"from - so this is a separate, empty cache for every such directory."
+    )
+    logger.warning("Name an absolute path instead, under settings.garmin:")
+    logger.warning("    dump_dir: ~/.local/share/repwise/dumps")
 
 
 def _checkout_config() -> str | None:
@@ -458,7 +506,13 @@ def load_config(path: str | None = None) -> Config:
             garmin_raw.get("activity_search_limit") or defaults.activity_search_limit
         ),
         dump_dir=os.path.expanduser(garmin_raw.get("dump_dir") or defaults.dump_dir),
+        activity_caching=_flag(
+            garmin_raw.get("activity_caching"),
+            "activity_caching",
+            defaults.activity_caching,
+        ),
     )
+    _warn_if_wandering(garmin)
 
     # Unset means "ask Garmin", which is the better answer for anyone who
     # weighs in: it stays current on its own. Stating it here is for accounts

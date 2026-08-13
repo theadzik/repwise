@@ -38,6 +38,7 @@ from ..planner import (
     plan_sync,
     plan_workout,
 )
+from .fetch import cache_activities
 from .report import report_plan
 
 logger = logging.getLogger(__name__)
@@ -510,6 +511,9 @@ def run_update(
     # Fetched once and used twice: to find the session each workout was last
     # trained in, and then to read back the ones before it.
     activities = session.recent_activities()
+    # With caching on, everything below reads sessions off disk, so the disk
+    # is brought level with Garmin first. Without it, this does nothing at all.
+    cache_activities(session, config, activities)
     try:
         sessions = pick_sessions(session, config, options.activity, activities)
     except ActivityNotFound as exc:

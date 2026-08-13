@@ -14,7 +14,7 @@ import stat
 from collections.abc import Callable
 from datetime import date, timedelta
 from getpass import getpass
-from typing import Any
+from typing import Any, cast
 
 from garminconnect import Garmin, GarminConnectTooManyRequestsError
 
@@ -23,11 +23,19 @@ from garminconnect import Garmin, GarminConnectTooManyRequestsError
 # the rule for telling those apart is the library's to decide.
 from garminconnect.client import token_file_path
 
+from .. import dumps
 from ..domain.models import GarminSettings
 from ..errors import GarminError, NoTerminal, RateLimited
 from .payloads import GRAMS_PER_KG
 
-__all__ = ["GarminSession", "cached_token", "connect", "forget", "STRENGTH"]
+__all__ = [
+    "CachedSession",
+    "GarminSession",
+    "cached_token",
+    "connect",
+    "forget",
+    "STRENGTH",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +80,16 @@ class GarminSession:
     def __init__(self, api: Garmin, settings: GarminSettings) -> None:
         self._api = api
         self._settings = settings
+
+    def is_cached(self, activity_id: str) -> bool:
+        """Whether this session can answer for that activity without asking.
+
+        Never, here. Reading a copy off disk is `CachedSession`, and callers
+        ask this to report what they skipped rather than to decide how to
+        fetch - so a session with nothing behind it answers honestly and they
+        need no second code path.
+        """
+        return False
 
     # --- reads ---
 
@@ -276,7 +294,67 @@ def _warn_if_exposed(store: str) -> None:
         logger.warning(fix)
 
 
-def connect(settings: GarminSettings, prompt: bool = True) -> GarminSession:
+class CachedSession(GarminSession):
+    """A session that answers from `dump_dir` before it asks Garmin.
+
+    Only the three payloads a performed session is made of. Everything else a
+    session does is either a write or a moving target: a workout definition is
+    rewritten by `update`, and the list of recent activities is how a run finds
+    out what has changed at all, so both stay live.
+
+    Fetching that list is also when the copies on disk are checked against
+    Garmin's own totals for those sessions, because that is the moment the
+    answer is in hand. A session edited in Connect since it was filed is
+    dropped there, and the next read of it goes to Garmin.
+    """
+
+    def __init__(self, api: Garmin, settings: GarminSettings) -> None:
+        super().__init__(api, settings)
+        self._cache = dumps.ActivityCache(settings.dump_dir)
+
+    def is_cached(self, activity_id: str) -> bool:
+        return self._cache.holds(activity_id)
+
+    def recent_activities(self, limit: int | None = None) -> list[dict[str, Any]]:
+        activities = super().recent_activities(limit)
+        self._cache.reconcile(activities)
+        return activities
+
+    def activity(self, activity_id: str) -> dict[str, Any]:
+        live = super().activity
+        return self._through(dumps.ACTIVITY, activity_id, lambda: live(activity_id))
+
+    def exercise_sets(self, activity_id: str) -> dict[str, Any]:
+        live = super().exercise_sets
+        return self._through(dumps.SETS, activity_id, lambda: live(activity_id))
+
+    def executed_workout(self, activity_id: str) -> list[dict[str, Any]]:
+        live = super().executed_workout
+        return self._through(dumps.EXECUTED, activity_id, lambda: live(activity_id))
+
+    def _through[T](self, kind: str, activity_id: str, live: Callable[[], T]) -> T:
+        """That payload from disk, or from Garmin and then onto disk.
+
+        A filed session with no executed workout answers with the empty list
+        Garmin would have answered with, rather than falling through to ask
+        again every run - which is what the index buys over looking for files.
+
+        Whether a copy was used, and why not when it was not, is `ActivityCache`
+        saying so at DEBUG: it is the one that knows, and saying it here as well
+        would mean two lines for one decision.
+        """
+        held = self._cache.load(kind, activity_id)
+        if held is not None:
+            return cast(T, held)
+
+        fetched = live()
+        self._cache.store(kind, activity_id, fetched)
+        return fetched
+
+
+def connect(
+    settings: GarminSettings, prompt: bool = True, cache: bool = True
+) -> GarminSession:
     """Resume a cached session, falling back to an interactive login.
 
     Credentials are typed in at the prompt and never written anywhere. What is
@@ -285,7 +363,26 @@ def connect(settings: GarminSettings, prompt: bool = True) -> GarminSession:
     rate-limited login endpoint entirely. Those tokens are a bearer credential
     for the account until they expire - see `_warn_if_exposed`, and `forget`
     for getting rid of them.
+
+    `cache` is how a command asks for a session that reads no copies even
+    though the config allows them - `fetch activities --force`, whose whole
+    purpose is to replace what is on disk. It cannot turn caching on; that is
+    `settings.activity_caching`'s to say.
     """
+    build = CachedSession if cache and settings.activity_caching else GarminSession
+    # Said before anything is fetched, because a run that downloads everything
+    # looks the same whether the cache missed or was never there at all - and
+    # the usual reason for the second is a config that does not mention it.
+    if not settings.activity_caching:
+        logger.debug(
+            "settings.garmin.activity_caching is off, so every session this run "
+            "needs is downloaded. Nothing is read from dump_dir."
+        )
+    elif not cache:
+        logger.debug("--force: dump_dir is written this run, and not read.")
+    else:
+        logger.debug(f"Sessions already in {settings.dump_dir} are read from there.")
+
     store = settings.token_store
     _warn_if_exposed(store)
 
@@ -294,7 +391,7 @@ def connect(settings: GarminSettings, prompt: bool = True) -> GarminSession:
             api = Garmin()
             api.login(store)
             logger.debug("Resumed cached session.")
-            return GarminSession(api, settings)
+            return build(api, settings)
         except Exception as exc:  # noqa: BLE001 - any failure means "log in again"
             logger.warning(f"Cached session unusable ({exc}); logging in again.")
 
@@ -316,7 +413,7 @@ def connect(settings: GarminSettings, prompt: bool = True) -> GarminSession:
     # Passing the token store makes login() persist the tokens itself.
     _login(api, store)
     logger.info(f"Logged in. Tokens cached in {store}")
-    return GarminSession(api, settings)
+    return build(api, settings)
 
 
 @_reporting("log in to Garmin")

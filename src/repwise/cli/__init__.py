@@ -113,7 +113,11 @@ def _fetch(args: argparse.Namespace, config: Config) -> ExitCode:
             )
         return run_fetch_exercises(config.garmin)
 
-    session = connect(config.garmin)
+    # --force is spelled as a session with no cache behind it rather than as a
+    # flag the use case reads: a download that must replace what is on disk is
+    # one that must not answer from it either, and this way the use case has
+    # one path rather than two.
+    session = connect(config.garmin, cache=not args.force)
     if target == ACTIVITIES:
         return run_fetch_activities(session, config, ids)
     return run_fetch(session, config, ids)
