@@ -7,7 +7,7 @@ import os
 import pytest
 
 from repwise import dumps
-from repwise.errors import UsageError
+from repwise.errors import ConfigError, UsageError
 
 
 def activity(activity_id="111", sets=4, reps=40, volume=800.0):
@@ -278,3 +278,33 @@ def test_deciding_what_to_download_is_not_a_use_of_the_cache(cache, caplog):
         assert cache.holds("111")
 
     assert "Cache hit" not in caplog.text
+
+
+# --- a directory that is not there yet ------------------------------------
+
+
+def test_a_dump_dir_that_does_not_exist_is_created(tmp_path):
+    """The default used to be `.`; a named one has to be made by somebody."""
+    fresh = tmp_path / "not" / "yet" / "dumps"
+
+    dumps.write({"a": 1}, str(fresh), dumps.SETS, "111")
+
+    assert dumps.read(str(fresh), dumps.SETS, "111") == {"a": 1}
+
+
+def test_a_cache_creates_its_directory_for_the_index_too(tmp_path):
+    fresh = tmp_path / "not" / "yet" / "dumps"
+    cache = dumps.ActivityCache(str(fresh))
+
+    cache.store(dumps.SETS, "111", {})
+
+    assert (fresh / dumps.INDEX_FILE).exists()
+
+
+def test_a_dump_dir_that_cannot_be_made_is_a_config_error(tmp_path):
+    """Named in the config, so it is the config that cannot be honoured."""
+    blocked = tmp_path / "file"
+    blocked.write_text("not a directory")
+
+    with pytest.raises(ConfigError, match="Could not write to dump_dir"):
+        dumps.write({}, str(blocked / "dumps"), dumps.SETS, "111")

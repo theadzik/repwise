@@ -28,7 +28,7 @@ import logging
 import os
 from typing import Any
 
-from .errors import UsageError
+from .errors import ConfigError, UsageError
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +74,25 @@ def path(directory: str, kind: str, name: str) -> str:
 def write(payload: Any, directory: str, kind: str, name: str) -> str:
     """Save one payload, and say where it went."""
     destination = path(directory, kind, name)
+    _writable(directory)
     with open(destination, "w") as fh:
         json.dump(payload, fh, indent=2)
     return destination
+
+
+def _writable(directory: str) -> None:
+    """Make sure `dump_dir` exists, because a run should not need it to.
+
+    The default used to be `.`, which is always there. A named one - and
+    anything under `$XDG_DATA_HOME` is named - has to be created by somebody,
+    and asking the user to `mkdir` before the first `fetch` would be a step
+    that exists only because this did not. `catalog.save` creates the token
+    store for the same reason.
+    """
+    try:
+        os.makedirs(directory or ".", exist_ok=True)
+    except OSError as exc:
+        raise ConfigError(f"Could not write to dump_dir {directory}: {exc}") from exc
 
 
 def read(directory: str, kind: str, name: str) -> Any | None:
@@ -244,5 +260,6 @@ class ActivityCache:
         self._save()
 
     def _save(self) -> None:
+        _writable(self._directory)
         with open(self._index_path, "w") as fh:
             json.dump(self._index, fh, indent=2)
