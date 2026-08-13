@@ -68,7 +68,7 @@ settings:
 | --- | --- | --- |
 | `garmin.token_store` | `$XDG_CONFIG_HOME/repwise`, i.e. `~/.config/repwise` | Where the OAuth tokens are cached, and where [`fetch exercises`](commands.md#fetch-exercises) caches the exercise catalog. Beside your config by default, so one directory is everything this tool owns. The token is as good as being logged in until it expires, so the directory is kept private to you - see [what is stored](troubleshooting.md#what-is-stored-and-what-it-is-worth). [`repwise logout`](commands.md#logout) empties it. Tokens already in `~/.garminconnect`, where the default used to point, are still used until you move them - [see upgrading](troubleshooting.md#upgrading-from-a-version-that-defaulted-to-garminconnect), which 2.0 stops doing |
 | `garmin.activity_search_limit` | `50` | How many recent activities to scan for a name match, for the sessions behind it, and for the strength sessions [`fetch activities`](commands.md#fetch-activities) downloads |
-| `garmin.dump_dir` | `.` | Where [`fetch`](commands.md#fetch) writes JSON, and what `garmin.activity_caching` reads back |
+| `garmin.dump_dir` | `.` | Where [`fetch`](commands.md#fetch) writes JSON, and what `garmin.activity_caching` reads back. Resolved against the directory you run repwise in, not against this file - so the default is one directory per place you run from |
 | `garmin.activity_caching` | `false` | Answer for a performed session from `dump_dir` instead of asking Garmin again, and file every session a run sees. See [reusing what is on disk](#reusing-what-is-on-disk) |
 | `weight_steps` | - | kg added per load type when a rep range is topped out |
 | `min_weights` | none | The lightest each load type can go. A [deload](progression.md#deloading) stops here rather than prescribing a weight you cannot make up. A load type left out has no floor |
@@ -408,9 +408,15 @@ tool prefers:
 ```yaml
 settings:
   garmin:
-    dump_dir: ./dumps
+    dump_dir: ~/git/repwise/dumps   # absolute: see below
     activity_caching: true
 ```
+
+**Name an absolute path.** `dump_dir` is relative to the directory you run
+repwise in, so the default `.` gives you a different cache every time you run
+from somewhere else - each one cold, each one downloading the search limit
+again and leaving its own pile of dumps behind. `~` is expanded, so
+`~/git/repwise/dumps` is enough.
 
 With it on, [`update`](commands.md#update) fetches the list of recent
 activities as it always did, downloads every strength session in that list it

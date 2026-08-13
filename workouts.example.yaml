@@ -77,7 +77,10 @@ settings:
     # How many recent activities to scan for the last session, and for the
     # strength sessions `repwise fetch activities` downloads.
     activity_search_limit: 50
-    # Where `fetch` writes its JSON.
+    # Where `fetch` writes its JSON. Relative to wherever you run repwise, not
+    # to this file or to token_store above - so "." is one directory per place
+    # you run from. Name an absolute path if you turn activity_caching on,
+    # or the cache is cold every time you run from somewhere new.
     dump_dir: .
     # Read a session from dump_dir instead of asking Garmin for it again, and
     # file every session a run sees so the directory keeps itself current. A
