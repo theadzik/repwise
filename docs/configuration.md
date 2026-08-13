@@ -427,6 +427,19 @@ records what has been filed - `activity-index.json`, beside the payloads -
 tracks each one separately. Delete any of them and it is downloaded again;
 delete the index and everything is.
 
+`-v` says what the cache did with every payload, which is how to tell a cache
+that is working from one that quietly never hits:
+
+```text
+DEBUG   repwise.dumps: Cache hit for sets-23896913928.json
+DEBUG   repwise.dumps: Cache miss for executed-23896913928.json: that payload
+                       has never been asked for
+DEBUG   repwise.dumps: Filing executed-23896913928.json
+```
+
+A miss says which of the three reasons it was: the session has never been
+filed, that one payload of it has not, or the file has been deleted since.
+
 ### When a copy stops being true
 
 A session that is over does not change. What changes is what your watch got
@@ -441,6 +454,12 @@ Garmin's copy of them stops matching:
 
 ```text
 1 cached session(s) no longer match Garmin and will be downloaded again.
+```
+
+Under `-v` that line is preceded by which session and which number moved:
+
+```text
+DEBUG   repwise.dumps: Cache stale for 23896913928: totalReps 240 -> 241
 ```
 
 The session is then downloaded again, and your correction reaches the next

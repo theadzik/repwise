@@ -1,6 +1,7 @@
 """The dump directory, and when a copy of a session may be believed."""
 
 import json
+import logging
 import os
 
 import pytest
@@ -185,3 +186,95 @@ def test_the_index_records_what_garmin_said(cache):
             "totalReps": 40,
             "totalVolume": 800.0,
         }
+
+
+# --- what a verbose run is told -------------------------------------------
+
+
+def debug(caplog):
+    return caplog.at_level(logging.DEBUG, logger="repwise.dumps")
+
+
+def test_a_hit_says_so(cache, caplog):
+    filed(cache)
+
+    with debug(caplog):
+        cache.load(dumps.SETS, "111")
+
+    assert "Cache hit for sets-111.json" in caplog.text
+
+
+def test_a_session_never_filed_is_a_miss_that_says_why(cache, caplog):
+    with debug(caplog):
+        cache.load(dumps.SETS, "111")
+
+    assert "Cache miss for sets-111.json: no such session has been filed" in caplog.text
+
+
+def test_a_payload_never_asked_for_is_a_miss_of_its_own(cache, caplog):
+    """Distinct from the session being unknown: two different things to fix."""
+    cache.store(dumps.ACTIVITY, "111", {})
+
+    with debug(caplog):
+        cache.load(dumps.SETS, "111")
+
+    assert "never been asked for" in caplog.text
+
+
+def test_a_deleted_file_is_a_miss_that_says_so(cache, caplog):
+    filed(cache)
+    os.remove(file_at(cache, dumps.SETS, "111"))
+
+    with debug(caplog):
+        cache.load(dumps.SETS, "111")
+
+    assert "the file has been deleted since" in caplog.text
+
+
+def test_an_unreadable_file_is_a_miss_rather_than_a_crash(cache, caplog):
+    filed(cache)
+    with open(file_at(cache, dumps.SETS, "111"), "w") as fh:
+        fh.write("{not json")
+
+    with debug(caplog):
+        assert cache.load(dumps.SETS, "111") is None
+
+    assert "it could not be read" in caplog.text
+
+
+def test_filing_a_payload_says_so(cache, caplog):
+    with debug(caplog):
+        cache.store(dumps.SETS, "111", {})
+
+    assert "Filing sets-111.json" in caplog.text
+
+
+def test_a_stale_session_names_the_totals_that_moved(cache, caplog):
+    filed(cache)
+
+    with debug(caplog):
+        cache.reconcile([activity(reps=41)])
+
+    assert "Cache stale for 111" in caplog.text
+    assert "totalReps 40 -> 41" in caplog.text
+
+
+def test_a_session_filed_before_garmin_had_totals_says_that_instead(cache, caplog):
+    """`totalReps None -> 40` would read as an edit, which it is not."""
+    for kind in dumps.SESSION:
+        cache.store(kind, "111", [])
+
+    with debug(caplog):
+        cache.reconcile([activity()])
+
+    assert "filed before Garmin had said what it held" in caplog.text
+
+
+def test_deciding_what_to_download_is_not_a_use_of_the_cache(cache, caplog):
+    """`holds` is asked once per session by `fetch`; it should stay quiet."""
+    filed(cache)
+
+    with debug(caplog):
+        assert cache.holds("111")
+
+    assert "Cache hit" not in caplog.text

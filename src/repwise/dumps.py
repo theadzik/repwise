@@ -101,6 +101,18 @@ def _load(source: str) -> Any | None:
         return None
 
 
+def _moved(before: dict[str, Any], after: dict[str, Any]) -> str:
+    """Which of Garmin's totals changed, for a line saying why a copy went."""
+    if not before:
+        return "it was filed before Garmin had said what it held"
+    changed = [
+        f"{key} {before.get(key)} -> {after.get(key)}"
+        for key in TOTALS
+        if before.get(key) != after.get(key)
+    ]
+    return ", ".join(changed) if changed else "the totals it was filed under are gone"
+
+
 def totals(activity: dict[str, Any]) -> dict[str, Any]:
     """Garmin's own count of what a session held, from a list of activities.
 
@@ -148,6 +160,10 @@ class ActivityCache:
             self._seen[activity_id] = current
             filed = self._index.get(activity_id)
             if filed is not None and filed.get("totals") != current:
+                logger.debug(
+                    f"Cache stale for {activity_id}: "
+                    f"{_moved(filed.get('totals') or {}, current)}"
+                )
                 del self._index[activity_id]
                 dropped.append(activity_id)
 
@@ -156,8 +172,24 @@ class ActivityCache:
                 f"{len(dropped)} cached session(s) no longer match Garmin and "
                 "will be downloaded again."
             )
-            logger.debug(f"Dropped: {', '.join(dropped)}")
             self._save()
+
+    def _missing(self, kind: str, activity_id: str) -> str | None:
+        """Why this payload cannot be answered from disk, or None if it can.
+
+        A reason rather than a flag, because every one of them is a different
+        thing to have done - never asked for, asked for but not that payload,
+        deleted since - and under `--verbose` that is the difference between a
+        cache working and a cache that quietly never hits.
+        """
+        filed = self._index.get(str(activity_id)) or {}
+        if not filed:
+            return "no such session has been filed"
+        if kind not in (filed.get("filed") or []):
+            return "that payload has never been asked for"
+        if not os.path.exists(path(self._directory, kind, str(activity_id))):
+            return "the file has been deleted since"
+        return None
 
     def has(self, kind: str, activity_id: str) -> bool:
         """Whether one payload of this session can be answered from disk.
@@ -167,11 +199,11 @@ class ActivityCache:
         `update` reads the sets and the executed workout and never the summary,
         so a session is not all-or-nothing until something has asked for all
         three.
+
+        Silent: this is asked to report a skip and to decide what to download,
+        neither of which is a use of the cache. `load` is what logs.
         """
-        filed = self._index.get(str(activity_id)) or {}
-        if kind not in (filed.get("filed") or []):
-            return False
-        return os.path.exists(path(self._directory, kind, str(activity_id)))
+        return self._missing(kind, activity_id) is None
 
     def holds(self, activity_id: str) -> bool:
         """Whether the whole session is on disk, which is what `fetch` skips."""
@@ -179,13 +211,25 @@ class ActivityCache:
 
     def load(self, kind: str, activity_id: str) -> Any | None:
         """A filed payload, or None to go and ask Garmin for it."""
-        if not self.has(kind, activity_id):
+        name = f"{kind}-{activity_id}.json"
+        missing = self._missing(kind, activity_id)
+        if missing:
+            logger.debug(f"Cache miss for {name}: {missing}")
             return None
-        return read(self._directory, kind, str(activity_id))
+
+        payload = read(self._directory, kind, str(activity_id))
+        if payload is None:
+            # `read` has already said what was wrong with the file itself.
+            logger.debug(f"Cache miss for {name}: it could not be read")
+            return None
+
+        logger.debug(f"Cache hit for {name}")
+        return payload
 
     def store(self, kind: str, activity_id: str, payload: Any) -> None:
         """File one payload, and note that this session now holds it."""
         activity_id = str(activity_id)
+        logger.debug(f"Filing {kind}-{activity_id}.json")
         write(payload, self._directory, kind, activity_id)
 
         # Filed against the totals Garmin reported this run. A session nobody

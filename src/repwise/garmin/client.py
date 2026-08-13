@@ -338,10 +338,13 @@ class CachedSession(GarminSession):
         A filed session with no executed workout answers with the empty list
         Garmin would have answered with, rather than falling through to ask
         again every run - which is what the index buys over looking for files.
+
+        Whether a copy was used, and why not when it was not, is `ActivityCache`
+        saying so at DEBUG: it is the one that knows, and saying it here as well
+        would mean two lines for one decision.
         """
         held = self._cache.load(kind, activity_id)
         if held is not None:
-            logger.debug(f"Read {kind}-{activity_id}.json instead of asking Garmin")
             return cast(T, held)
 
         fetched = live()
