@@ -752,3 +752,57 @@ def test_bodyweight_is_unset_so_that_garmin_is_asked(write_config):
 def test_bodyweight_can_be_stated_instead(write_config):
     text = FIXTURE.replace("settings:\n", "settings:\n  bodyweight: 81.5\n")
     assert load_config(write_config(text)).bodyweight == 81.5
+
+
+# --- a cache pointed at a directory that moves ----------------------------
+
+
+def caching_config(write_config, dump_dir, on=True):
+    text = FIXTURE.replace(
+        "settings:\n",
+        f"settings:\n  garmin:\n    dump_dir: {dump_dir}\n"
+        f"    activity_caching: {'true' if on else 'false'}\n",
+        1,
+    )
+    return write_config(text)
+
+
+def loading(path, caplog) -> str:
+    with caplog.at_level(logging.WARNING, logger="repwise.config"):
+        load_config(path)
+    return caplog.text
+
+
+def test_a_relative_dump_dir_with_caching_on_is_warned_about(write_config, caplog):
+    """Each directory you run from would be its own empty cache."""
+    warned = loading(caching_config(write_config, "."), caplog)
+
+    assert "relative to wherever repwise is run from" in warned
+    assert "dump_dir: ~/.local/share/repwise/dumps" in warned
+
+
+def test_a_relative_dump_dir_is_still_honoured(write_config, caplog):
+    """Warned, not refused: running from one directory is a coherent thing."""
+    config = load_config(caching_config(write_config, "./dumps"))
+
+    assert config.garmin.dump_dir == "./dumps"
+
+
+def test_an_absolute_dump_dir_is_not_warned_about(write_config, caplog):
+    warned = loading(caching_config(write_config, "/tmp/dumps"), caplog)
+
+    assert warned == ""
+
+
+def test_a_dump_dir_under_home_counts_as_absolute(write_config, caplog):
+    """`~` is expanded as the config is read, so it names one directory."""
+    warned = loading(caching_config(write_config, "~/dumps"), caplog)
+
+    assert warned == ""
+
+
+def test_a_relative_dump_dir_without_caching_is_left_alone(write_config, caplog):
+    """Nothing is being read back, so it is somewhere to drop files and no more."""
+    warned = loading(caching_config(write_config, ".", on=False), caplog)
+
+    assert warned == ""
