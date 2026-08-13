@@ -370,6 +370,19 @@ def connect(
     `settings.activity_caching`'s to say.
     """
     build = CachedSession if cache and settings.activity_caching else GarminSession
+    # Said before anything is fetched, because a run that downloads everything
+    # looks the same whether the cache missed or was never there at all - and
+    # the usual reason for the second is a config that does not mention it.
+    if not settings.activity_caching:
+        logger.debug(
+            "settings.garmin.activity_caching is off, so every session this run "
+            "needs is downloaded. Nothing is read from dump_dir."
+        )
+    elif not cache:
+        logger.debug("--force: dump_dir is written this run, and not read.")
+    else:
+        logger.debug(f"Sessions already in {settings.dump_dir} are read from there.")
+
     store = settings.token_store
     _warn_if_exposed(store)
 

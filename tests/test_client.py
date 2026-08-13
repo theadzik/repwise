@@ -10,6 +10,7 @@ from garminconnect import GarminConnectTooManyRequestsError
 
 from repwise.domain.models import GarminSettings
 from repwise.errors import ExitCode, GarminError, NoTerminal, RateLimited
+from repwise.garmin import client
 from repwise.garmin.client import (
     STRENGTH,
     CachedSession,
@@ -469,3 +470,50 @@ def test_a_cached_session_says_what_it_holds(tmp_path):
     s.executed_workout("111")
 
     assert s.is_cached("111") is True
+
+
+class LoginStub(ActivityStub):
+    """An account whose cached token still works, so `connect` resumes."""
+
+    def login(self, store):
+        return True
+
+
+def connecting(monkeypatch, tmp_path, **settings):
+    """Let `connect` resume without a network, and say what -v was told."""
+    monkeypatch.setattr(client, "Garmin", lambda *a, **k: LoginStub())
+    store = tmp_path / "store"
+    store.mkdir()
+    store.chmod(0o700)
+    return GarminSettings(token_store=str(store), dump_dir=str(tmp_path), **settings)
+
+
+def test_a_run_that_reads_nothing_says_why(monkeypatch, tmp_path, caplog):
+    """A run downloading everything looks the same however it got that way."""
+    settings = connecting(monkeypatch, tmp_path)
+
+    with caplog.at_level(logging.DEBUG, logger="repwise.garmin.client"):
+        session = connect(settings)
+
+    assert not isinstance(session, CachedSession)
+    assert "activity_caching is off" in caplog.text
+
+
+def test_a_run_that_reads_dump_dir_says_so(monkeypatch, tmp_path, caplog):
+    settings = connecting(monkeypatch, tmp_path, activity_caching=True)
+
+    with caplog.at_level(logging.DEBUG, logger="repwise.garmin.client"):
+        session = connect(settings)
+
+    assert isinstance(session, CachedSession)
+    assert "are read from there" in caplog.text
+
+
+def test_force_is_not_reported_as_the_setting_being_off(monkeypatch, tmp_path, caplog):
+    settings = connecting(monkeypatch, tmp_path, activity_caching=True)
+
+    with caplog.at_level(logging.DEBUG, logger="repwise.garmin.client"):
+        connect(settings, cache=False)
+
+    assert "--force" in caplog.text
+    assert "activity_caching is off" not in caplog.text
