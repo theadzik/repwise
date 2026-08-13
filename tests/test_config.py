@@ -806,3 +806,39 @@ def test_a_relative_dump_dir_without_caching_is_left_alone(write_config, caplog)
     warned = loading(caching_config(write_config, ".", on=False), caplog)
 
     assert warned == ""
+
+
+# --- a setting that wants a yes or a no -----------------------------------
+
+
+def flagged(write_config, value):
+    return write_config(
+        FIXTURE.replace(
+            "settings:\n",
+            f"settings:\n  garmin:\n    activity_caching: {value}\n",
+            1,
+        )
+    )
+
+
+def test_a_quoted_false_is_refused_rather_than_read_as_true(write_config):
+    """`bool("false")` is true, which would turn the cache on for a typo."""
+    with pytest.raises(ConfigError, match="should be true or false"):
+        load_config(flagged(write_config, '"false"'))
+
+
+def test_a_number_is_refused_too(write_config):
+    with pytest.raises(ConfigError, match="should be true or false"):
+        load_config(flagged(write_config, "1"))
+
+
+def test_a_key_written_with_nothing_after_it_means_the_default(write_config):
+    """Not an answer, so not a `false` either - it is unfinished."""
+    assert load_config(flagged(write_config, "")).garmin.activity_caching is False
+
+
+def test_yaml_spells_yes_and_no_several_ways_and_all_of_them_work(write_config):
+    """YAML 1.1 booleans: the loader resolves these, so the config need not."""
+    for spelling in ("true", "True", "yes", "on"):
+        config = load_config(flagged(write_config, spelling))
+        assert config.garmin.activity_caching is True, spelling
