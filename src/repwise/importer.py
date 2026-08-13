@@ -188,7 +188,10 @@ DEFAULT_SETTINGS: dict = {
     # whose $XDG_CONFIG_HOME says otherwise.
     "garmin": {
         "activity_search_limit": 50,
-        "dump_dir": ".",
+        # Absolute, and not "." - a relative one follows the shell around, and
+        # with activity_caching on that means a different cache per directory
+        # you happen to run from. `~` is expanded when the config is read.
+        "dump_dir": "~/.local/share/repwise/dumps",
     },
     "weight_steps": {
         "barbell": 2.5,
