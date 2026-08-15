@@ -34,6 +34,7 @@ from ..planner import (
     decided_targets,
     executed_targets,
     find_workout,
+    index_specs,
     logged_for,
     plan_sync,
     plan_workout,
@@ -233,9 +234,11 @@ def gather_history(
     trained under a different workout -- contributes nothing to its own history
     rather than breaking anyone else's.
     """
+    specs = index_specs(workout.exercises)
+
     trained = {}
     for spec in workout.exercises:
-        logged = logged_for(spec, latest)
+        logged = logged_for(spec, latest, specs)
         if spec.time_based:
             logged = [entry.as_time() for entry in logged]
         trained[normalise(spec.garmin_name)] = logged
@@ -260,7 +263,7 @@ def gather_history(
         for spec in workout.exercises:
             key = normalise(spec.garmin_name)
             target = targets.get(key)
-            logged = logged_for(spec, performed)
+            logged = logged_for(spec, performed, specs)
             if target is None or not logged:
                 continue
             if spec.time_based:

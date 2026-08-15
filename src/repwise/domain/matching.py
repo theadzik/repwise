@@ -21,6 +21,35 @@ def normalise(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
+#: Garmin's marker for the loaded version of a movement, as a prefix on the
+#: name: `SEATED_CALF_RAISE` and `WEIGHTED_SEATED_CALF_RAISE`, `PUSH_UP` and
+#: `WEIGHTED_PUSH_UP`.
+WEIGHTED = "weighted"
+
+
+def variants(name: str | None) -> tuple[str, ...]:
+    """The normalised names one movement answers to, its own first.
+
+    Garmin promotes a movement to its loaded variant the moment a weight goes
+    on it: program `SEATED_CALF_RAISE`, put 20 kg on the watch, and the
+    activity comes back holding `WEIGHTED_SEATED_CALF_RAISE`. It is the same
+    exercise on the same step of the same workout, so it has to find its way
+    back to the same spec - otherwise the name misses, the lookup falls through
+    to the category, and the sets are read as some other exercise's.
+
+    Both directions, because the promotion runs both ways: an exercise
+    programmed as the weighted variant and then performed with nothing in your
+    hands comes back under the plain name.
+    """
+    key = normalise(name or "")
+    if not key:
+        return ()
+    if key.startswith(WEIGHTED):
+        plain = key[len(WEIGHTED) :]
+        return (key, plain) if plain else (key,)
+    return (key, WEIGHTED + key)
+
+
 class ExerciseIndex[Item]:
     """Items found by exercise name, with the category as a fallback.
 

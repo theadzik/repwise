@@ -10,7 +10,7 @@ from collections.abc import Container
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from .domain.matching import ExerciseIndex, normalise
+from .domain.matching import ExerciseIndex, normalise, variants
 from .domain.models import Config, ExerciseSpec, Workout
 from .domain.progression import (
     PerformedSet,
@@ -251,14 +251,17 @@ def index_specs(exercises: list[ExerciseSpec]) -> ExerciseIndex[ExerciseSpec]:
 
     `garmin_name` is what Garmin calls the movement, so it is authoritative;
     the friendly `name` is an alias, which is what lets a step named either way
-    find its spec.
+    find its spec. So is the movement's loaded variant, which is the name a
+    step comes back under once a weight has been put on it - an alias rather
+    than an authority, so an exercise programmed under that name itself still
+    wins the key.
     """
     index: ExerciseIndex[ExerciseSpec] = ExerciseIndex()
     for spec in exercises:
         index.add(
             spec,
             name=spec.garmin_name,
-            aliases=(spec.name,),
+            aliases=(spec.name, *variants(spec.garmin_name)[1:]),
             category=spec.garmin_category,
         )
     return index
@@ -271,32 +274,52 @@ def _match(
     return specs.find(step_exercise_name(step), step_category(step))
 
 
-def logged_for(spec: ExerciseSpec, performed: Performed) -> list[PerformedSet]:
+def logged_for(
+    spec: ExerciseSpec, performed: Performed, specs: ExerciseIndex[ExerciseSpec]
+) -> list[PerformedSet]:
     """Sets logged for an exercise, by its configured name then its category.
 
     What is left of the lookup when there is no workout step to consult -
     reading back a past session, where all we have is the config and what the
     watch recorded.
+
+    The category is only asked when exactly one exercise in the workout claims
+    it, which is the rule `ExerciseIndex.find` already applies to steps, held to
+    here for a stronger reason. A step matched by an ambiguous category is one
+    step read as the wrong exercise; a session is a pile of sets, and the
+    category hands back every calf raise in it at once. Merged, a seated calf
+    raise at 20 kg and a single-leg one at bodyweight decide a working weight
+    and a rep floor between them by sheer set count, and the target that comes
+    out is one neither exercise was trained for.
     """
     by_name, by_category = performed
-    found = by_name.get(normalise(spec.garmin_name))
-    if found:
-        return found
-    if spec.garmin_category:
+    for key in variants(spec.garmin_name):
+        found = by_name.get(key)
+        if found:
+            return found
+    if spec.garmin_category and specs.by_category(spec.garmin_category) is spec:
         return by_category.get(normalise(spec.garmin_category)) or []
     return []
 
 
 def _logged_for(
-    spec: ExerciseSpec, step: dict[str, Any], performed: Performed
+    spec: ExerciseSpec,
+    step: dict[str, Any],
+    performed: Performed,
+    specs: ExerciseIndex[ExerciseSpec],
 ) -> list[PerformedSet]:
     """Sets logged for an exercise, tolerating the name Garmin chose."""
     by_name, _ = performed
     # What the step itself is called comes first: Garmin auto-detects the
     # movement while you lift, and the workout is the better guess at which
-    # exercise a set belongs to than the config's own name for it.
-    logged = by_name.get(normalise(step_exercise_name(step) or ""))
-    return logged if logged else logged_for(spec, performed)
+    # exercise a set belongs to than the config's own name for it. Its loaded
+    # variant counts as the step's own name, that being what the same step
+    # comes back as once you add a weight.
+    for key in variants(step_exercise_name(step)):
+        logged = by_name.get(key)
+        if logged:
+            return logged
+    return logged_for(spec, performed, specs)
 
 
 def _moved_on(
@@ -902,7 +925,7 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
             shaped.warnings.append(f"{label}: step has no {kind} target, skipped")
             continue
 
-        logged = _logged_for(spec, step, performed)
+        logged = _logged_for(spec, step, performed, specs)
         if not logged:
             shaped.warnings.append(f"{spec.name}: not found in the activity, skipped")
             continue

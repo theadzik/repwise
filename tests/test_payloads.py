@@ -439,6 +439,17 @@ def test_activity_weight_is_grams():
     assert by_name["squat"][0].weight == 20.0
 
 
+def test_an_unrecorded_weight_reads_as_none_at_all():
+    """Garmin's -1 means 'no figure', not a gram below nothing.
+
+    Read literally it becomes -0.001 kg, which is a load like any other as far
+    as the rules are concerned: the session rebases onto it and the next target
+    is prescribed at a negative weight.
+    """
+    by_name, _ = performed_sets({"exerciseSets": [active("SQUAT", "SQUAT", 9, -1.0)]})
+    assert by_name["squat"][0].weight == 0.0
+
+
 def test_rest_sets_are_skipped():
     payload = {
         "exerciseSets": [

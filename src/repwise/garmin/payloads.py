@@ -686,7 +686,14 @@ def activity_sport(activity: dict[str, Any]) -> str | None:
 def performed_sets(
     sets_payload: dict[str, Any],
 ) -> tuple[dict[str, list[PerformedSet]], dict[str, list[PerformedSet]]]:
-    """Index the working sets by exercise name and, separately, by category."""
+    """Index the working sets by exercise name and, separately, by category.
+
+    A set Garmin holds no weight for comes back as -1 rather than as null or
+    zero, which is a sentinel and not a load: read at face value it is a gram
+    below nothing, so it reads as its own working weight, and the target
+    rebases onto it and prescribes -0.001 kg. Nothing recorded and nothing
+    loaded are the same fact here, so both read as 0 kg.
+    """
     by_name: dict[str, list[PerformedSet]] = defaultdict(list)
     by_category: dict[str, list[PerformedSet]] = defaultdict(list)
 
@@ -700,10 +707,10 @@ def performed_sets(
         if not exercises:
             continue
 
-        grams = entry.get("weight") or 0.0
+        grams = max(float(entry.get("weight") or 0.0), 0.0)
         logged = PerformedSet(
             int(reps),
-            round(float(grams) / GRAMS_PER_KG, 3),
+            round(grams / GRAMS_PER_KG, 3),
             float(entry.get("duration") or 0.0),
         )
 
