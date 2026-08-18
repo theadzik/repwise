@@ -1,3 +1,10 @@
+## 1.3.0 (2026-08-18)
+
+### Feat
+
+- Cache activities (#49) ([15a49da](https://github.com/theadzik/repwise/commit/15a49daf3946091ef51cbab1de6b91a4f381cecc))
+- fetch activities, sets, executed (#46) ([0ddbd9e](https://github.com/theadzik/repwise/commit/0ddbd9e5c7dba49051d963500c2116ca748af47e))
+
 ## 1.2.0 (2026-08-12)
 
 ### Feat
