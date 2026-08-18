@@ -686,7 +686,16 @@ def activity_sport(activity: dict[str, Any]) -> str | None:
 def performed_sets(
     sets_payload: dict[str, Any],
 ) -> tuple[dict[str, list[PerformedSet]], dict[str, list[PerformedSet]]]:
-    """Index the working sets by exercise name and, separately, by category."""
+    """Index the working sets by exercise name and, separately, by category.
+
+    Weights arrive in grams, and a set edited in Connect without one comes back
+    as -1 instead of null or zero. That is Garmin's way of saying "no figure",
+    not a load - but nothing downstream can tell the difference, because -1 g
+    is -0.001 kg and that reads as a weight like any other. The rules then take
+    it for the load you trained at and prescribe the next target at a negative
+    weight. So "no weight recorded" and "no weight used" are read the same way
+    here: 0 kg.
+    """
     by_name: dict[str, list[PerformedSet]] = defaultdict(list)
     by_category: dict[str, list[PerformedSet]] = defaultdict(list)
 
@@ -700,10 +709,10 @@ def performed_sets(
         if not exercises:
             continue
 
-        grams = entry.get("weight") or 0.0
+        grams = max(float(entry.get("weight") or 0.0), 0.0)
         logged = PerformedSet(
             int(reps),
-            round(float(grams) / GRAMS_PER_KG, 3),
+            round(grams / GRAMS_PER_KG, 3),
             float(entry.get("duration") or 0.0),
         )
 

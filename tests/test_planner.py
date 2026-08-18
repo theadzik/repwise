@@ -142,6 +142,99 @@ def test_plan_matches_by_category_when_the_logged_name_differs():
     assert plan.changes[0].new == Target(11, 7.0)
 
 
+# --- a movement Garmin promoted to its loaded variant ---------------------
+#
+# Garmin renames a set the moment a weight goes on it: a workout programming
+# SEATED_CALF_RAISE comes back holding WEIGHTED_SEATED_CALF_RAISE. Both the
+# programmed exercise and the one beside it sharing its category are here,
+# which is the shape that made the rename cost something.
+
+HOME_SEATED_CALF = spec(
+    name="Seated Calf Raise",
+    garmin_name="SEATED_CALF_RAISE",
+    garmin_category="CALF_RAISE",
+    rep_low=12,
+    rep_high=18,
+    sets=3,
+    load="dumbbell",
+    weight_step=2.5,
+)
+HOME_SINGLE_LEG_CALF = spec(
+    name="Single-leg Standing Calf Raise",
+    garmin_name="SINGLE_LEG_STANDING_CALF_RAISE",
+    garmin_category="CALF_RAISE",
+    rep_low=12,
+    rep_high=20,
+    sets=4,
+    load="dumbbell",
+    weight_step=2.5,
+)
+
+
+def a_home_calf_workout():
+    """Both calf exercises, as the workout holds them."""
+    return workout(
+        repeat(rep_step("SEATED_CALF_RAISE", "CALF_RAISE", 12, 0.0), sets=3),
+        repeat(
+            rep_step("SINGLE_LEG_STANDING_CALF_RAISE", "CALF_RAISE", 12, 0.0), sets=4
+        ),
+    )
+
+
+def test_the_loaded_variant_is_an_alias_for_the_plain_name():
+    """Both directions: a weight added on the watch, or taken off."""
+    index = index_specs([HOME_SEATED_CALF, CALF])
+    assert index.by_name("WEIGHTED_SEATED_CALF_RAISE") is HOME_SEATED_CALF
+    assert index.by_name("STANDING_CALF_RAISE") is CALF
+
+
+def test_plan_reads_sets_logged_under_the_loaded_variant():
+    """20 kg on a movement programmed unloaded is still that movement."""
+    performed = performed_sets(
+        {
+            "exerciseSets": [
+                active("WEIGHTED_SEATED_CALF_RAISE", "CALF_RAISE", 16, 20000.0)
+            ]
+            * 3
+            + [active("SINGLE_LEG_STANDING_CALF_RAISE", "CALF_RAISE", 12, 0.0)] * 4
+        }
+    )
+    plan = plan_workout(
+        a_workout(exercises=[HOME_SEATED_CALF, HOME_SINGLE_LEG_CALF]),
+        a_home_calf_workout(),
+        performed,
+    )
+
+    seated = next(c for c in plan.changes if c.spec is HOME_SEATED_CALF)
+    assert seated.new == Target(17, 20.0), "its own sets, at the load they were done at"
+
+
+def test_an_ambiguous_category_is_not_a_pile_of_sets_to_progress_from():
+    """Two exercises share CALF_RAISE, so it cannot say which was trained.
+
+    Answering with every calf set in the session is worse than answering with
+    none: merged, the two decide a working weight and a rep floor between them
+    by set count alone, and the target that comes out is neither exercise's.
+    """
+    performed = performed_sets(
+        {
+            "exerciseSets": [active("MYSTERY_CALF_MACHINE", "CALF_RAISE", 9, 5000.0)]
+            * 3
+            + [active("SINGLE_LEG_STANDING_CALF_RAISE", "CALF_RAISE", 12, 0.0)] * 4
+        }
+    )
+    plan = plan_workout(
+        a_workout(exercises=[HOME_SEATED_CALF, HOME_SINGLE_LEG_CALF]),
+        a_home_calf_workout(),
+        performed,
+    )
+
+    assert [c.spec for c in plan.changes] == [HOME_SINGLE_LEG_CALF], (
+        "only the one matched"
+    )
+    assert "Seated Calf Raise: not found in the activity" in plan.warnings[0]
+
+
 def test_plan_removes_an_exercise_the_config_does_not_name():
     """It used to be warned about and left alone. The config drives now, so
     what it stops naming stops being in the workout."""
