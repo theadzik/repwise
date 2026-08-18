@@ -1,3 +1,9 @@
+## 1.4.0 (2026-08-18)
+
+### Feat
+
+- match weighted to body mass exercises (#50) ([ac6f68c](https://github.com/theadzik/repwise/commit/ac6f68c0584a3df80d47c7d798fba2a8b1d1fa7f))
+
 ## 1.3.0 (2026-08-18)
 
 ### Feat
