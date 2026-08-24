@@ -71,7 +71,7 @@ dev = [
     "pre-commit==4.6.1",
     "pytest==9.1.1",
     "ruff==0.16.2",
-    "types-PyYAML==6.0.12.20260724",
+    "types-PyYAML==6.0.12.20260815",
 ]
 
 [project.scripts]
