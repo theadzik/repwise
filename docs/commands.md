@@ -523,6 +523,15 @@ it costs you the target stored in that step:
 | `!` | The name is wrong but the category rescued it. Works today, breaks the day a second exercise claims that category |
 | `!!` | Garmin has no such exercise, or not under that category; or nothing in the workout answers to it; or the category is ambiguous |
 
+An id naming a workout the account does not have - one deleted in Connect,
+usually - is reported as that rather than as a failure to read it:
+
+```text
+Workout A (111111111)
+   !! garmin_workout_id 111111111 is not in your Garmin account - delete the id
+      to have it created again
+```
+
 A workout with no `garmin_workout_id` yet has its names checked and nothing
 else, there being nothing in Garmin to compare the rest against:
 

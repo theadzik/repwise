@@ -16,7 +16,11 @@ from datetime import date, timedelta
 from getpass import getpass
 from typing import Any, cast
 
-from garminconnect import Garmin, GarminConnectTooManyRequestsError
+from garminconnect import (
+    Garmin,
+    GarminConnectNotFoundError,
+    GarminConnectTooManyRequestsError,
+)
 
 # Which file in the token store holds the tokens. Imported rather than spelled
 # out: the store may be named as a directory or as the JSON file itself, and
@@ -25,7 +29,13 @@ from garminconnect.client import token_file_path
 
 from .. import dumps
 from ..domain.models import GarminSettings
-from ..errors import GarminError, NoTerminal, RateLimited, UnsafeTokenStore
+from ..errors import (
+    GarminError,
+    NoTerminal,
+    NotInGarmin,
+    RateLimited,
+    UnsafeTokenStore,
+)
 from .payloads import GRAMS_PER_KG
 
 __all__ = [
@@ -41,9 +51,6 @@ logger = logging.getLogger(__name__)
 
 #: Garmin's sportTypeKey for strength training, the only kind this tool handles.
 STRENGTH = "strength_training"
-
-WORKOUTS_URL = "/workout-service/workouts"
-ACTIVITIES_URL = "/activity-service/activity"
 
 
 def _reporting[**P, R](what: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
@@ -62,6 +69,13 @@ def _reporting[**P, R](what: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
                 return method(*args, **kwargs)
             except GarminConnectTooManyRequestsError as exc:
                 raise RateLimited(f"Rate limited by Garmin: {exc}") from exc
+            except GarminConnectNotFoundError as exc:
+                # A 404 is an answer rather than a failure: the id names
+                # something the account does not have. Said in those words,
+                # because the library's own text for it is the HTTP status.
+                raise NotInGarmin(
+                    f"Could not {what}: your account has nothing with that id."
+                ) from exc
             except GarminError:
                 raise
             except Exception as exc:
@@ -119,9 +133,12 @@ class GarminSession:
         rewrote it after that session finished. Empty for an activity that was
         not performed against a workout at all.
 
-        garminconnect has no getter for this, so the call is made by hand.
+        garminconnect has no getter for this, so the call is made by hand -
+        but the path it is built from is the library's own, as it is for the
+        other two calls made this way.
         """
-        return self._api.connectapi(f"{ACTIVITIES_URL}/{activity_id}/workouts") or []
+        url = f"{self._api.garmin_connect_activity}/{activity_id}/workouts"
+        return self._api.connectapi(url) or []
 
     @_reporting("list your workouts")
     def list_workouts(
@@ -134,14 +151,20 @@ class GarminSession:
 
         Garmin caps a response at the requested size rather than reporting a
         total, so a full page means there may be more and we have to ask again.
+
+        `get_workouts` cannot do this: it takes a start and a limit but no
+        sport type, so the filter would have to happen here, over every workout
+        in the account. The call is made by hand for that, and the path comes
+        from the library.
         """
+        url = f"{self._api.garmin_workouts}/workouts"
         found: list[dict[str, Any]] = []
         start = 0
         while True:
             params: dict[str, Any] = {"start": start, "limit": page_size}
             if sport_type:
                 params["sportTypeKey"] = sport_type
-            page = self._api.connectapi(WORKOUTS_URL, params=params) or []
+            page = self._api.connectapi(url, params=params) or []
             found.extend(page)
             if len(page) < page_size:
                 return found

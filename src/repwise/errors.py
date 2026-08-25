@@ -81,6 +81,17 @@ class GarminError(WorkoutError):
     exit_code = ExitCode.NOTHING_USABLE
 
 
+class NotInGarmin(GarminError):
+    """The id named something the account does not have.
+
+    A 404, which is an answer rather than a failure: the workout or activity
+    asked for is not there. A `GarminError` so that the commands built to carry
+    on past one failed workout still do - `ActivityNotFound` is the other half
+    of this and means something else, that nothing in the account matched what
+    a command was asked to work on, which is decided here rather than by Garmin.
+    """
+
+
 class RateLimited(GarminError):
     """Garmin refused the request because too many have been made."""
 

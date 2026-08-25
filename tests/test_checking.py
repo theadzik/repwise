@@ -8,7 +8,7 @@ from builders import CATALOG, payload, rep_step, repeat, spec
 
 from repwise.app.checking import _bodyweight, _catalog, run_check
 from repwise.domain.models import Config, GarminSettings, Workout
-from repwise.errors import ExitCode, GarminError
+from repwise.errors import ExitCode, GarminError, NotInGarmin
 from repwise.garmin import catalog
 
 CALF = spec(bodyweight_factor=1.0)
@@ -190,6 +190,26 @@ def test_the_other_checks_still_run_without_a_catalog(cataloged, caplog):
 
     assert checked(configured(wrong)) == ExitCode.NOTHING_USABLE
     assert "different exercises" in caplog.text
+
+
+class DeletedInConnect(FakeSession):
+    """An account where the id in workouts.yaml no longer names anything."""
+
+    def workout(self, workout_id):
+        raise NotInGarmin("Could not fetch the workout: your account has nothing")
+
+
+def test_an_id_garmin_does_not_have_says_what_to_do_about_it(cataloged, caplog):
+    """A 404 is the one failure here with a fix, so it is reported as one."""
+    cataloged()
+    workout = Workout("Workout A", "404", ["workout a"], [spec()])
+    session: Any = DeletedInConnect()
+
+    outcome = run_check(session, Config(workouts={"Workout A": workout}))
+
+    assert outcome == ExitCode.NOTHING_USABLE
+    assert "404 is not in your Garmin account" in caplog.text
+    assert "delete the id" in caplog.text, "how to have it created again"
 
 
 def test_an_unreachable_workout_is_still_an_error(cataloged, caplog):

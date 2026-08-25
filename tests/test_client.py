@@ -6,13 +6,17 @@ import stat
 from pathlib import Path
 
 import pytest
-from garminconnect import GarminConnectTooManyRequestsError
+from garminconnect import (
+    GarminConnectNotFoundError,
+    GarminConnectTooManyRequestsError,
+)
 
 from repwise.domain.models import GarminSettings
 from repwise.errors import (
     ExitCode,
     GarminError,
     NoTerminal,
+    NotInGarmin,
     RateLimited,
     UnsafeTokenStore,
 )
@@ -30,15 +34,31 @@ from repwise.garmin.client import (
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
 
 
-class StubApi:
+class LibraryUrls:
+    """The paths garminconnect exposes, spelled the way the library spells them.
+
+    The stubs below stand in for it, so they have to carry the attributes the
+    session reads off it for the three calls it makes by hand. Stated once
+    here, because a stub that disagreed with the library would pass while the
+    real call 404s.
+    """
+
+    garmin_workouts = "/workout-service"
+    garmin_connect_activity = "/activity-service/activity"
+    garmin_connect_devicemessage_url = "/device-service/devicemessage/messages"
+
+
+class StubApi(LibraryUrls):
     """Records calls and serves canned pages."""
 
     def __init__(self, total: int):
         self.total = total
         self.calls: list[dict] = []
+        self.urls: list[str] = []
 
     def connectapi(self, url, params=None):
         self.calls.append(dict(params or {}))
+        self.urls.append(url)
         start = (params or {}).get("start", 0)
         limit = (params or {}).get("limit", 200)
         return [{"workoutId": i} for i in range(start, min(start + limit, self.total))]
@@ -68,6 +88,24 @@ def test_an_exactly_full_last_page_still_terminates():
     assert [c["start"] for c in api.calls] == [0, 200, 400]
 
 
+def test_the_workout_path_comes_from_the_library():
+    """garminconnect has no getter that filters by sport, but it has the path."""
+    s, api = session(1)
+
+    s.list_workouts()
+
+    assert api.urls == [f"{StubApi.garmin_workouts}/workouts"]
+
+
+def test_the_executed_workout_path_comes_from_the_library_too():
+    """The other call made by hand, and the other path not spelled out here."""
+    s, api = session(0)
+
+    s.executed_workout("111")
+
+    assert api.urls == [f"{StubApi.garmin_connect_activity}/111/workouts"]
+
+
 def test_sport_type_is_sent_as_a_server_side_filter():
     s, api = session(1)
     s.list_workouts()
@@ -83,10 +121,8 @@ def test_sport_type_can_be_dropped_for_every_kind():
 # --- writes, delegated to garminconnect -----------------------------------
 
 
-class WriteStub:
+class WriteStub(LibraryUrls):
     """Records the library calls the session makes."""
-
-    garmin_connect_devicemessage_url = "/device-service/devicemessage/messages"
 
     def __init__(self, messages=None):
         self.pushed: list[tuple] = []
@@ -189,6 +225,27 @@ def test_rate_limiting_keeps_its_own_type_and_exit_code():
 
     assert caught.value.exit_code == ExitCode.RATE_LIMITED
     assert "Wait a while" in caught.value.advice
+
+
+def test_a_missing_workout_says_so_rather_than_quoting_a_status():
+    """404 is an answer: the id names something the account does not have."""
+    session = broken(GarminConnectNotFoundError("API call client error (404)"))
+
+    with pytest.raises(NotInGarmin) as caught:
+        session.workout("111")
+
+    assert "nothing with that id" in str(caught.value)
+    assert "404" not in str(caught.value), "the status is not the user's problem"
+
+
+def test_a_missing_workout_is_still_a_garmin_error():
+    """`check` and `update` carry on past one of these, and catch it as one."""
+    session = broken(GarminConnectNotFoundError("API call client error (404)"))
+
+    with pytest.raises(GarminError) as caught:
+        session.workout("111")
+
+    assert caught.value.exit_code == ExitCode.NOTHING_USABLE
 
 
 def test_a_write_failure_is_translated_too():
@@ -450,7 +507,7 @@ def test_an_account_that_has_never_weighed_in_reads_as_unknown():
 # --- a session that reads dump_dir before it asks -------------------------
 
 
-class ActivityStub:
+class ActivityStub(LibraryUrls):
     """One account's sessions, and a count of what was actually asked for."""
 
     def __init__(self, activities=()):
