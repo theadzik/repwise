@@ -1,3 +1,13 @@
+## 2.1.0 (2026-08-25)
+
+### Feat
+
+- add max_weight (#68) ([7ebbfe9](https://github.com/theadzik/repwise/commit/7ebbfe92147fae70bf02878443b25f81c6084120))
+
+### Fix
+
+- report seconds instead of reps in time based exercises (#69) ([dfb7c8f](https://github.com/theadzik/repwise/commit/dfb7c8f2b50ecc2a50107ac2ea8ef9f4572bfe0b))
+
 ## 2.0.0 (2026-08-25)
 
 ### BREAKING CHANGE
