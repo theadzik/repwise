@@ -16,7 +16,11 @@ from datetime import date, timedelta
 from getpass import getpass
 from typing import Any, cast
 
-from garminconnect import Garmin, GarminConnectTooManyRequestsError
+from garminconnect import (
+    Garmin,
+    GarminConnectNotFoundError,
+    GarminConnectTooManyRequestsError,
+)
 
 # Which file in the token store holds the tokens. Imported rather than spelled
 # out: the store may be named as a directory or as the JSON file itself, and
@@ -25,7 +29,13 @@ from garminconnect.client import token_file_path
 
 from .. import dumps
 from ..domain.models import GarminSettings
-from ..errors import GarminError, NoTerminal, RateLimited
+from ..errors import (
+    GarminError,
+    NoTerminal,
+    NotInGarmin,
+    RateLimited,
+    UnsafeTokenStore,
+)
 from .payloads import GRAMS_PER_KG
 
 __all__ = [
@@ -41,9 +51,6 @@ logger = logging.getLogger(__name__)
 
 #: Garmin's sportTypeKey for strength training, the only kind this tool handles.
 STRENGTH = "strength_training"
-
-WORKOUTS_URL = "/workout-service/workouts"
-ACTIVITIES_URL = "/activity-service/activity"
 
 
 def _reporting[**P, R](what: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
@@ -62,6 +69,13 @@ def _reporting[**P, R](what: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
                 return method(*args, **kwargs)
             except GarminConnectTooManyRequestsError as exc:
                 raise RateLimited(f"Rate limited by Garmin: {exc}") from exc
+            except GarminConnectNotFoundError as exc:
+                # A 404 is an answer rather than a failure: the id names
+                # something the account does not have. Said in those words,
+                # because the library's own text for it is the HTTP status.
+                raise NotInGarmin(
+                    f"Could not {what}: your account has nothing with that id."
+                ) from exc
             except GarminError:
                 raise
             except Exception as exc:
@@ -119,9 +133,12 @@ class GarminSession:
         rewrote it after that session finished. Empty for an activity that was
         not performed against a workout at all.
 
-        garminconnect has no getter for this, so the call is made by hand.
+        garminconnect has no getter for this, so the call is made by hand -
+        but the path it is built from is the library's own, as it is for the
+        other two calls made this way.
         """
-        return self._api.connectapi(f"{ACTIVITIES_URL}/{activity_id}/workouts") or []
+        url = f"{self._api.garmin_connect_activity}/{activity_id}/workouts"
+        return self._api.connectapi(url) or []
 
     @_reporting("list your workouts")
     def list_workouts(
@@ -134,14 +151,20 @@ class GarminSession:
 
         Garmin caps a response at the requested size rather than reporting a
         total, so a full page means there may be more and we have to ask again.
+
+        `get_workouts` cannot do this: it takes a start and a limit but no
+        sport type, so the filter would have to happen here, over every workout
+        in the account. The call is made by hand for that, and the path comes
+        from the library.
         """
+        url = f"{self._api.garmin_workouts}/workouts"
         found: list[dict[str, Any]] = []
         start = 0
         while True:
             params: dict[str, Any] = {"start": start, "limit": page_size}
             if sport_type:
                 params["sportTypeKey"] = sport_type
-            page = self._api.connectapi(WORKOUTS_URL, params=params) or []
+            page = self._api.connectapi(url, params=params) or []
             found.extend(page)
             if len(page) < page_size:
                 return found
@@ -228,8 +251,25 @@ def cached_token(store: str) -> str | None:
     whether a store is named as a directory or as the file itself, is knowledge
     of the library this module exists to keep in one place. `config.py` asks
     this to tell an install that has logged in from one that has not.
+
+    That makes this the only place the library gets to refuse a path, and it
+    does refuse some. Translated here so that a store it will not touch is a
+    message with an exit code: `config.py` calls this while resolving the
+    config, before `main()` has anything to catch, so anything left raw is a
+    traceback out of every command - including the ones that never reach
+    Garmin.
     """
-    path = str(token_file_path(store))
+    try:
+        path = str(token_file_path(store))
+    except ValueError as exc:
+        # A symlink somewhere in the path, or a `~user` prefix that does not
+        # resolve. The library's message names the path and the rule it broke,
+        # which is more than a paraphrase here would say.
+        raise UnsafeTokenStore(str(exc)) from exc
+    except RuntimeError as exc:
+        # `~` with no home to expand it against. This one says why but not
+        # what it was expanding, so the store is named here.
+        raise UnsafeTokenStore(f"Cannot place a token store at {store}: {exc}") from exc
     return path if os.path.exists(path) else None
 
 
@@ -292,6 +332,42 @@ def _warn_if_exposed(store: str) -> None:
     )
     for fix in fixes:
         logger.warning(fix)
+
+
+def _warn_if_linked(store: str) -> None:
+    """Say so when the cached token is a symlink rather than a file.
+
+    A store that is itself behind a symlink never gets here - `cached_token`
+    refuses it outright - so this is the other one: a real directory with the
+    token file inside it pointing somewhere else, which is what someone keeping
+    it in a vault or a backup tree ends up with.
+
+    garminconnect opens the file `O_NOFOLLOW`, so it will not read through the
+    link and the session cannot be resumed from it. That much is only a login.
+    The part worth a warning is what the login then does: the tokens are
+    written to a temporary file and moved into place, which replaces the link
+    with a real file and leaves whatever it pointed at behind, holding a token
+    that is now stale.
+
+    Warned about rather than refused, and never repaired: the outcome is a
+    working token store either way, and quietly deciding where someone's
+    credentials live is not this tool's business.
+    """
+    token = cached_token(store)
+    if token is None or not os.path.islink(token):
+        return
+
+    logger.warning(
+        f"The cached Garmin token in {store} is a symlink to "
+        f"{os.path.realpath(token)}. garminconnect will not read through it, "
+        f"so this run logs in again - and caching the tokens it gets replaces "
+        f"the link with a real file."
+    )
+    logger.warning(
+        "To keep them where the link points, name that directory in "
+        "workouts.yaml, under settings.garmin:"
+    )
+    logger.warning(f"    token_store: {os.path.dirname(os.path.realpath(token))}")
 
 
 class CachedSession(GarminSession):
@@ -385,6 +461,7 @@ def connect(
 
     store = settings.token_store
     _warn_if_exposed(store)
+    _warn_if_linked(store)
 
     if os.path.isdir(store):
         try:
@@ -439,10 +516,25 @@ def forget(settings: GarminSettings) -> str | None:
     it back through, so this ends this machine's access to the account and
     changes nothing at Garmin's end: a copy taken from the file before it went
     stays usable until it expires.
+
+    What is returned is what was deleted, checked rather than assumed - see
+    below.
     """
     path = cached_token(settings.token_store)
     if path is None:
         return None
     # The library's own method, so which file this is stays its business.
     Garmin().logout(settings.token_store)
+
+    # Its business, but not its promise. `logout` swallows a path it will not
+    # touch and says so at DEBUG, so a call that returned cleanly is not proof
+    # that anything went. This command makes one claim - that this machine can
+    # no longer reach the account without a password - and about a credential
+    # that is as good as being logged in, a false "Deleted" is the worst line
+    # this tool could print.
+    if os.path.exists(path):
+        raise GarminError(
+            f"{path} is still there after signing out, so this machine can "
+            f"still reach your account. Delete the file to finish."
+        )
     return path

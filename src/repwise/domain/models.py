@@ -109,7 +109,12 @@ class GarminSettings:
     #: this literal is the same directory for anyone who has not moved it.
     token_store: str = "~/.config/repwise"
     activity_search_limit: int = 50
-    dump_dir: str = "."
+    #: Under the XDG data home rather than the cache home: once Garmin's search
+    #: window has moved past a session, the copy here is the only one left, and
+    #: a cache directory is somewhere anything may be deleted at any time.
+    #: `config.py` resolves `$XDG_DATA_HOME`; this literal is the same
+    #: directory for anyone who has not moved it.
+    dump_dir: str = "~/.local/share/repwise/dumps"
     #: Whether the payloads already in `dump_dir` may be read instead of asked
     #: for again. Off by default: a session Garmin holds is the truth, and a
     #: tool that quietly prefers its own copy of it should be asked for, not

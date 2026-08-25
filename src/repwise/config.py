@@ -15,7 +15,6 @@ from typing import Any
 
 from .domain.models import BODYWEIGHT, Config, ExerciseSpec, GarminSettings, Workout
 from .errors import ConfigError
-from .garmin.client import cached_token
 from .yamlio import dump, read, write
 
 __all__ = [
@@ -23,6 +22,7 @@ __all__ = [
     "record_workout_id",
     "resolve_config",
     "search_path",
+    "default_dump_dir",
     "default_token_store",
     "ConfigError",
 ]
@@ -36,14 +36,6 @@ EXAMPLE_NAME = "workouts.example.yaml"
 #: installed copy looks for workouts.yaml, and where the Garmin tokens and the
 #: exercise catalog go unless the file names somewhere else.
 APP_DIR = "repwise"
-
-#: Where the tokens went before the store moved beside the config. Read only
-#: when the file names no store of its own and there is nothing at the new one,
-#: so that upgrading does not silently ask for a password again. Deprecated:
-#: 2.0 drops this and uses `default_token_store()` unconditionally, which is
-#: tracked in https://github.com/theadzik/repwise/issues/34 along with
-#: everything else that goes with it.
-LEGACY_TOKEN_STORE = "~/.garminconnect"
 
 #: Three directories above this module: src/repwise/config.py -> the
 #: repository root, when this is a checkout. Installed into site-packages the
@@ -75,6 +67,10 @@ def _xdg_config_home() -> str:
     return os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
 
 
+def _xdg_data_home() -> str:
+    return os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+
+
 def default_token_store() -> str:
     """Where the Garmin tokens go when the config does not say.
 
@@ -88,41 +84,19 @@ def default_token_store() -> str:
     return os.path.join(_xdg_config_home(), APP_DIR)
 
 
-def _token_store(declared: str | None) -> str:
-    """Where this run keeps its Garmin tokens.
+def default_dump_dir() -> str:
+    """Where `fetch` writes, and what `activity_caching` reads back.
 
-    What the file names, if it names one - a declared store is an instruction,
-    and second-guessing it would move someone's credentials for them.
+    Under `$XDG_DATA_HOME` rather than the cache home, and for the reason
+    `activity_caching` exists at all: a session that has scrolled past
+    `activity_search_limit` is only on disk here, and a cache directory is
+    somewhere anything may be deleted at any time.
 
-    Otherwise the default, except for one case: an install that predates the
-    move has its tokens in `LEGACY_TOKEN_STORE` and nothing at the new path, so
-    taking the default literally would cost a login and a round trip through
-    the endpoint Garmin rate-limits hardest. Those are used where they lie, and
-    said out loud, because a fallback nobody is told about is one nobody acts
-    on - and this one goes away in 2.0.
+    `GarminSettings` states the same path as a plain default, for anything
+    constructing one without a file behind it; this is the one that honours
+    the environment, exactly as `default_token_store()` does.
     """
-    if declared:
-        return os.path.expanduser(declared)
-
-    default = default_token_store()
-    legacy = os.path.expanduser(LEGACY_TOKEN_STORE)
-    if cached_token(default) or not cached_token(legacy):
-        return default
-
-    logger.warning(
-        f"Using the Garmin tokens in {legacy}, which is where repwise used to "
-        f"keep them. The default is now {default}."
-    )
-    logger.warning(f"    mkdir -p {default} && mv {legacy}/* {default}/")
-    logger.warning(
-        f"Or name the old directory in {CONFIG_NAME}, under settings.garmin:"
-    )
-    logger.warning(f"    token_store: {LEGACY_TOKEN_STORE}")
-    logger.warning(
-        "Deprecated: repwise 2.0 drops this fallback and uses the new default "
-        "regardless of what is in the old directory."
-    )
-    return legacy
+    return os.path.join(_xdg_data_home(), APP_DIR, "dumps")
 
 
 def _flag(declared: Any, key: str, default: bool) -> bool:
@@ -168,8 +142,10 @@ def _warn_if_wandering(garmin: GarminSettings) -> None:
         f"{garmin.dump_dir!r}, which is relative to wherever repwise is run "
         f"from - so this is a separate, empty cache for every such directory."
     )
-    logger.warning("Name an absolute path instead, under settings.garmin:")
-    logger.warning("    dump_dir: ~/.local/share/repwise/dumps")
+    logger.warning(
+        f"Remove the setting to use the default, {default_dump_dir()}, or name "
+        f"an absolute path of your own under settings.garmin."
+    )
 
 
 def _checkout_config() -> str | None:
@@ -500,12 +476,22 @@ def load_config(path: str | None = None) -> Config:
     )
     garmin_raw = settings.get("garmin") or {}
     defaults = GarminSettings()
+    # A declared store is an instruction: second-guessing it would move
+    # someone's credentials for them.
+    declared_store = garmin_raw.get("token_store")
+    declared_dumps = garmin_raw.get("dump_dir")
     garmin = GarminSettings(
-        token_store=_token_store(garmin_raw.get("token_store")),
+        token_store=(
+            os.path.expanduser(declared_store)
+            if declared_store
+            else default_token_store()
+        ),
         activity_search_limit=int(
             garmin_raw.get("activity_search_limit") or defaults.activity_search_limit
         ),
-        dump_dir=os.path.expanduser(garmin_raw.get("dump_dir") or defaults.dump_dir),
+        dump_dir=(
+            os.path.expanduser(declared_dumps) if declared_dumps else default_dump_dir()
+        ),
         activity_caching=_flag(
             garmin_raw.get("activity_caching"),
             "activity_caching",

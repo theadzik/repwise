@@ -6,15 +6,26 @@ import stat
 from pathlib import Path
 
 import pytest
-from garminconnect import GarminConnectTooManyRequestsError
+from garminconnect import (
+    GarminConnectNotFoundError,
+    GarminConnectTooManyRequestsError,
+)
 
 from repwise.domain.models import GarminSettings
-from repwise.errors import ExitCode, GarminError, NoTerminal, RateLimited
+from repwise.errors import (
+    ExitCode,
+    GarminError,
+    NoTerminal,
+    NotInGarmin,
+    RateLimited,
+    UnsafeTokenStore,
+)
 from repwise.garmin import client
 from repwise.garmin.client import (
     STRENGTH,
     CachedSession,
     GarminSession,
+    cached_token,
     connect,
     forget,
 )
@@ -23,15 +34,31 @@ from repwise.garmin.client import (
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
 
 
-class StubApi:
+class LibraryUrls:
+    """The paths garminconnect exposes, spelled the way the library spells them.
+
+    The stubs below stand in for it, so they have to carry the attributes the
+    session reads off it for the three calls it makes by hand. Stated once
+    here, because a stub that disagreed with the library would pass while the
+    real call 404s.
+    """
+
+    garmin_workouts = "/workout-service"
+    garmin_connect_activity = "/activity-service/activity"
+    garmin_connect_devicemessage_url = "/device-service/devicemessage/messages"
+
+
+class StubApi(LibraryUrls):
     """Records calls and serves canned pages."""
 
     def __init__(self, total: int):
         self.total = total
         self.calls: list[dict] = []
+        self.urls: list[str] = []
 
     def connectapi(self, url, params=None):
         self.calls.append(dict(params or {}))
+        self.urls.append(url)
         start = (params or {}).get("start", 0)
         limit = (params or {}).get("limit", 200)
         return [{"workoutId": i} for i in range(start, min(start + limit, self.total))]
@@ -61,6 +88,24 @@ def test_an_exactly_full_last_page_still_terminates():
     assert [c["start"] for c in api.calls] == [0, 200, 400]
 
 
+def test_the_workout_path_comes_from_the_library():
+    """garminconnect has no getter that filters by sport, but it has the path."""
+    s, api = session(1)
+
+    s.list_workouts()
+
+    assert api.urls == [f"{StubApi.garmin_workouts}/workouts"]
+
+
+def test_the_executed_workout_path_comes_from_the_library_too():
+    """The other call made by hand, and the other path not spelled out here."""
+    s, api = session(0)
+
+    s.executed_workout("111")
+
+    assert api.urls == [f"{StubApi.garmin_connect_activity}/111/workouts"]
+
+
 def test_sport_type_is_sent_as_a_server_side_filter():
     s, api = session(1)
     s.list_workouts()
@@ -76,10 +121,8 @@ def test_sport_type_can_be_dropped_for_every_kind():
 # --- writes, delegated to garminconnect -----------------------------------
 
 
-class WriteStub:
+class WriteStub(LibraryUrls):
     """Records the library calls the session makes."""
-
-    garmin_connect_devicemessage_url = "/device-service/devicemessage/messages"
 
     def __init__(self, messages=None):
         self.pushed: list[tuple] = []
@@ -184,6 +227,27 @@ def test_rate_limiting_keeps_its_own_type_and_exit_code():
     assert "Wait a while" in caught.value.advice
 
 
+def test_a_missing_workout_says_so_rather_than_quoting_a_status():
+    """404 is an answer: the id names something the account does not have."""
+    session = broken(GarminConnectNotFoundError("API call client error (404)"))
+
+    with pytest.raises(NotInGarmin) as caught:
+        session.workout("111")
+
+    assert "nothing with that id" in str(caught.value)
+    assert "404" not in str(caught.value), "the status is not the user's problem"
+
+
+def test_a_missing_workout_is_still_a_garmin_error():
+    """`check` and `update` carry on past one of these, and catch it as one."""
+    session = broken(GarminConnectNotFoundError("API call client error (404)"))
+
+    with pytest.raises(GarminError) as caught:
+        session.workout("111")
+
+    assert caught.value.exit_code == ExitCode.NOTHING_USABLE
+
+
 def test_a_write_failure_is_translated_too():
     session = broken(OSError("connection reset"))
 
@@ -284,6 +348,44 @@ def test_a_store_holding_only_the_catalog_is_left_alone(tmp_path, caplog):
 
 
 @posix_only
+def test_a_token_file_that_is_a_symlink_is_warned_about(tmp_path, caplog):
+    """It cannot be read through, and the next login replaces it."""
+    settings = token_store(tmp_path)
+    vault = tmp_path / "vault.json"
+    vault.write_text("{}")
+    vault.chmod(0o600)
+    token = Path(settings.token_store) / "garmin_tokens.json"
+    token.unlink()
+    token.symlink_to(vault)
+
+    warned = warnings_from(settings, caplog)
+
+    assert "symlink" in warned
+    assert str(vault) in warned, "where it points"
+    assert f"token_store: {tmp_path}" in warned, "how to keep it there"
+
+
+@posix_only
+def test_a_real_token_file_is_not_called_a_link(tmp_path, caplog):
+    assert "symlink" not in warnings_from(token_store(tmp_path), caplog)
+
+
+@posix_only
+def test_the_link_is_reported_but_never_repaired(tmp_path, caplog):
+    """The same rule as the mode: say it, do not quietly rearrange it."""
+    settings = token_store(tmp_path)
+    vault = tmp_path / "vault.json"
+    vault.write_text("{}")
+    token = Path(settings.token_store) / "garmin_tokens.json"
+    token.unlink()
+    token.symlink_to(vault)
+
+    warnings_from(settings, caplog)
+
+    assert token.is_symlink()
+
+
+@posix_only
 def test_the_mode_is_reported_but_never_repaired(tmp_path, caplog):
     """Changing the mode of a file nobody asked us to touch is not our business."""
     settings = token_store(tmp_path, mode=0o644)
@@ -292,6 +394,98 @@ def test_the_mode_is_reported_but_never_repaired(tmp_path, caplog):
 
     token = Path(settings.token_store) / "garmin_tokens.json"
     assert stat.S_IMODE(token.stat().st_mode) == 0o644
+
+
+# --- a store the library will not touch -----------------------------------
+
+
+@posix_only
+def test_a_symlinked_store_is_refused_rather_than_followed(tmp_path):
+    """garminconnect will not read or write through one, so nor do we."""
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "store"
+    link.symlink_to(real)
+
+    with pytest.raises(UnsafeTokenStore) as refused:
+        cached_token(str(link))
+
+    assert str(link) in str(refused.value), "the path it will not use"
+
+
+@posix_only
+def test_a_declared_store_behind_a_symlink_stops_the_run(tmp_path):
+    """Declaring one is an instruction, but not one the library will follow.
+
+    `config.py` takes a declared store at its word and never looks at it, so
+    this is the moment it is noticed: opening a session is the first thing that
+    needs the token in it. Refused rather than logged in from scratch - a store
+    nothing can be written to means a password prompt on every single run.
+    """
+    real = tmp_path / "dotfiles"
+    real.mkdir()
+    link = tmp_path / "store"
+    link.symlink_to(real)
+
+    with pytest.raises(UnsafeTokenStore) as refused:
+        connect(GarminSettings(token_store=str(link)), prompt=False)
+
+    assert refused.value.exit_code == ExitCode.CONFIG
+
+
+@posix_only
+def test_a_symlink_above_the_store_is_refused_too(tmp_path):
+    """The realistic one: ~/.config itself linked into a dotfiles checkout."""
+    real = tmp_path / "dotfiles" / "config"
+    real.mkdir(parents=True)
+    (tmp_path / ".config").symlink_to(real)
+
+    with pytest.raises(UnsafeTokenStore):
+        cached_token(str(tmp_path / ".config" / "repwise"))
+
+
+@posix_only
+def test_the_refusal_says_what_to_change(tmp_path):
+    """It is a config error because the setting is what the user can act on."""
+    link = tmp_path / "store"
+    link.symlink_to(tmp_path)
+
+    with pytest.raises(UnsafeTokenStore) as refused:
+        cached_token(str(link))
+
+    assert refused.value.exit_code == ExitCode.CONFIG
+    assert "token_store" in refused.value.advice
+
+
+def test_a_home_that_cannot_be_expanded_is_refused_the_same_way(monkeypatch):
+    """`~` with nothing to expand it against - a uid with no passwd entry.
+
+    Provoked rather than arranged: unsetting $HOME is not enough, because
+    `Path.expanduser()` falls back to the passwd database, and a test cannot
+    take that away from the machine running it. What is checked is the
+    translation, which is this module's, and not the library's rule for when
+    to raise.
+    """
+
+    def no_home(path: str):
+        raise RuntimeError("Could not determine home directory.")
+
+    monkeypatch.setattr(client, "token_file_path", no_home)
+
+    with pytest.raises(UnsafeTokenStore) as refused:
+        cached_token("~/tokens")
+
+    assert "~/tokens" in str(refused.value), "the store it could not place"
+    assert "home directory" in str(refused.value), "and why it could not"
+
+
+def test_a_real_store_is_still_just_a_path(tmp_path):
+    """The refusals above are the exception; the ordinary answer is unchanged."""
+    store = token_store(tmp_path)
+
+    assert cached_token(store.token_store) == str(
+        Path(store.token_store) / "garmin_tokens.json"
+    )
 
 
 # --- signing out ----------------------------------------------------------
@@ -315,6 +509,28 @@ def test_forget_leaves_the_exercise_catalog_alone(tmp_path):
     forget(settings)
 
     assert catalog.exists()
+
+
+def test_forget_will_not_report_a_token_it_did_not_delete(tmp_path, monkeypatch):
+    """garminconnect declines to delete through a path it will not touch.
+
+    It says so at DEBUG rather than raising, so a `logout` that returned is no
+    proof the file went. What this command claims is that the account is out of
+    reach afterwards, which is worth checking rather than assuming.
+    """
+    settings = token_store(tmp_path)
+
+    class KeepsIt:
+        def logout(self, store):
+            """Returns cleanly, deletes nothing - 0.3.10 and later."""
+
+    monkeypatch.setattr(client, "Garmin", lambda *a, **k: KeepsIt())
+
+    with pytest.raises(GarminError) as kept:
+        forget(settings)
+
+    assert "still there" in str(kept.value)
+    assert os.path.exists(Path(settings.token_store) / "garmin_tokens.json")
 
 
 def test_forget_with_nothing_cached_reports_nothing_deleted(tmp_path):
@@ -371,7 +587,7 @@ def test_an_account_that_has_never_weighed_in_reads_as_unknown():
 # --- a session that reads dump_dir before it asks -------------------------
 
 
-class ActivityStub:
+class ActivityStub(LibraryUrls):
     """One account's sessions, and a count of what was actually asked for."""
 
     def __init__(self, activities=()):

@@ -26,13 +26,6 @@ TARGETS = (WORKOUTS, ACTIVITIES, CATALOG)
 #: in `completion.py`.
 SHELLS = ("bash", "zsh")
 
-#: Words a positional accepts that argparse cannot be told about, keyed by the
-#: command whose positional accepts them. `fetch` reads its first word as a
-#: target *or* as an id, so it has no `choices` to enumerate and cannot be
-#: given one without rejecting every id there is - but the words that do mean
-#: something to it are still worth completing, and this is what says so.
-SUGGESTIONS: dict[str, tuple[str, ...]] = {"fetch": TARGETS}
-
 
 def add_verbose(
     parser: argparse.ArgumentParser, default: Any = argparse.SUPPRESS
@@ -139,12 +132,6 @@ def build_parser() -> argparse.ArgumentParser:
         "workout's latest",
     )
     update.add_argument(
-        "--dump",
-        action="store_true",
-        help="also save the raw Garmin JSON payloads to dump_dir "
-        f"(deprecated: use `repwise fetch {ACTIVITIES}`)",
-    )
-    update.add_argument(
         "--push",
         action="store_true",
         help="queue the updated workouts for your watch (requires --apply)",
@@ -169,16 +156,13 @@ def build_parser() -> argparse.ArgumentParser:
         "settings.garmin.token_store and read by `check` to tell a real "
         "exercise name from a plausible-looking one. `check` downloads that "
         "itself the first time it needs it, so this is how you refresh a copy "
-        "that has gone stale, not something to run first. Ids with no word "
-        "before them are read as workout ids, which is how this command used "
-        "to be spelled; it still works, and goes in v2.",
+        "that has gone stale, not something to run first.",
     )
     fetch.add_argument(
         "target",
-        nargs="?",
+        choices=TARGETS,
         metavar="TARGET",
-        help=f"`{WORKOUTS}`, `{ACTIVITIES}` or `{CATALOG}`; a workout id here "
-        f"instead means `{WORKOUTS}` (deprecated)",
+        help=f"`{WORKOUTS}`, `{ACTIVITIES}` or `{CATALOG}`",
     )
     fetch.add_argument(
         "ids",

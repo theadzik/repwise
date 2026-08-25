@@ -42,6 +42,22 @@ class ConfigError(WorkoutError):
     exit_code = ExitCode.CONFIG
 
 
+class UnsafeTokenStore(ConfigError):
+    """garminconnect will not read or write a token store at that path.
+
+    A symlink anywhere in the path, or a `~user` prefix that does not resolve.
+    Which paths those are is the library's rule rather than this tool's, so
+    what is raised here carries its message instead of restating it - but it
+    is raised as a config error, because the setting that names the path is
+    the only thing the user can do anything about.
+    """
+
+    advice = (
+        "Name a real directory - with no symlink in it or above it - under "
+        "settings.garmin.token_store."
+    )
+
+
 class UsageError(WorkoutError):
     """The flags given cannot be honoured together."""
 
@@ -63,6 +79,17 @@ class GarminError(WorkoutError):
     """
 
     exit_code = ExitCode.NOTHING_USABLE
+
+
+class NotInGarmin(GarminError):
+    """The id named something the account does not have.
+
+    A 404, which is an answer rather than a failure: the workout or activity
+    asked for is not there. A `GarminError` so that the commands built to carry
+    on past one failed workout still do - `ActivityNotFound` is the other half
+    of this and means something else, that nothing in the account matched what
+    a command was asked to work on, which is decided here rather than by Garmin.
+    """
 
 
 class RateLimited(GarminError):

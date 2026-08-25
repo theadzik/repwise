@@ -67,14 +67,6 @@ repwise update --activity 1234    # use a specific activity
 | `--apply` | Write to Garmin Connect: new targets, and any workout the config creates or reshapes |
 | `--push` | Queue the written workouts for your devices. Requires `--apply` |
 | `--activity ID` | Update from this one activity instead of scanning |
-| `--dump` | Also save the raw activity and workout JSON. **Deprecated**, see below |
-
-> **`--dump` is deprecated and goes in v2.** Downloading payloads is
-> [`fetch activities`](#fetch-activities)' job, and it does the same thing
-> without a second command's worth of behaviour attached: the same sets, the
-> same workout definition, plus the session summary, for any session rather
-> than only the one this run happened to judge. The flag still works and still
-> warns.
 
 **Dry run is the default.** Nothing is sent to Garmin without `--apply`, and
 nothing is written back to `workouts.yaml` either.
@@ -523,6 +515,15 @@ it costs you the target stored in that step:
 | `!` | The name is wrong but the category rescued it. Works today, breaks the day a second exercise claims that category |
 | `!!` | Garmin has no such exercise, or not under that category; or nothing in the workout answers to it; or the category is ambiguous |
 
+An id naming a workout the account does not have - one deleted in Connect,
+usually - is reported as that rather than as a failure to read it:
+
+```text
+Workout A (111111111)
+   !! garmin_workout_id 111111111 is not in your Garmin account - delete the id
+      to have it created again
+```
+
 A workout with no `garmin_workout_id` yet has its names checked and nothing
 else, there being nothing in Garmin to compare the rest against:
 
@@ -553,9 +554,6 @@ repwise fetch exercises         # Garmin's exercise catalog
 `workouts` and `activities` both take ids to narrow them, and both land in
 `settings.garmin.dump_dir`. `exercises` is a different download altogether and
 is described [below](#fetch-exercises).
-
-> **`repwise fetch` with no word, or with bare ids, is deprecated.** It still
-> means `fetch workouts`, warns, and goes in v2. Spell out the target.
 
 ### fetch workouts
 
@@ -595,9 +593,6 @@ Without ids, the recent activities are scanned and the strength ones kept -
 raising it is how you get at older sessions. An id is downloaded as given,
 whatever sport it was: naming one says more about what you want than its type
 does, and an id is also the only way to reach a session past the search limit.
-
-This replaces [`update --dump`](#update), which saved two of the three and only
-for the session that run was judging.
 
 With
 [`activity_caching`](configuration.md#reusing-what-is-on-disk) on, a session
@@ -673,6 +668,12 @@ Three things it deliberately does not do:
   the token store: the next [`check`](#check) does not have to download it
   again.
 - **It does not touch `workouts.yaml`.** Your routine is not a credential.
+
+The file being gone afterwards is checked, not assumed. `garminconnect`
+declines to delete through a token store it will not touch and says so only
+under `--verbose`, so a `logout` that returned is not on its own proof of
+anything. If the file survives, the command fails and names it rather than
+printing a `Deleted` line about a credential that is still on disk.
 
 Being signed out already is not a failure - it is the state the command exists
 to reach - so a token store with nothing in it says so and exits `0`:

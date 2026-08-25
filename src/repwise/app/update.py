@@ -6,9 +6,7 @@ replayed oldest first, and a target that moves propagated into every other
 workout containing that exercise.
 """
 
-import json
 import logging
-import os
 from collections.abc import Callable, Container, Hashable, Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -51,7 +49,6 @@ class UpdateOptions:
 
     apply: bool = False
     activity: str | None = None
-    dump: bool = False
     push: bool = False
 
     def __post_init__(self) -> None:
@@ -97,14 +94,6 @@ class Payloads:
         if workout_id not in self._fetched:
             self._fetched[workout_id] = self._session.workout(workout_id)
         return self._fetched[workout_id]
-
-
-def dump(payloads: dict[str, Any], directory: str, suffix: str) -> None:
-    for label, payload in payloads.items():
-        path = os.path.join(directory, f"dump-{label}-{suffix}.json")
-        with open(path, "w") as fh:
-            json.dump(payload, fh, indent=2)
-        logger.debug(f"Wrote {path}")
 
 
 def pick_sessions(
@@ -428,13 +417,6 @@ def advance_trained(  # noqa: PLR0913 - each argument is one independent input
 
         sets_payload = session.exercise_sets(activity_id)
         payload = payloads[garmin_id(workout)]
-
-        if options.dump:
-            dump(
-                {"sets": sets_payload, "workout": payload},
-                config.garmin.dump_dir,
-                activity_id,
-            )
 
         performed = performed_sets(sets_payload)
         if not any(performed):

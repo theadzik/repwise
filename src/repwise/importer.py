@@ -183,15 +183,12 @@ HEADER = """\
 #: What a fresh config starts with. Every one of these can be edited afterwards;
 #: they are here so that an imported file is valid the moment it is written.
 DEFAULT_SETTINGS: dict = {
-    # No token_store: it defaults to the directory this config is meant to live
-    # in, and writing that path out here would pin it to ~/.config for someone
-    # whose $XDG_CONFIG_HOME says otherwise.
+    # No token_store and no dump_dir: both default to a directory computed
+    # from the environment, and writing either path out here would pin it to
+    # ~/.config or ~/.local/share for someone whose $XDG_CONFIG_HOME or
+    # $XDG_DATA_HOME says otherwise.
     "garmin": {
         "activity_search_limit": 50,
-        # Absolute, and not "." - a relative one follows the shell around, and
-        # with activity_caching on that means a different cache per directory
-        # you happen to run from. `~` is expanded when the config is read.
-        "dump_dir": "~/.local/share/repwise/dumps",
     },
     "weight_steps": {
         "barbell": 2.5,

@@ -4,7 +4,7 @@ import logging
 
 from ..checker import Finding, check_catalog, check_programming, check_workout
 from ..domain.models import Config, GarminSettings
-from ..errors import ExitCode, GarminError
+from ..errors import ExitCode, GarminError, NotInGarmin
 from ..garmin.catalog import ExerciseCatalog, optional
 from ..garmin.client import GarminSession
 from .report import SEVERITY
@@ -67,6 +67,20 @@ def run_check(session: GarminSession, config: Config) -> ExitCode:
             logger.info(f"{workout.key} ({workout_id})")
             try:
                 payload = session.workout(workout_id)
+            except NotInGarmin:
+                # The one failure here with a fix the user can act on: the id
+                # in workouts.yaml names a workout the account does not have,
+                # usually one deleted in Connect. Said as that rather than as
+                # the reading having failed, which is what the branch below is
+                # for and would bury the answer inside a longer sentence.
+                found.append(
+                    Finding(
+                        workout.key,
+                        f"garmin_workout_id {workout_id} is not in your Garmin "
+                        f"account - delete the id to have it created again",
+                        "error",
+                    )
+                )
             except GarminError as exc:
                 # A workout that cannot be read is itself an error-level
                 # finding, so an unreachable workout still fails the command.
