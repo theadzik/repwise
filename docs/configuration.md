@@ -61,6 +61,9 @@ settings:
     cable: 5.0
     machine: 5.0
 
+  max_weights:         # the heaviest each load type can go, by load type
+    dumbbell: 10.0     # the heaviest pair you own; omit a load type for no ceiling
+
   # bodyweight: 81.0   # normally read from your Garmin weigh-ins
 ```
 
@@ -72,6 +75,7 @@ settings:
 | `garmin.activity_caching` | `false` | Answer for a performed session from `dump_dir` instead of asking Garmin again, and file every session a run sees. See [reusing what is on disk](#reusing-what-is-on-disk) |
 | `weight_steps` | - | kg added per load type when a rep range is topped out |
 | `min_weights` | none | The lightest each load type can go. A [deload](progression.md#deloading) stops here rather than prescribing a weight you cannot make up. A load type left out has no floor |
+| `max_weights` | none | The heaviest each load type can go. Topping out the rep range stops here rather than prescribing a weight you cannot load. A load type left out has no ceiling |
 | `bodyweight` | your Garmin weigh-ins | Your weight in kg, when you would rather state it than have it read. Only ever an input to [`check`](#does-the-range-fit-the-step); no target depends on it |
 
 ## Workout fields
@@ -156,6 +160,7 @@ they are not part of the document. Keep anything worth saying in an exercise's
 | `load` | yes | | `barbell`, `dumbbell`, `cable`, `machine`, or `bodyweight` |
 | `weight_step` | no | from `load` | kg added when the range is topped out, overriding the load type |
 | `min_weight` | no | from `load` | The lightest this exercise can be loaded, overriding the load type |
+| `max_weight` | no | from `load` | The heaviest this exercise can be loaded, overriding the load type. No ceiling unless one is set |
 | `rest` | no | none | Seconds between sets, written to the Garmin workout by `update --apply`. Left out, Garmin's own rest is kept |
 | `start_weight` | no | `0` | kg a **newly created** exercise starts at. Never read again once the step exists; progression owns the weight from then on |
 | `unit` | no | `reps` | `reps`, or `seconds` for timed holds like planks |
@@ -206,6 +211,34 @@ which is why a config written before deloads existed still loads.
 Override it per exercise where the equipment differs: a machine whose stack
 starts at 15 kg, or a barbell lift you would not perform with less than the
 20 kg bar even though a 12 kg one exists.
+
+## Running out of weight
+
+`max_weights`, and the per-exercise `max_weight` that overrides it, are the
+mirror of the floor: the heaviest load that exists to be prescribed. Without
+one, rule 3 keeps adding a step every time you clear the top of the range, and
+sooner or later it asks for a weight you do not own - which is a target you
+cannot log a session against at all, so nothing that follows can put it right
+on its own.
+
+A load type left out has no ceiling, and that is the right default for a gym:
+the rack outlasts you. Set one where the equipment really ends - the pair of
+dumbbells at home, a stack whose last plate you are already on - either per
+load type, or per exercise where only that one movement is capped.
+
+The last step is shortened to land on the maximum rather than refused. At a
+2.5 kg step and a 10 kg ceiling, 9 kg goes to 10 kg, not to 11.5 kg and not
+nowhere: the heaviest pair on the rack is a weight you own, and stopping below
+it would leave the top of your equipment unused for the sake of a step size the
+equipment never promised to divide into. So set `max_weight` to what you
+actually have, not to the nearest multiple of the step.
+
+Reaching the ceiling is not a failure state. The target settles at the top of
+the rep range and stays there, exactly as a bodyweight exercise does, and the
+report says so each run. From there the ways forward are outside what this tool
+can decide: more sets, a slower tempo, a harder variation, or a unilateral
+version that puts the same dumbbells against half of you. See [topping
+out](progression.md#topping-out).
 
 ## Does the range fit the step
 

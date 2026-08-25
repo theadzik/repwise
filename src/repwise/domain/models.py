@@ -38,6 +38,12 @@ class ExerciseSpec:
     #: the lightest pair of dumbbells, the top plate of the stack. A deload
     #: stops here rather than prescribing a weight that does not exist.
     min_weight: float = 0.0
+    #: The heaviest this exercise can be loaded: the largest pair of dumbbells
+    #: you own, the last plate in the bag, the bottom of the stack. Topping out
+    #: the rep range stops here rather than prescribing a weight you cannot
+    #: load. `None` is no ceiling, and is the right default - a gym rack runs
+    #: out long after you do, and it is home equipment that really ends.
+    max_weight: float | None = None
     #: The share of your bodyweight this movement carries: 1.0 for a calf raise
     #: or a weighted pull-up, 0 for anything you lie or sit down to do. Never
     #: guessed from the category - a lat pull-down is categorised `PULL_UP` and
