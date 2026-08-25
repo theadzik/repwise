@@ -304,8 +304,39 @@ def _advance(
         # different weight moves the prescription by more than one step. Name
         # what was lifted, otherwise the jump looks arbitrary.
         lifted = f" at {weight:g} kg" if rebased else ""
+        heavier = weight + spec.weight_step
+        # `max_weight` is the heaviest load that exists to be prescribed, so a
+        # step past it is shortened to land *on* it rather than refused. The
+        # last pair on the rack is still a pair, and stopping short of a weight
+        # you own would leave the top of your equipment permanently unused for
+        # the sake of a step size the equipment never promised to divide into.
+        #
+        # Not the mirror of the deload's floor, deliberately. A short step up
+        # is a smaller increase than usual, which is always safe to prescribe;
+        # a short step *down* is a smaller decrease than usual, which may not
+        # be enough to break the stall that asked for it. So the ceiling is
+        # rounded to and the floor is refused.
+        if spec.max_weight is not None and heavier > spec.max_weight:
+            if weight >= spec.max_weight:
+                # Nothing left to add. The target settles at the top of the
+                # range, which is where bodyweight work already lives: once
+                # the load has run out, the range is all there is to progress.
+                # "past" rather than "at" for a load above the ceiling, which
+                # is what a target set before the ceiling was declared leaves
+                # behind. Rule 3 does not pull it down - taking load off is the
+                # deload's job - so the report has to be able to say so.
+                sits = "already at" if weight == spec.max_weight else "past"
+                return (
+                    Target(spec.rep_high, weight),
+                    f"top of the range, {sits} the {spec.max_weight:g} kg maximum",
+                )
+            return (
+                Target(spec.rep_low, spec.max_weight),
+                f"hit {floor} on every set{lifted}, top of the range, "
+                f"up to the {spec.max_weight:g} kg maximum",
+            )
         return (
-            Target(spec.rep_low, weight + spec.weight_step),
+            Target(spec.rep_low, heavier),
             f"hit {floor} on every set{lifted}, top of the range",
         )
 

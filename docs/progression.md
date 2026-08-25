@@ -157,6 +157,37 @@ sleep, fewer sets.
 
 Bodyweight exercises have no load to take off, so a stall there says so.
 
+## Topping out
+
+Rule 3 adds a step every time the top of the range is cleared, which sooner or
+later asks for a weight that does not exist. `max_weight` is where it stops:
+the heaviest pair of dumbbells you own, the bottom plate of a stack. Declared
+per load type in [`settings.max_weights`](configuration.md#settings), or per
+exercise, and unset means no ceiling - which is the right default for a gym,
+where the rack outlasts you.
+
+The last step is shortened to land on the ceiling: at a 2.5 kg step and a 10 kg
+maximum, 9 kg goes to 10 kg rather than to 11.5 kg. `max_weight` is a weight you
+own, so it is a rung to be climbed rather than a line to stop below.
+
+This is deliberately *not* the mirror of `min_weight`, which refuses a step it
+cannot take in full. A short step up is a smaller increase than usual and is
+always safe to prescribe; a short step down is a smaller decrease than usual,
+which may not be enough to break the stall that asked for it. The ceiling is
+rounded to; the floor is not.
+
+At the ceiling the target settles at `rep_high` and holds, which is exactly
+what a bodyweight exercise does - once the load has run out, the rep range is
+all there is left to progress - and the report says so every run rather than
+holding it silently. What comes next is a change this tool cannot make: more
+sets, a slower tempo, a harder variation, or a unilateral version that puts the
+same dumbbells against half of you.
+
+Without a ceiling nothing catches this, and the failure is quiet: the target
+climbs to a weight you cannot load, so no session can be logged against it, and
+[rule 5](#a-load-has-to-be-earned) - which exists to reject a load that was
+tried and found too heavy - never gets a session to judge.
+
 ## Progress is judged by the weakest set
 
 The new rep target is `min(reps) + 1`, not `previous target + 1`.
@@ -225,6 +256,8 @@ actually performed:
 | 4 | Same weight, any set short, first miss | Repeat unchanged (rule 4) |
 | 4b | Same weight, any set short, missed before | Ease the target, or take weight off at the bottom of the range |
 | 5 | Floor at or above `rep_high` | `rep_low` at weight + step (rule 3) |
+| 5b | Floor at or above `rep_high`, step past `max_weight` | `rep_low` at `max_weight` |
+| 5c | Floor at or above `rep_high`, already at `max_weight` | `rep_high` at the same weight, held |
 | 6 | Otherwise | Advance `sets - misses` of the sets (rule 2) |
 
 Case 4 is judged set by set rather than against a single figure, since an
@@ -235,7 +268,10 @@ which is what was asked - because the watch logs what you did, not which set
 was meant to be the hard one.
 
 Bodyweight exercises never reach case 5's weight increase; they target
-`rep_high` and hold.
+`rep_high` and hold. Case 5c is the same ending reached from the other
+direction: an exercise that has run out of weight rather than one that never
+had any. Case 5b is the single shortened step that gets it there. See [topping
+out](#topping-out).
 
 Case 6 caps at `rep_high`, so an off-step target cannot overshoot the range.
 Together with case 2, a target can never leave the programmed range.

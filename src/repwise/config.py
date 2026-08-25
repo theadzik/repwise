@@ -50,17 +50,21 @@ _REQUIRED = ("name", "garmin_name", "rep_low", "rep_high", "sets", "load")
 
 @dataclass(frozen=True)
 class LoadRules:
-    """What a load type does: how big its steps are, and how light it can go.
+    """What a load type does: its step size, and how light and heavy it goes.
 
-    Both are properties of the equipment rather than of any one exercise - a
-    dumbbell rack goes up in ones and starts at one - so they are declared once
-    per load type and only overridden where an exercise really differs.
+    All three are properties of the equipment rather than of any one exercise -
+    a dumbbell rack goes up in ones, starts at one and ends at whatever the
+    heaviest pair is - so they are declared once per load type and only
+    overridden where an exercise really differs.
     """
 
     steps: dict[str, float] = field(default_factory=dict)
     #: Missing entries mean no floor, so a config written before deloads
     #: existed keeps loading and simply never stops a deload.
     minimums: dict[str, float] = field(default_factory=dict)
+    #: Missing entries mean no ceiling, which is the usual case: a gym's rack
+    #: outlasts you, and only equipment you own runs out.
+    maximums: dict[str, float] = field(default_factory=dict)
 
 
 def _xdg_config_home() -> str:
@@ -285,6 +289,57 @@ class Problems:
         raise ConfigError(f"{len(self.found)} problems:\n{listed}")
 
 
+def _bounds(
+    raw: dict, load: str, loads: LoadRules, where: str, problems: Problems
+) -> tuple[float, float | None]:
+    """How light and how heavy this exercise may be loaded.
+
+    Resolved together because they only mean anything against each other: a
+    ceiling under its own floor leaves progression choosing between two
+    impossible loads, and that is only visible once both are known.
+
+    The two ends default differently, and deliberately. No floor is zero, which
+    is the honest answer for anything lifted with no equipment of its own. No
+    ceiling is `None` rather than zero, because zero is a real maximum -
+    nothing may be added at all - and equipment that does not run out before
+    you do is the common case. Either way a config written before deloads or
+    ceilings existed keeps its meaning exactly.
+
+    Anything contradictory is dropped rather than honoured. The file will not
+    load either way - `problems` sees to that - so the only question is which
+    spec the rest of the checks get to run against.
+    """
+    declared_minimum = raw.get("min_weight")
+    if declared_minimum is None:
+        minimum = float(loads.minimums.get(load, 0.0))
+    else:
+        minimum = float(declared_minimum)
+    if minimum < 0:
+        problems.add(f"{where}: {raw['name']!r} has a negative min_weight")
+        minimum = 0.0
+
+    declared_maximum = raw.get("max_weight")
+    if declared_maximum is None:
+        ceiling = loads.maximums.get(load)
+        if ceiling is None:
+            return minimum, None
+        maximum = float(ceiling)
+    else:
+        maximum = float(declared_maximum)
+
+    if maximum < 0:
+        problems.add(f"{where}: {raw['name']!r} has a negative max_weight")
+        return minimum, None
+    if maximum < minimum:
+        problems.add(
+            f"{where}: {raw['name']!r} has a max_weight of {maximum:g} below "
+            f"its min_weight of {minimum:g}, so no load fits between them"
+        )
+        return minimum, None
+
+    return minimum, maximum
+
+
 def _bodyweight_factor(raw: dict, where: str, problems: Problems) -> float:
     """The share of the lifter this exercise carries, if it says.
 
@@ -352,17 +407,16 @@ def _build_exercise(
         problems.add(f"{where}: {raw['name']!r} has a negative start_weight")
         start_weight = 0.0
 
-    # The lightest this can be loaded. Unset is no floor rather than an error:
-    # a config predating deloads should keep working, and zero is the honest
-    # answer for anything lifted with no equipment of its own.
-    declared_minimum = raw.get("min_weight")
-    if declared_minimum is None:
-        min_weight = float(loads.minimums.get(load, 0.0))
-    else:
-        min_weight = float(declared_minimum)
-    if min_weight < 0:
-        problems.add(f"{where}: {raw['name']!r} has a negative min_weight")
-        min_weight = 0.0
+    min_weight, max_weight = _bounds(raw, load, loads, where, problems)
+    if max_weight is not None and start_weight > max_weight:
+        # `start_weight` is read only when the step is created, which is the
+        # one moment nothing else could catch this: no session has been logged
+        # yet, so progression never gets a chance to refuse the weight.
+        problems.add(
+            f"{where}: {raw['name']!r} would start at {start_weight:g} kg, "
+            f"above its own max_weight of {max_weight:g}"
+        )
+        max_weight = None
 
     bodyweight_factor = _bodyweight_factor(raw, where, problems)
 
@@ -382,6 +436,7 @@ def _build_exercise(
         notes=raw.get("notes"),
         start_weight=start_weight,
         min_weight=min_weight,
+        max_weight=max_weight,
         bodyweight_factor=bodyweight_factor,
     )
 
@@ -473,6 +528,7 @@ def load_config(path: str | None = None) -> Config:
     loads = LoadRules(
         steps=settings.get("weight_steps") or {},
         minimums=settings.get("min_weights") or {},
+        maximums=settings.get("max_weights") or {},
     )
     garmin_raw = settings.get("garmin") or {}
     defaults = GarminSettings()

@@ -698,6 +698,72 @@ def test_a_negative_min_weight_is_rejected(write_config):
         load_config(write_config(text))
 
 
+# --- how heavy a load can go ----------------------------------------------
+
+
+def test_max_weights_come_from_the_load_type(write_config):
+    text = FIXTURE.replace(
+        "  weight_steps:",
+        "  max_weights:\n    barbell: 100.0\n\n  weight_steps:",
+    )
+    config = load_config(write_config(text))
+    assert config["Workout A"].exercises[0].max_weight == 100.0
+
+
+def test_an_exercise_can_set_its_own_max_weight(write_config):
+    text = FIXTURE.replace(
+        "        load: barbell", "        load: barbell\n        max_weight: 60.0"
+    )
+    config = load_config(write_config(text))
+    assert config["Workout A"].exercises[0].max_weight == 60.0
+
+
+def test_an_exercise_max_weight_beats_the_load_type(write_config):
+    """Only this one movement is capped, and the rack is not."""
+    text = FIXTURE.replace(
+        "  weight_steps:",
+        "  max_weights:\n    barbell: 100.0\n\n  weight_steps:",
+    ).replace(
+        "        load: barbell", "        load: barbell\n        max_weight: 60.0"
+    )
+    config = load_config(write_config(text))
+    assert config["Workout A"].exercises[0].max_weight == 60.0
+
+
+def test_no_max_weights_at_all_means_no_ceiling(write_config):
+    """Unset is None rather than zero: zero would be a real maximum."""
+    config = load_config(write_config(FIXTURE))
+    assert config["Workout A"].exercises[0].max_weight is None
+
+
+def test_a_negative_max_weight_is_rejected(write_config):
+    text = FIXTURE.replace(
+        "        load: barbell", "        load: barbell\n        max_weight: -5"
+    )
+    with pytest.raises(ConfigError, match="negative max_weight"):
+        load_config(write_config(text))
+
+
+def test_a_max_weight_below_the_min_weight_is_rejected(write_config):
+    """Nothing could be prescribed between them, so neither end is honoured."""
+    text = FIXTURE.replace(
+        "        load: barbell",
+        "        load: barbell\n        min_weight: 20.0\n        max_weight: 10.0",
+    )
+    with pytest.raises(ConfigError, match="below its min_weight"):
+        load_config(write_config(text))
+
+
+def test_a_start_weight_above_the_max_weight_is_rejected(write_config):
+    """The one moment no session exists yet to correct it."""
+    text = FIXTURE.replace(
+        "        load: barbell",
+        "        load: barbell\n        start_weight: 30.0\n        max_weight: 10.0",
+    )
+    with pytest.raises(ConfigError, match="above its own max_weight"):
+        load_config(write_config(text))
+
+
 # --- reading a stored weight as a real load --------------------------------
 
 

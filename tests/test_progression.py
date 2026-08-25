@@ -645,3 +645,84 @@ def test_a_deload_and_the_climb_back_are_the_same_ladder():
         BARBELL_SQUAT, eased, [P(9, 20.0), P(9, 20.0), P(8, 20.0)], streak=0
     )
     assert back == Target(9, 20.0), "levelled up, flat again"
+
+
+# --- topping out ----------------------------------------------------------
+#
+# The mirror of the deload's floor. Rule 3 adds a step every time the range is
+# cleared, and equipment you own runs out; without a ceiling the target climbs
+# to a weight no session can be logged against.
+
+HOME_PRESS = spec(
+    name="Dumbbell Floor Press",
+    garmin_name="DUMBBELL_FLOOR_PRESS",
+    garmin_category="BENCH_PRESS",
+    rep_low=10,
+    rep_high=16,
+    sets=3,
+    load="dumbbell",
+    weight_step=2.5,
+    min_weight=2.5,
+    max_weight=10.0,
+)
+
+
+def test_the_weight_never_goes_above_the_maximum():
+    """12.5 kg dumbbells you do not own is a target no session can answer."""
+    target, why = next_target(HOME_PRESS, Target(16, 10.0), [P(16, 10.0)] * 3)
+    assert target == Target(16, 10.0), why
+    assert "already at the 10 kg maximum" in why
+
+
+def test_a_capped_exercise_holds_at_the_top_of_the_range():
+    """The same ending as bodyweight: the range is all there is left."""
+    target, _ = next_target(HOME_PRESS, Target(16, 10.0), [P(18, 10.0)] * 3)
+    assert target == Target(HOME_PRESS.rep_high, 10.0)
+
+
+def test_the_last_step_is_shortened_to_land_on_the_maximum():
+    """9 + 2.5 is 11.5, which does not exist - but the 10 kg pair does."""
+    target, why = next_target(HOME_PRESS, Target(16, 9.0), [P(16, 9.0)] * 3)
+    assert target == Target(HOME_PRESS.rep_low, 10.0), why
+    assert "up to the 10 kg maximum" in why
+
+
+def test_the_shortened_step_is_taken_once_and_then_holds():
+    """Reaching the ceiling is a rung to climb, not a place to hover below."""
+    stepped, why = next_target(HOME_PRESS, Target(16, 9.0), [P(16, 9.0)] * 3)
+    assert stepped == Target(10, 10.0), why
+
+    held, why = next_target(HOME_PRESS, stepped, [P(16, 10.0)] * 3)
+    assert held == Target(HOME_PRESS.rep_high, 10.0), why
+
+
+def test_a_load_already_past_the_maximum_is_not_pulled_down():
+    """Rule 3 is the rule that adds load; taking it off is the deload's job."""
+    target, why = next_target(HOME_PRESS, Target(16, 12.5), [P(16, 12.5)] * 3)
+    assert target == Target(16, 12.5), why
+    assert "past the 10 kg maximum" in why, "past it, rather than at it"
+
+
+def test_below_the_maximum_the_weight_still_climbs():
+    """The ceiling is a stop, not a brake: every step under it is taken."""
+    target, why = next_target(HOME_PRESS, Target(16, 7.5), [P(16, 7.5)] * 3)
+    assert target == Target(HOME_PRESS.rep_low, 10.0), why
+
+
+def test_no_maximum_means_the_weight_keeps_climbing():
+    """The default, and what every config written before ceilings did."""
+    assert SQUAT.max_weight is None
+    target, _ = next_target(SQUAT, Target(10, 20.0), [P(10, 20.0)] * 3)
+    assert target == Target(SQUAT.rep_low, 25.0)
+
+
+def test_a_capped_exercise_still_deloads():
+    """Running out of weight upwards says nothing about coming back down."""
+    target, why = next_target(HOME_PRESS, Target(10, 10.0), [P(8, 10.0)] * 3, streak=1)
+    assert target == Target(HOME_PRESS.rep_low, 7.5), why
+
+
+def test_a_session_at_the_cap_rebases_off_an_impossible_target():
+    """The way back from a target already past the ceiling: lift what you have."""
+    target, why = next_target(HOME_PRESS, Target(10, 12.5), [P(12, 10.0)] * 3)
+    assert target.weight == 10.0, why
