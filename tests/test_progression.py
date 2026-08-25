@@ -433,6 +433,17 @@ def test_a_timed_hold_ramps_in_seconds():
     assert target.spread(3) == "47+2"
 
 
+def test_a_timed_hold_says_what_it_adds_in_seconds():
+    """The step is a second, not a rep: a hold has no reps to add one to."""
+    _, why = next_target(PLANK, Target(47, 0.0), held(47, 47, 47))
+    assert "add 1 second" in why, why
+
+
+def test_a_timed_hold_names_seconds_on_a_partial_advance():
+    _, why = next_target(PLANK, Target(47, 0.0), held(47, 47, 47), streak=1)
+    assert "add 1 second on 2 of 3 sets" in why, why
+
+
 # --- how a target is written ----------------------------------------------
 
 
