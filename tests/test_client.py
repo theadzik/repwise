@@ -473,6 +473,28 @@ def test_forget_leaves_the_exercise_catalog_alone(tmp_path):
     assert catalog.exists()
 
 
+def test_forget_will_not_report_a_token_it_did_not_delete(tmp_path, monkeypatch):
+    """garminconnect declines to delete through a path it will not touch.
+
+    It says so at DEBUG rather than raising, so a `logout` that returned is no
+    proof the file went. What this command claims is that the account is out of
+    reach afterwards, which is worth checking rather than assuming.
+    """
+    settings = token_store(tmp_path)
+
+    class KeepsIt:
+        def logout(self, store):
+            """Returns cleanly, deletes nothing - 0.3.10 and later."""
+
+    monkeypatch.setattr(client, "Garmin", lambda *a, **k: KeepsIt())
+
+    with pytest.raises(GarminError) as kept:
+        forget(settings)
+
+    assert "still there" in str(kept.value)
+    assert os.path.exists(Path(settings.token_store) / "garmin_tokens.json")
+
+
 def test_forget_with_nothing_cached_reports_nothing_deleted(tmp_path):
     """So the command can tell "signed you out" from "you were not signed in"."""
     settings = GarminSettings(token_store=str(tmp_path / "absent"))

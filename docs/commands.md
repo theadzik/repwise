@@ -683,6 +683,12 @@ Three things it deliberately does not do:
   again.
 - **It does not touch `workouts.yaml`.** Your routine is not a credential.
 
+The file being gone afterwards is checked, not assumed. `garminconnect`
+declines to delete through a token store it will not touch and says so only
+under `--verbose`, so a `logout` that returned is not on its own proof of
+anything. If the file survives, the command fails and names it rather than
+printing a `Deleted` line about a credential that is still on disk.
+
 Being signed out already is not a failure - it is the state the command exists
 to reach - so a token store with nothing in it says so and exits `0`:
 

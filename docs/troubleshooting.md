@@ -96,7 +96,7 @@ What that means in practice:
 | repwise warns if it finds it otherwise | A file restored from a backup, copied between machines, or written by an older version can have looser permissions. The warning names the `chmod` that fixes it, and never runs it for you |
 | Keep it out of backups and dotfile repos | This is the realistic way it escapes, not another user on your laptop |
 | It cannot live behind a symlink | Neither the file nor any directory above it. `garminconnect` refuses to follow one, and repwise stops with exit 3 rather than logging in again every run - see [above](#the-token-store-cannot-be-a-symlink) |
-| `repwise logout` deletes it | The token file only; the cached exercise catalog beside it is a copy of a public file and is left alone |
+| `repwise logout` deletes it | The token file only; the cached exercise catalog beside it is a copy of a public file and is left alone. It checks the file went, and fails rather than reporting a deletion that did not happen |
 | Nothing revokes it at Garmin's end | `logout` removes this machine's copy. A copy taken before that stays valid until it expires, and Garmin exposes no per-token revocation to repwise. If you think one has escaped, change your Garmin password |
 | Full-disk encryption is what protects a stolen laptop | File permissions do not, and repwise does not encrypt the file itself |
 

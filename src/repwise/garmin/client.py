@@ -479,10 +479,25 @@ def forget(settings: GarminSettings) -> str | None:
     it back through, so this ends this machine's access to the account and
     changes nothing at Garmin's end: a copy taken from the file before it went
     stays usable until it expires.
+
+    What is returned is what was deleted, checked rather than assumed - see
+    below.
     """
     path = cached_token(settings.token_store)
     if path is None:
         return None
     # The library's own method, so which file this is stays its business.
     Garmin().logout(settings.token_store)
+
+    # Its business, but not its promise. `logout` swallows a path it will not
+    # touch and says so at DEBUG, so a call that returned cleanly is not proof
+    # that anything went. This command makes one claim - that this machine can
+    # no longer reach the account without a password - and about a credential
+    # that is as good as being logged in, a false "Deleted" is the worst line
+    # this tool could print.
+    if os.path.exists(path):
+        raise GarminError(
+            f"{path} is still there after signing out, so this machine can "
+            f"still reach your account. Delete the file to finish."
+        )
     return path
