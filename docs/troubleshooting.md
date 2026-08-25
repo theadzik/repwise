@@ -18,31 +18,6 @@ what keeps you clear of Garmin's login rate limits.
 
 Run [`repwise logout`](commands.md#logout) to force a fresh login.
 
-### Upgrading from a version that defaulted to `~/.garminconnect`
-
-Nothing to do today. If your config names no `token_store` of its own, and
-there are tokens in the old directory and none in the new one, they are used
-where they lie and the run says so:
-
-```text
-Using the Garmin tokens in /home/you/.garminconnect, which is where repwise
-used to keep them. The default is now /home/you/.config/repwise.
-    mkdir -p /home/you/.config/repwise && mv /home/you/.garminconnect/* /home/you/.config/repwise/
-Or name the old directory in workouts.yaml, under settings.garmin:
-    token_store: ~/.garminconnect
-Deprecated: repwise 2.0 drops this fallback and uses the new default regardless
-of what is in the old directory.
-```
-
-Take either way out. Run the `mv` and the warning stops, or set
-`settings.garmin.token_store: ~/.garminconnect` and keep the old location for
-good. Logging in again works too - the new tokens land at the new default, and
-the old directory stops being consulted the moment it does.
-
-Whichever you pick, **delete `~/.garminconnect` once you are done with it.** The
-token left in it stays valid until it expires, and nothing is watching it any
-more. A config that names its own `token_store` never sees any of this.
-
 ### The token store cannot be a symlink
 
 `garminconnect` will not read or write a token store whose path - or any

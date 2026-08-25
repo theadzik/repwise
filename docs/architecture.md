@@ -110,7 +110,6 @@ flowchart TD
 
     cli --> commands
     cli --> config & garmin
-    config --> garmin
     commands --> planner & importer & checker
     commands --> garmin & matching
     planner & importer & checker --> garmin
@@ -147,11 +146,7 @@ Four boundaries carry the weight:
 - **`config.py` is the only module that writes to `workouts.yaml`,** and the
   only thing it ever writes is a workout id Garmin has just issued. It parses
   the document, sets the one key and dumps the whole thing back, so values and
-  ordering survive but comments do not. It reaches into `garmin/client.py` for
-  one question - is there a token cached in this directory - which is what lets
-  it decide whether a config naming no `token_store` should fall back to the
-  directory the default used to point at. That fallback goes in 2.0, and the
-  arrow with it.
+  ordering survive but comments do not.
 - **`yamlio.py` is the only module that touches the file at all.** Reading,
   dumping and the atomic replace live there, so `config.py`, `importer.py` and
   the import use case cannot disagree about how the file is parsed, how what we

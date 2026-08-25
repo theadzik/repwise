@@ -273,12 +273,6 @@ def clean_home(tmp_path, monkeypatch):
     return home
 
 
-def logged_in(store) -> None:
-    """Leave a store in the state a successful login would have left it."""
-    store.mkdir(parents=True, exist_ok=True)
-    (store / "garmin_tokens.json").write_text("{}")
-
-
 def test_garmin_settings_have_defaults(write_config, clean_home):
     """Tokens land beside the config, not in a dot-directory of their own."""
     config = load_config(write_config(FIXTURE))
@@ -299,89 +293,15 @@ def test_the_default_token_store_follows_the_config_home(
     assert config.garmin.token_store == os.path.join("/elsewhere", "repwise")
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX symlinks")
-def test_a_default_store_behind_a_symlink_is_refused_as_a_config_error(
-    write_config, clean_home
-):
-    """The dotfiles case, and the one that has to fail politely.
-
-    `garminconnect` will not keep tokens behind a symlink, and the default
-    store is under `~/.config` - which dotfile managers routinely link into a
-    checkout. Resolving the config is where that is noticed, before `main()`
-    has anything to catch, so it has to arrive as a `ConfigError` rather than
-    as whatever the library felt like raising.
-    """
-    real = clean_home / "dotfiles" / "config"
-    real.mkdir(parents=True)
-    (clean_home / ".config").symlink_to(real)
-
-    with pytest.raises(ConfigError) as refused:
-        load_config(write_config(FIXTURE))
-
-    assert ".config" in str(refused.value), "the path it will not use"
-
-
-# --- the store that moved, and the fallback that will not last ------------
-
-
-def test_tokens_left_where_they_used_to_go_are_still_used(write_config, clean_home):
-    """Upgrading should not cost a login through the endpoint Garmin throttles."""
-    logged_in(clean_home / ".garminconnect")
-
-    config = load_config(write_config(FIXTURE))
-
-    assert config.garmin.token_store == str(clean_home / ".garminconnect")
-
-
-def test_the_new_default_wins_as_soon_as_it_has_tokens_of_its_own(
-    write_config, clean_home
-):
-    """Once you have logged in since the move, the old copy stops mattering."""
-    logged_in(clean_home / ".garminconnect")
-    logged_in(clean_home / ".config" / "repwise")
-
-    config = load_config(write_config(FIXTURE))
-
-    assert config.garmin.token_store == str(clean_home / ".config" / "repwise")
-
-
-def test_an_old_directory_with_no_tokens_in_it_is_not_a_fallback(
-    write_config, clean_home, caplog
-):
-    """It may hold nothing but a stale exercise catalog. Nothing to fall back to."""
-    (clean_home / ".garminconnect").mkdir()
-
-    with caplog.at_level(logging.WARNING, logger="repwise.config"):
-        config = load_config(write_config(FIXTURE))
-
-    assert config.garmin.token_store == str(clean_home / ".config" / "repwise")
-    assert caplog.text == ""
-
-
-def test_a_declared_store_is_never_second_guessed(write_config, clean_home, caplog):
+def test_a_declared_store_is_never_second_guessed(write_config, clean_home):
     """Naming one is an instruction, not an opening bid."""
-    logged_in(clean_home / ".garminconnect")
     text = FIXTURE.replace(
         "settings:\n", "settings:\n  garmin:\n    token_store: /tmp/tokens\n", 1
     )
 
-    with caplog.at_level(logging.WARNING, logger="repwise.config"):
-        config = load_config(write_config(text))
+    config = load_config(write_config(text))
 
     assert config.garmin.token_store == "/tmp/tokens"
-    assert caplog.text == "", "nothing was fallen back to, so nothing to say"
-
-
-def test_the_fallback_says_how_to_stop_relying_on_it(write_config, clean_home, caplog):
-    """A fallback nobody is told about is one nobody acts on."""
-    logged_in(clean_home / ".garminconnect")
-
-    with caplog.at_level(logging.WARNING, logger="repwise.config"):
-        load_config(write_config(FIXTURE))
-
-    assert "mv" in caplog.text, "the move that ends it"
-    assert "token_store:" in caplog.text, "the setting that keeps it"
-    assert "2.0" in caplog.text, "when it stops working"
 
 
 def test_the_two_statements_of_the_default_store_cannot_drift(monkeypatch):
