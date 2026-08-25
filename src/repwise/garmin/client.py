@@ -334,6 +334,42 @@ def _warn_if_exposed(store: str) -> None:
         logger.warning(fix)
 
 
+def _warn_if_linked(store: str) -> None:
+    """Say so when the cached token is a symlink rather than a file.
+
+    A store that is itself behind a symlink never gets here - `cached_token`
+    refuses it outright - so this is the other one: a real directory with the
+    token file inside it pointing somewhere else, which is what someone keeping
+    it in a vault or a backup tree ends up with.
+
+    garminconnect opens the file `O_NOFOLLOW`, so it will not read through the
+    link and the session cannot be resumed from it. That much is only a login.
+    The part worth a warning is what the login then does: the tokens are
+    written to a temporary file and moved into place, which replaces the link
+    with a real file and leaves whatever it pointed at behind, holding a token
+    that is now stale.
+
+    Warned about rather than refused, and never repaired: the outcome is a
+    working token store either way, and quietly deciding where someone's
+    credentials live is not this tool's business.
+    """
+    token = cached_token(store)
+    if token is None or not os.path.islink(token):
+        return
+
+    logger.warning(
+        f"The cached Garmin token in {store} is a symlink to "
+        f"{os.path.realpath(token)}. garminconnect will not read through it, "
+        f"so this run logs in again - and caching the tokens it gets replaces "
+        f"the link with a real file."
+    )
+    logger.warning(
+        "To keep them where the link points, name that directory in "
+        "workouts.yaml, under settings.garmin:"
+    )
+    logger.warning(f"    token_store: {os.path.dirname(os.path.realpath(token))}")
+
+
 class CachedSession(GarminSession):
     """A session that answers from `dump_dir` before it asks Garmin.
 
@@ -425,6 +461,7 @@ def connect(
 
     store = settings.token_store
     _warn_if_exposed(store)
+    _warn_if_linked(store)
 
     if os.path.isdir(store):
         try:

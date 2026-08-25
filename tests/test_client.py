@@ -348,6 +348,44 @@ def test_a_store_holding_only_the_catalog_is_left_alone(tmp_path, caplog):
 
 
 @posix_only
+def test_a_token_file_that_is_a_symlink_is_warned_about(tmp_path, caplog):
+    """It cannot be read through, and the next login replaces it."""
+    settings = token_store(tmp_path)
+    vault = tmp_path / "vault.json"
+    vault.write_text("{}")
+    vault.chmod(0o600)
+    token = Path(settings.token_store) / "garmin_tokens.json"
+    token.unlink()
+    token.symlink_to(vault)
+
+    warned = warnings_from(settings, caplog)
+
+    assert "symlink" in warned
+    assert str(vault) in warned, "where it points"
+    assert f"token_store: {tmp_path}" in warned, "how to keep it there"
+
+
+@posix_only
+def test_a_real_token_file_is_not_called_a_link(tmp_path, caplog):
+    assert "symlink" not in warnings_from(token_store(tmp_path), caplog)
+
+
+@posix_only
+def test_the_link_is_reported_but_never_repaired(tmp_path, caplog):
+    """The same rule as the mode: say it, do not quietly rearrange it."""
+    settings = token_store(tmp_path)
+    vault = tmp_path / "vault.json"
+    vault.write_text("{}")
+    token = Path(settings.token_store) / "garmin_tokens.json"
+    token.unlink()
+    token.symlink_to(vault)
+
+    warnings_from(settings, caplog)
+
+    assert token.is_symlink()
+
+
+@posix_only
 def test_the_mode_is_reported_but_never_repaired(tmp_path, caplog):
     """Changing the mode of a file nobody asked us to touch is not our business."""
     settings = token_store(tmp_path, mode=0o644)

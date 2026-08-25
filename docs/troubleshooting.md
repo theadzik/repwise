@@ -95,7 +95,7 @@ What that means in practice:
 | It is written `0600` inside a `0700` directory | So other accounts on the machine cannot read it. `garminconnect` enforces this on every write |
 | repwise warns if it finds it otherwise | A file restored from a backup, copied between machines, or written by an older version can have looser permissions. The warning names the `chmod` that fixes it, and never runs it for you |
 | Keep it out of backups and dotfile repos | This is the realistic way it escapes, not another user on your laptop |
-| It cannot live behind a symlink | Neither the file nor any directory above it. `garminconnect` refuses to follow one, and repwise stops with exit 3 rather than logging in again every run - see [above](#the-token-store-cannot-be-a-symlink) |
+| The store cannot be behind a symlink | Not the directory, nor any above it: `garminconnect` refuses to follow one, and repwise stops with exit 3 rather than logging in again every run - see [above](#the-token-store-cannot-be-a-symlink). The token file itself being a link is warned about instead, because it is not refused but replaced: it cannot be read through, and the next login writes a real file over it |
 | `repwise logout` deletes it | The token file only; the cached exercise catalog beside it is a copy of a public file and is left alone. It checks the file went, and fails rather than reporting a deletion that did not happen |
 | Nothing revokes it at Garmin's end | `logout` removes this machine's copy. A copy taken before that stays valid until it expires, and Garmin exposes no per-token revocation to repwise. If you think one has escaped, change your Garmin password |
 | Full-disk encryption is what protects a stolen laptop | File permissions do not, and repwise does not encrypt the file itself |
@@ -114,6 +114,7 @@ DEBUG   repwise.garmin.client: Resumed cached session.
 | `429` / rate limited | Too many login attempts from your IP. Wait it out; once tokens are cached the login endpoint is skipped entirely |
 | `401` after working before | Stale tokens. Run `repwise logout` and log in again |
 | `can be read by other users` | The token file or its directory has picked up looser permissions than it was written with. The warning names the `chmod` that fixes it. See [what is stored](#what-is-stored-and-what-it-is-worth) |
+| `is a symlink to` | The token file is a link, into a vault or a backup tree. It cannot be read through, so the session is not resumed, and the login that follows replaces the link with a real file. Name the directory it points at as your `token_store` to keep them there |
 | `Token path must not be a symlink` | The token store, or a directory above it, is a symlink - `garminconnect` will not keep tokens behind one, so repwise stops rather than logging you in every run with nothing cached. Point [`garmin.token_store`](configuration.md#settings) at a real directory |
 | `no terminal to log in from` | A scheduled run found no cached session. Run it once by hand to cache the tokens |
 | Cloudflare challenge | Only affects browser automation. This tool goes through `garminconnect`, built on `curl_cffi`, which is not subject to it |
