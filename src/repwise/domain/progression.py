@@ -361,6 +361,11 @@ def _advance(
     if not rebased and floor > current.reps:
         beat = f"beat target ({floor} on every set), "
     stalled = f"hit after {streak} miss{'es' if streak > 1 else ''}, " if streak else ""
+    # A timed hold is progressed in seconds -- `as_time` put them where the
+    # reps go -- so the step has to be named in the unit the exercise is
+    # actually measured in. "add 1 rep" beside a 25 s -> 26 s target names
+    # something the exercise does not have.
+    unit = "second" if spec.time_based else "rep"
     plural = "" if spec.rep_step == 1 else "s"
 
     if lead >= spec.sets:
@@ -369,12 +374,12 @@ def _advance(
         reps = min(base + spec.rep_step, spec.rep_high)
         return (
             Target(reps, weight),
-            f"{beat}{stalled}add {spec.rep_step} rep{plural}{moved}",
+            f"{beat}{stalled}add {spec.rep_step} {unit}{plural}{moved}",
         )
 
     return (
         Target(base, weight, lead),
-        f"{beat}{stalled}add {spec.rep_step} rep{plural} on "
+        f"{beat}{stalled}add {spec.rep_step} {unit}{plural} on "
         f"{units} of {spec.sets} sets{moved}",
     )
 
