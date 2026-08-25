@@ -11,6 +11,7 @@ from repwise import config as config_module
 from repwise import yamlio
 from repwise.config import (
     ConfigError,
+    default_dump_dir,
     default_token_store,
     load_config,
     record_workout_id,
@@ -270,6 +271,7 @@ def clean_home(tmp_path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     return home
 
 
@@ -280,6 +282,9 @@ def test_garmin_settings_have_defaults(write_config, clean_home):
     assert config.garmin.token_store == str(clean_home / ".config" / "repwise")
     assert config.garmin.activity_search_limit == 50
     assert config.garmin.activity_caching is False, "reading a copy is opt-in"
+    assert config.garmin.dump_dir == str(
+        clean_home / ".local" / "share" / "repwise" / "dumps"
+    )
 
 
 def test_the_default_token_store_follows_the_config_home(
@@ -291,6 +296,28 @@ def test_the_default_token_store_follows_the_config_home(
     config = load_config(write_config(FIXTURE))
 
     assert config.garmin.token_store == os.path.join("/elsewhere", "repwise")
+
+
+def test_the_default_dump_dir_follows_the_data_home(
+    write_config, clean_home, monkeypatch
+):
+    """Same as the store, and for the same reason: $XDG_DATA_HOME is an answer."""
+    monkeypatch.setenv("XDG_DATA_HOME", "/elsewhere")
+
+    config = load_config(write_config(FIXTURE))
+
+    assert config.garmin.dump_dir == os.path.join("/elsewhere", "repwise", "dumps")
+
+
+def test_the_dump_dir_is_the_data_home_and_not_the_cache_home(clean_home):
+    """A cache is somewhere anything may be deleted at any time.
+
+    What lands here is the only copy of a session once Garmin's search window
+    has moved past it, which is the whole point of `activity_caching`, so it
+    goes where data goes.
+    """
+    assert ".cache" not in default_dump_dir()
+    assert str(clean_home / ".local" / "share") in default_dump_dir()
 
 
 def test_a_declared_store_is_never_second_guessed(write_config, clean_home):
@@ -317,6 +344,15 @@ def test_the_two_statements_of_the_default_store_cannot_drift(monkeypatch):
     stated = os.path.expanduser(GarminSettings().token_store)
 
     assert stated == default_token_store()
+
+
+def test_the_two_statements_of_the_default_dump_dir_cannot_drift(monkeypatch):
+    """Written down twice for the reason the store is, and pinned the same way."""
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+
+    stated = os.path.expanduser(GarminSettings().dump_dir)
+
+    assert stated == default_dump_dir()
 
 
 def test_garmin_settings_come_from_the_file(write_config):
@@ -720,7 +756,7 @@ def test_a_relative_dump_dir_with_caching_on_is_warned_about(write_config, caplo
     warned = loading(caching_config(write_config, "."), caplog)
 
     assert "relative to wherever repwise is run from" in warned
-    assert "dump_dir: ~/.local/share/repwise/dumps" in warned
+    assert default_dump_dir() in warned, "which the setting can simply be dropped for"
 
 
 def test_a_relative_dump_dir_is_still_honoured(write_config, caplog):

@@ -77,12 +77,13 @@ settings:
     # How many recent activities to scan for the last session, and for the
     # strength sessions `repwise fetch activities` downloads.
     activity_search_limit: 50
-    # Where `fetch` writes its JSON. A relative path here is relative to
-    # wherever you happen to run repwise - not to this file - so name an
-    # absolute one and keep every session in the same place. This is also
-    # where your history lives once it has scrolled out of Garmin's search
-    # window, so it belongs somewhere durable rather than under ~/.cache.
-    dump_dir: ~/.local/share/repwise/dumps
+    # Where `fetch` writes its JSON. When unset, this defaults to
+    # $XDG_DATA_HOME/repwise/dumps (usually ~/.local/share/repwise/dumps) -
+    # durable rather than under ~/.cache, because this is where your history
+    # lives once it has scrolled out of Garmin's search window. A relative path
+    # here is relative to wherever you happen to run repwise, not to this file,
+    # so with activity_caching on it means a separate cache per directory.
+    # dump_dir: ~/.local/share/repwise/dumps
     # Read a session from dump_dir instead of asking Garmin for it again, and
     # file every session a run sees so the directory keeps itself current. A
     # cached copy is dropped as soon as Garmin's totals for that session stop

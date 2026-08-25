@@ -22,6 +22,7 @@ __all__ = [
     "record_workout_id",
     "resolve_config",
     "search_path",
+    "default_dump_dir",
     "default_token_store",
     "ConfigError",
 ]
@@ -66,6 +67,10 @@ def _xdg_config_home() -> str:
     return os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
 
 
+def _xdg_data_home() -> str:
+    return os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+
+
 def default_token_store() -> str:
     """Where the Garmin tokens go when the config does not say.
 
@@ -77,6 +82,21 @@ def default_token_store() -> str:
     config does not find their tokens left behind in `~/.config`.
     """
     return os.path.join(_xdg_config_home(), APP_DIR)
+
+
+def default_dump_dir() -> str:
+    """Where `fetch` writes, and what `activity_caching` reads back.
+
+    Under `$XDG_DATA_HOME` rather than the cache home, and for the reason
+    `activity_caching` exists at all: a session that has scrolled past
+    `activity_search_limit` is only on disk here, and a cache directory is
+    somewhere anything may be deleted at any time.
+
+    `GarminSettings` states the same path as a plain default, for anything
+    constructing one without a file behind it; this is the one that honours
+    the environment, exactly as `default_token_store()` does.
+    """
+    return os.path.join(_xdg_data_home(), APP_DIR, "dumps")
 
 
 def _flag(declared: Any, key: str, default: bool) -> bool:
@@ -122,8 +142,10 @@ def _warn_if_wandering(garmin: GarminSettings) -> None:
         f"{garmin.dump_dir!r}, which is relative to wherever repwise is run "
         f"from - so this is a separate, empty cache for every such directory."
     )
-    logger.warning("Name an absolute path instead, under settings.garmin:")
-    logger.warning("    dump_dir: ~/.local/share/repwise/dumps")
+    logger.warning(
+        f"Remove the setting to use the default, {default_dump_dir()}, or name "
+        f"an absolute path of your own under settings.garmin."
+    )
 
 
 def _checkout_config() -> str | None:
@@ -457,6 +479,7 @@ def load_config(path: str | None = None) -> Config:
     # A declared store is an instruction: second-guessing it would move
     # someone's credentials for them.
     declared_store = garmin_raw.get("token_store")
+    declared_dumps = garmin_raw.get("dump_dir")
     garmin = GarminSettings(
         token_store=(
             os.path.expanduser(declared_store)
@@ -466,7 +489,9 @@ def load_config(path: str | None = None) -> Config:
         activity_search_limit=int(
             garmin_raw.get("activity_search_limit") or defaults.activity_search_limit
         ),
-        dump_dir=os.path.expanduser(garmin_raw.get("dump_dir") or defaults.dump_dir),
+        dump_dir=(
+            os.path.expanduser(declared_dumps) if declared_dumps else default_dump_dir()
+        ),
         activity_caching=_flag(
             garmin_raw.get("activity_caching"),
             "activity_caching",
