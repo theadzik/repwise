@@ -42,6 +42,22 @@ class ConfigError(WorkoutError):
     exit_code = ExitCode.CONFIG
 
 
+class UnsafeTokenStore(ConfigError):
+    """garminconnect will not read or write a token store at that path.
+
+    A symlink anywhere in the path, or a `~user` prefix that does not resolve.
+    Which paths those are is the library's rule rather than this tool's, so
+    what is raised here carries its message instead of restating it - but it
+    is raised as a config error, because the setting that names the path is
+    the only thing the user can do anything about.
+    """
+
+    advice = (
+        "Name a real directory - with no symlink in it or above it - under "
+        "settings.garmin.token_store."
+    )
+
+
 class UsageError(WorkoutError):
     """The flags given cannot be honoured together."""
 

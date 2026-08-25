@@ -25,7 +25,7 @@ from garminconnect.client import token_file_path
 
 from .. import dumps
 from ..domain.models import GarminSettings
-from ..errors import GarminError, NoTerminal, RateLimited
+from ..errors import GarminError, NoTerminal, RateLimited, UnsafeTokenStore
 from .payloads import GRAMS_PER_KG
 
 __all__ = [
@@ -228,8 +228,25 @@ def cached_token(store: str) -> str | None:
     whether a store is named as a directory or as the file itself, is knowledge
     of the library this module exists to keep in one place. `config.py` asks
     this to tell an install that has logged in from one that has not.
+
+    That makes this the only place the library gets to refuse a path, and it
+    does refuse some. Translated here so that a store it will not touch is a
+    message with an exit code: `config.py` calls this while resolving the
+    config, before `main()` has anything to catch, so anything left raw is a
+    traceback out of every command - including the ones that never reach
+    Garmin.
     """
-    path = str(token_file_path(store))
+    try:
+        path = str(token_file_path(store))
+    except ValueError as exc:
+        # A symlink somewhere in the path, or a `~user` prefix that does not
+        # resolve. The library's message names the path and the rule it broke,
+        # which is more than a paraphrase here would say.
+        raise UnsafeTokenStore(str(exc)) from exc
+    except RuntimeError as exc:
+        # `~` with no home to expand it against. This one says why but not
+        # what it was expanding, so the store is named here.
+        raise UnsafeTokenStore(f"Cannot place a token store at {store}: {exc}") from exc
     return path if os.path.exists(path) else None
 
 

@@ -9,12 +9,19 @@ import pytest
 from garminconnect import GarminConnectTooManyRequestsError
 
 from repwise.domain.models import GarminSettings
-from repwise.errors import ExitCode, GarminError, NoTerminal, RateLimited
+from repwise.errors import (
+    ExitCode,
+    GarminError,
+    NoTerminal,
+    RateLimited,
+    UnsafeTokenStore,
+)
 from repwise.garmin import client
 from repwise.garmin.client import (
     STRENGTH,
     CachedSession,
     GarminSession,
+    cached_token,
     connect,
     forget,
 )
@@ -292,6 +299,78 @@ def test_the_mode_is_reported_but_never_repaired(tmp_path, caplog):
 
     token = Path(settings.token_store) / "garmin_tokens.json"
     assert stat.S_IMODE(token.stat().st_mode) == 0o644
+
+
+# --- a store the library will not touch -----------------------------------
+
+
+@posix_only
+def test_a_symlinked_store_is_refused_rather_than_followed(tmp_path):
+    """garminconnect will not read or write through one, so nor do we."""
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "store"
+    link.symlink_to(real)
+
+    with pytest.raises(UnsafeTokenStore) as refused:
+        cached_token(str(link))
+
+    assert str(link) in str(refused.value), "the path it will not use"
+
+
+@posix_only
+def test_a_symlink_above_the_store_is_refused_too(tmp_path):
+    """The realistic one: ~/.config itself linked into a dotfiles checkout."""
+    real = tmp_path / "dotfiles" / "config"
+    real.mkdir(parents=True)
+    (tmp_path / ".config").symlink_to(real)
+
+    with pytest.raises(UnsafeTokenStore):
+        cached_token(str(tmp_path / ".config" / "repwise"))
+
+
+@posix_only
+def test_the_refusal_says_what_to_change(tmp_path):
+    """It is a config error because the setting is what the user can act on."""
+    link = tmp_path / "store"
+    link.symlink_to(tmp_path)
+
+    with pytest.raises(UnsafeTokenStore) as refused:
+        cached_token(str(link))
+
+    assert refused.value.exit_code == ExitCode.CONFIG
+    assert "token_store" in refused.value.advice
+
+
+def test_a_home_that_cannot_be_expanded_is_refused_the_same_way(monkeypatch):
+    """`~` with nothing to expand it against - a uid with no passwd entry.
+
+    Provoked rather than arranged: unsetting $HOME is not enough, because
+    `Path.expanduser()` falls back to the passwd database, and a test cannot
+    take that away from the machine running it. What is checked is the
+    translation, which is this module's, and not the library's rule for when
+    to raise.
+    """
+
+    def no_home(path: str):
+        raise RuntimeError("Could not determine home directory.")
+
+    monkeypatch.setattr(client, "token_file_path", no_home)
+
+    with pytest.raises(UnsafeTokenStore) as refused:
+        cached_token("~/tokens")
+
+    assert "~/tokens" in str(refused.value), "the store it could not place"
+    assert "home directory" in str(refused.value), "and why it could not"
+
+
+def test_a_real_store_is_still_just_a_path(tmp_path):
+    """The refusals above are the exception; the ordinary answer is unchanged."""
+    store = token_store(tmp_path)
+
+    assert cached_token(store.token_store) == str(
+        Path(store.token_store) / "garmin_tokens.json"
+    )
 
 
 # --- signing out ----------------------------------------------------------

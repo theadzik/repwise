@@ -299,6 +299,28 @@ def test_the_default_token_store_follows_the_config_home(
     assert config.garmin.token_store == os.path.join("/elsewhere", "repwise")
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX symlinks")
+def test_a_default_store_behind_a_symlink_is_refused_as_a_config_error(
+    write_config, clean_home
+):
+    """The dotfiles case, and the one that has to fail politely.
+
+    `garminconnect` will not keep tokens behind a symlink, and the default
+    store is under `~/.config` - which dotfile managers routinely link into a
+    checkout. Resolving the config is where that is noticed, before `main()`
+    has anything to catch, so it has to arrive as a `ConfigError` rather than
+    as whatever the library felt like raising.
+    """
+    real = clean_home / "dotfiles" / "config"
+    real.mkdir(parents=True)
+    (clean_home / ".config").symlink_to(real)
+
+    with pytest.raises(ConfigError) as refused:
+        load_config(write_config(FIXTURE))
+
+    assert ".config" in str(refused.value), "the path it will not use"
+
+
 # --- the store that moved, and the fallback that will not last ------------
 
 
