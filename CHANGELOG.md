@@ -1,3 +1,36 @@
+## 2.0.0 (2026-08-25)
+
+### BREAKING CHANGE
+
+- a Garmin token store behind a symlink is refused with exit 3.
+The realistic case is a dotfile manager: `~/.config` linked into a checkout is
+enough, without `token_store` having been pointed anywhere unusual. Set
+settings.garmin.token_store to a real directory and move garmin_tokens.json
+there to keep the session; leave it and the next command asks for the password
+once. See docs/troubleshooting.md. ([0784bb1](https://github.com/theadzik/repwise/commit/0784bb13ef2db20ca3d2891aab707b6bea28b9cc))
+- tokens left in ~/.garminconnect are no longer used. If your
+config names no settings.garmin.token_store and you never moved them, the next
+command asks you to log in once and caches the result at the current default.
+To keep the old directory, name it: settings.garmin.token_store:
+~/.garminconnect. Either way, delete ~/.garminconnect once you are done with
+it - the token in it stays valid until it expires and nothing is watching it
+any more. ([0784bb1](https://github.com/theadzik/repwise/commit/0784bb13ef2db20ca3d2891aab707b6bea28b9cc))
+- with no settings.garmin.dump_dir in workouts.yaml, `fetch` now
+writes to $XDG_DATA_HOME/repwise/dumps (usually ~/.local/share/repwise/dumps)
+rather than to the directory you ran from. Files already written are neither
+moved nor read. Setting dump_dir: . keeps the old behaviour exactly; with
+activity_caching on, the first run against the new directory downloads the
+search limit once and then settles. ([0784bb1](https://github.com/theadzik/repwise/commit/0784bb13ef2db20ca3d2891aab707b6bea28b9cc))
+- `update --dump` is gone - use `repwise fetch activities`,
+which saves the same payloads plus the session summary, for any session rather
+than only the one being judged. `repwise fetch` now requires a target: use
+`repwise fetch workouts` where a bare `repwise fetch` or `repwise fetch <id>`
+was used before. ([0784bb1](https://github.com/theadzik/repwise/commit/0784bb13ef2db20ca3d2891aab707b6bea28b9cc))
+
+### Feat
+
+- repwise 2.0 - the v2 milestone, on garminconnect 0.3.11 (#67) ([0784bb1](https://github.com/theadzik/repwise/commit/0784bb13ef2db20ca3d2891aab707b6bea28b9cc))
+
 ## 1.4.0 (2026-08-18)
 
 ### Feat
