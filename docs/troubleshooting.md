@@ -43,6 +43,36 @@ Whichever you pick, **delete `~/.garminconnect` once you are done with it.** The
 token left in it stays valid until it expires, and nothing is watching it any
 more. A config that names its own `token_store` never sees any of this.
 
+### The token store cannot be a symlink
+
+`garminconnect` will not read or write a token store whose path - or any
+directory above it - is a symlink. repwise stops on that rather than logging in
+from scratch on every run:
+
+```text
+Token path must not be a symlink: '/home/you/.config/repwise'
+Name a real directory - with no symlink in it or above it - under settings.garmin.token_store.
+```
+
+The usual cause is a dotfile manager. `~/.config` linked into a checkout is
+enough to trip it, without anyone having pointed `token_store` anywhere
+unusual. Name a real directory instead:
+
+```yaml
+settings:
+  garmin:
+    token_store: ~/.local/state/repwise
+```
+
+Which is where these belong regardless - a bearer credential for your Garmin
+account has no business in a dotfiles repository, as [what is
+stored](#what-is-stored-and-what-it-is-worth) says from the other end. Move
+`garmin_tokens.json` to the new directory and the session survives the move;
+leave it and the next command asks for your password once.
+
+The exercise catalog is cached beside the tokens. Move it too, or let the next
+[`check`](commands.md#check) download it again.
+
 ### What is stored, and what it is worth
 
 Your email and password are typed at the prompt, handed straight to Garmin, and
@@ -65,6 +95,7 @@ What that means in practice:
 | It is written `0600` inside a `0700` directory | So other accounts on the machine cannot read it. `garminconnect` enforces this on every write |
 | repwise warns if it finds it otherwise | A file restored from a backup, copied between machines, or written by an older version can have looser permissions. The warning names the `chmod` that fixes it, and never runs it for you |
 | Keep it out of backups and dotfile repos | This is the realistic way it escapes, not another user on your laptop |
+| It cannot live behind a symlink | Neither the file nor any directory above it. `garminconnect` refuses to follow one, and repwise stops with exit 3 rather than logging in again every run - see [above](#the-token-store-cannot-be-a-symlink) |
 | `repwise logout` deletes it | The token file only; the cached exercise catalog beside it is a copy of a public file and is left alone |
 | Nothing revokes it at Garmin's end | `logout` removes this machine's copy. A copy taken before that stays valid until it expires, and Garmin exposes no per-token revocation to repwise. If you think one has escaped, change your Garmin password |
 | Full-disk encryption is what protects a stolen laptop | File permissions do not, and repwise does not encrypt the file itself |

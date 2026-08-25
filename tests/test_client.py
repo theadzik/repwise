@@ -376,6 +376,26 @@ def test_a_symlinked_store_is_refused_rather_than_followed(tmp_path):
 
 
 @posix_only
+def test_a_declared_store_behind_a_symlink_stops_the_run(tmp_path):
+    """Declaring one is an instruction, but not one the library will follow.
+
+    `config.py` takes a declared store at its word and never looks at it, so
+    this is the moment it is noticed: opening a session is the first thing that
+    needs the token in it. Refused rather than logged in from scratch - a store
+    nothing can be written to means a password prompt on every single run.
+    """
+    real = tmp_path / "dotfiles"
+    real.mkdir()
+    link = tmp_path / "store"
+    link.symlink_to(real)
+
+    with pytest.raises(UnsafeTokenStore) as refused:
+        connect(GarminSettings(token_store=str(link)), prompt=False)
+
+    assert refused.value.exit_code == ExitCode.CONFIG
+
+
+@posix_only
 def test_a_symlink_above_the_store_is_refused_too(tmp_path):
     """The realistic one: ~/.config itself linked into a dotfiles checkout."""
     real = tmp_path / "dotfiles" / "config"
