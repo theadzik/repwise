@@ -1,105 +1,55 @@
-# Dependabot configuration.
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates
 version: 2
 
 updates:
   - package-ecosystem: "pip"
-    # pyproject.toml is the only manifest, and it lives in the repository root.
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
-
-    # No versioning-strategy needed: the dependencies are pinned with "==", so
-    # a new release never satisfies the existing constraint and the default
-    # behaviour already raises a PR to move the pin.
-
+      day: "friday"
     open-pull-requests-limit: 5
-
-    # Wait for a release to survive a week before proposing it. The window where
-    # a compromised release is live and not yet yanked is the one this closes,
-    # and a week is what zizmor's dependabot-cooldown audit asks for; it does
-    # not delay security updates, which ignore cooldown.
     cooldown:
       default-days: 7
-      # Majors soak twice as long: largest diff, least useful review, and
-      # upstream's follow-up patch usually lands inside two weeks. The week
-      # above is what covers the supply-chain case, for every bump type.
-      # garminconnect is the dependency this is really about. Only pip and npm
-      # honour this key; the pre-commit entry below takes default-days alone.
       semver-major-days: 14
-
-    # pip is one of the ecosystems where resolving a manifest can execute code
-    # from the package being resolved. Pinned "==" dependencies need no such
-    # resolution, so denying it costs nothing and keeps a compromised release
-    # away from Dependabot's credentials.
     insecure-external-code-execution: deny
-
     labels:
       - "dependencies"
-    # Conventional commits, so Dependabot's PRs pass the same commit-msg hook
-    # as everything else: "build(deps): ..." and "build(deps-dev): ...".
-    # "deps" is not a conventional type, "build" is. Neither bumps the version
-    # on its own; see docs/releasing.md.
     commit-message:
       prefix: "build"
       include: "scope"
-
     groups:
-      # Test tooling churns often and cannot affect the Garmin integration, so
-      # batch it into one PR. Everything else, garminconnect above all, gets an
-      # individual PR: it is the dependency whose updates have already broken
-      # authentication once, so its changes must stay easy to attribute and
-      # revert on their own.
-      test-tooling:
-        patterns:
-          - "pytest"
-          - "pytest-*"
+      dev-tooling:
+        dependency-type: "development"
+      runtime:
+        dependency-type: "production"
 
   - package-ecosystem: "pre-commit"
-    # .pre-commit-config.yaml, repository root.
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
-
+      day: "friday"
     cooldown:
       default-days: 7
-
     labels:
       - "dependencies"
     commit-message:
       prefix: "build"
-
     groups:
-      # Hook revs are lint tooling and cannot reach the Garmin integration, so
-      # one PR for all of them. ruff and commitizen are pinned twice, here and
-      # in pyproject's dependency groups, and Dependabot moves the two
-      # independently:
-      # expect a pair of PRs per release and check they agree before merging.
       pre-commit-hooks:
         patterns:
           - "*"
 
   - package-ecosystem: "github-actions"
-    # .github/workflows, which this ecosystem addresses as the repository root.
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
-
+      day: "friday"
     cooldown:
       default-days: 7
-
     labels:
       - "dependencies"
     commit-message:
       prefix: "build"
-
     groups:
-      # One PR: these are CI steps and they cannot reach the Garmin
-      # integration. Worth reading rather than waving through even so -
-      # publish.yml pins the action that uploads to PyPI.
       actions:
         patterns:
           - "*"
