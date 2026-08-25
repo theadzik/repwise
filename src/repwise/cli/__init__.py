@@ -23,7 +23,7 @@ from ..errors import ExitCode, UsageError, WorkoutError
 from ..garmin.client import connect
 from ..log import configure
 from .completion import render
-from .parser import ACTIVITIES, CATALOG, TARGETS, WORKOUTS, build_parser
+from .parser import ACTIVITIES, CATALOG, TARGETS, build_parser
 
 __all__ = ["main", "build_parser"]
 
@@ -33,23 +33,6 @@ logger = logging.getLogger(__name__)
 #: HANDLERS below. main() says why.
 COMPLETION = "completion"
 
-#: Which release the spellings below stop being accepted in. Named once so
-#: that every warning promises the same thing.
-REMOVED_IN = "v2"
-
-
-def _deprecated(what: str, instead: str) -> None:
-    """Say that a spelling still works, and what replaces it.
-
-    A warning rather than a failure: what was asked for is still done, and the
-    run that prints this is not the run to break. Written here rather than in
-    `app/`, because which words the command line accepts is this layer's to
-    know and a use case should not be able to tell how it was invoked.
-    """
-    logger.warning(f"{what} is deprecated and will be removed in {REMOVED_IN}.")
-    logger.warning(instead)
-
-
 #: An argparse Namespace and a config in, an exit code out. The adapters below
 #: are the whole of what the CLI layer does with a command: pick the options
 #: out of the namespace, open a session, hand both to the use case.
@@ -57,30 +40,20 @@ Handler = Callable[[argparse.Namespace, Config], ExitCode]
 
 
 def _update(args: argparse.Namespace, config: Config) -> ExitCode:
-    if args.dump:
-        _deprecated(
-            "`update --dump`",
-            f"`repwise fetch {ACTIVITIES}` downloads the same payloads, and "
-            "the session summary with them.",
-        )
-    options = UpdateOptions(
-        apply=args.apply, activity=args.activity, dump=args.dump, push=args.push
-    )
+    options = UpdateOptions(apply=args.apply, activity=args.activity, push=args.push)
     return run_update(connect(config.garmin), config, options)
 
 
-def _fetch_target(args: argparse.Namespace) -> tuple[str | None, list[str]]:
+def _fetch_target(args: argparse.Namespace) -> tuple[str, list[str]]:
     """What `fetch` was asked to download, and which ids narrow it.
 
     A target can only be the first word, since it says what the ids after it
-    are; one appearing later is a mistake rather than an id, and is refused
-    rather than downloaded as though it were one. A first word that is not a
-    target at all is an id - the spelling this command used to have, which the
-    caller warns about and then honours.
+    are; argparse rejects anything else there. One appearing later is a mistake
+    rather than an id, and is refused rather than downloaded as though it were
+    one - which argparse cannot do for us, because the ids after the target are
+    numbers it has nothing to check against.
     """
     target, ids = args.target, list(args.ids)
-    if target is not None and target not in TARGETS:
-        target, ids = None, [target, *ids]
 
     stray = next((word for word in ids if word in TARGETS), None)
     if stray:
@@ -93,13 +66,6 @@ def _fetch_target(args: argparse.Namespace) -> tuple[str | None, list[str]]:
 
 def _fetch(args: argparse.Namespace, config: Config) -> ExitCode:
     target, ids = _fetch_target(args)
-    if target is None:
-        _deprecated(
-            "`fetch` with no target",
-            f"`repwise fetch {WORKOUTS}` downloads workout definitions; "
-            f"`repwise fetch {ACTIVITIES}` downloads performed sessions.",
-        )
-        target = WORKOUTS
 
     if target == CATALOG:
         if ids:

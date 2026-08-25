@@ -20,8 +20,6 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
 
-from .parser import SUGGESTIONS
-
 #: The metavar of an argument that names a file. `parser.py` spells its two
 #: that way, so this one word is what decides they complete as paths.
 PATH = "PATH"
@@ -126,22 +124,15 @@ def _options(parser: argparse.ArgumentParser) -> tuple[Option, ...]:
     )
 
 
-def _positionals(
-    command: str, parser: argparse.ArgumentParser
-) -> tuple[Positional, ...]:
+def _positionals(parser: argparse.ArgumentParser) -> tuple[Positional, ...]:
     found: list[Positional] = []
     for action in _actions(parser):
         if action.option_strings:
             continue
-        words = tuple(action.choices or ())
-        if not found:
-            # A word argparse cannot be told about belongs to the first
-            # positional, since that is the one that would read it.
-            words += SUGGESTIONS.get(command, ())
         found.append(
             Positional(
                 metavar=_metavar(action),
-                words=words,
+                words=tuple(action.choices or ()),
                 repeated=action.nargs in {"*", "+"},
             )
         )
@@ -167,7 +158,7 @@ def _commands(parser: argparse.ArgumentParser) -> tuple[Command, ...]:
                 name=name,
                 help=helps.get(name, ""),
                 options=_options(sub),
-                positionals=_positionals(name, sub),
+                positionals=_positionals(sub),
             )
             for name, sub in action.choices.items()
         )

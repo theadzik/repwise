@@ -85,11 +85,16 @@ def test_every_command_that_parses_has_somewhere_to_go():
     assert command_names(build_parser()) == set(HANDLERS) | {COMPLETION}
 
 
+#: What a command needs after its name to parse at all. Only `fetch` does.
+REQUIRED_WORDS = {"fetch": ["workouts"]}
+
+
 @pytest.mark.parametrize("command", sorted(HANDLERS))
 def test_each_command_reaches_a_handler(command, config, dispatch):
     recorder = dispatch()
+    argv = ["--config", config, command, *REQUIRED_WORDS.get(command, [])]
 
-    assert main(["--config", config, command]) == ExitCode.OK
+    assert main(argv) == ExitCode.OK
     assert len(recorder.calls) == 1
 
 
@@ -241,63 +246,17 @@ def test_mixing_the_catalog_with_workout_ids_is_refused(config, fetching, capsys
     assert "takes no workout ids" in capsys.readouterr().err
 
 
-def test_a_target_after_an_id_is_refused(config, fetching, capsys):
-    """It says what the ids are, so it cannot be one of them."""
-    code = main(["--config", config, "fetch", "123", "activities"])
+def test_a_target_after_another_is_refused(config, fetching, capsys):
+    """It says what the ids are, so it cannot be one of them.
+
+    Ours to refuse rather than argparse's: the words after the target are ids,
+    which are numbers it has nothing to check against.
+    """
+    code = main(["--config", config, "fetch", "workouts", "activities"])
 
     assert code == ExitCode.CONFIG
     assert fetching == {}, "no download should have run"
     assert "goes first" in capsys.readouterr().err
-
-
-# --- spellings on their way out -------------------------------------------
-
-
-def test_fetch_with_no_target_still_downloads_workouts(config, fetching, capsys):
-    assert main(["--config", config, "fetch"]) == ExitCode.OK
-    assert fetching["workouts"] == []
-
-    err = capsys.readouterr().err
-    assert "deprecated" in err and "v2" in err
-    assert "fetch workouts" in err
-
-
-def test_fetch_with_bare_ids_still_downloads_those_workouts(config, fetching, capsys):
-    assert main(["--config", config, "fetch", "123", "456"]) == ExitCode.OK
-    assert fetching["workouts"] == ["123", "456"]
-    assert "deprecated" in capsys.readouterr().err
-
-
-def test_naming_a_target_warns_about_nothing(config, fetching, capsys):
-    assert main(["--config", config, "fetch", "workouts"]) == ExitCode.OK
-    assert capsys.readouterr().err == ""
-
-
-def test_update_dump_warns_but_still_dumps(config, monkeypatch, capsys):
-    """The flag still works. The run that prints this is not the one to break."""
-    seen: dict[str, object] = {}
-
-    def updating(session, config, options):
-        seen["dump"] = options.dump
-        return ExitCode.OK
-
-    monkeypatch.setattr(cli, "run_update", updating)
-    monkeypatch.setattr(cli, "connect", lambda settings: object())
-
-    assert main(["--config", config, "update", "--dump"]) == ExitCode.OK
-    assert seen == {"dump": True}
-
-    err = capsys.readouterr().err
-    assert "deprecated" in err and "v2" in err
-    assert "fetch activities" in err
-
-
-def test_update_without_dump_warns_about_nothing(config, monkeypatch, capsys):
-    monkeypatch.setattr(cli, "run_update", lambda *args: ExitCode.OK)
-    monkeypatch.setattr(cli, "connect", lambda settings: object())
-
-    assert main(["--config", config, "update"]) == ExitCode.OK
-    assert capsys.readouterr().err == ""
 
 
 # --- failures -------------------------------------------------------------
@@ -339,7 +298,7 @@ def test_advice_is_printed_after_the_message(config, dispatch, capsys):
 def test_a_failure_with_no_advice_prints_only_the_message(config, dispatch, capsys):
     dispatch(GarminError("Could not fetch the workout: timed out"))
 
-    code = main(["--config", config, "fetch"])
+    code = main(["--config", config, "fetch", "workouts"])
 
     assert code == ExitCode.NOTHING_USABLE
     assert capsys.readouterr().err.strip() == "Could not fetch the workout: timed out"

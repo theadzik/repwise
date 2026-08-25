@@ -67,7 +67,7 @@ def test_every_option_of_every_command_is_offered(script):
 
 
 def test_the_catalog_keyword_is_offered(script):
-    """`fetch` has no `choices` to enumerate, so this is easy to lose."""
+    """`fetch` declares its targets as choices; this is what reads them back."""
     assert CATALOG in script
 
 

@@ -34,15 +34,12 @@ def test_subcommand_help_is_wrapped(capsys):
 def test_update_defaults_to_a_dry_run():
     args = build_parser().parse_args(["update"])
     assert args.apply is False
-    assert args.dump is False
     assert args.activity is None
 
 
 def test_update_accepts_its_flags():
-    args = build_parser().parse_args(
-        ["update", "--apply", "--activity", "42", "--dump"]
-    )
-    assert args.apply and args.dump
+    args = build_parser().parse_args(["update", "--apply", "--activity", "42"])
+    assert args.apply
     assert args.activity == "42"
 
 
@@ -59,23 +56,22 @@ def test_fetch_takes_a_target_on_its_own():
         assert args.ids == []
 
 
-def test_fetch_still_parses_the_shape_that_takes_bare_ids():
-    """Deprecated, not removed: the handler is what warns and honours it."""
-    args = build_parser().parse_args(["fetch", "1", "2"])
-    assert args.target == "1"
-    assert args.ids == ["2"]
+def test_fetch_needs_a_target(capsys):
+    """The first word says what the ids after it are, so there has to be one."""
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["fetch"])
+    assert "required" in capsys.readouterr().err
 
 
-def test_fetch_takes_nothing_at_all():
-    args = build_parser().parse_args(["fetch"])
-    assert args.target is None
-    assert args.ids == []
+def test_fetch_targets_are_argparse_choices(capsys):
+    """Which words mean something is declared, so argparse rejects the rest.
 
-
-def test_fetch_targets_are_not_argparse_choices():
-    """The parser stays declarative; which download a word means is the
-    handler's, and constraining it here would reject every id there is."""
-    assert build_parser().parse_args(["fetch", "nonsense"]).target == "nonsense"
+    It could not be while a bare id meant `workouts`: `choices` would have had
+    to accept every number there is.
+    """
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["fetch", "nonsense"])
+    assert "invalid choice" in capsys.readouterr().err
 
 
 def test_a_command_is_required(capsys):
