@@ -63,15 +63,15 @@ Issues = "https://github.com/theadzik/repwise/issues"
 # workflow cannot disagree about the answer.
 [dependency-groups]
 release = [
-    "commitizen==4.17.0",
+    "commitizen==4.17.1",
 ]
 dev = [
     { include-group = "release" },
-    "mypy==2.3.0",
-    "pre-commit==4.6.1",
+    "mypy==2.3.1",
+    "pre-commit==4.6.2",
     "pytest==9.1.1",
-    "ruff==0.16.2",
-    "types-PyYAML==6.0.12.20260724",
+    "ruff==0.16.3",
+    "types-PyYAML==6.0.12.20260815",
 ]
 
 [project.scripts]
