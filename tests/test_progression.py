@@ -737,3 +737,78 @@ def test_a_session_at_the_cap_rebases_off_an_impossible_target():
     """The way back from a target already past the ceiling: lift what you have."""
     target, why = next_target(HOME_PRESS, Target(10, 12.5), [P(12, 10.0)] * 3)
     assert target.weight == 10.0, why
+
+
+# --- a session split across two loads --------------------------------------
+#
+# The set count and the rep count ask different questions. Counting only the
+# sets at the working weight answers the second and gets the first wrong: a
+# whole session done at two loads reads as an abandoned one.
+
+CALF_RAISE = spec(
+    name="Seated Calf Raise",
+    garmin_name="SEATED_CALF_RAISE",
+    garmin_category="CALF_RAISE",
+    rep_low=12,
+    rep_high=18,
+    sets=3,
+    load="dumbbell",
+    weight_step=2.5,
+    min_weight=2.5,
+)
+
+
+def test_a_heavier_set_counts_toward_the_prescribed_sets():
+    """Two at 20 kg and one at 30 is three sets, not two."""
+    target, why = next_target(
+        CALF_RAISE, Target(17, 20.0), [P(17, 20.0), P(17, 20.0), P(17, 30.0)]
+    )
+    assert target == Target(18, 20.0), why
+    assert "consolidate" not in why
+
+
+def test_a_heavier_set_moves_the_reps_and_not_the_load():
+    """One set at 30 kg is a third of the session; rule 5's business."""
+    target, _ = next_target(
+        CALF_RAISE, Target(17, 20.0), [P(17, 20.0), P(17, 20.0), P(17, 30.0)]
+    )
+    assert target.weight == 20.0
+
+
+def test_a_heavier_set_that_came_up_short_counts_for_nothing():
+    """A failed top set must not read as a completed session."""
+    _, why = next_target(
+        CALF_RAISE, Target(17, 20.0), [P(17, 20.0), P(17, 20.0), P(5, 30.0)]
+    )
+    assert "only 2 of 3 sets logged, consolidate" in why
+
+
+def test_a_genuinely_short_session_still_consolidates():
+    """The guard the heavier set slips past is still there for real misses."""
+    _, why = next_target(CALF_RAISE, Target(17, 20.0), [P(17, 20.0), P(17, 20.0)])
+    assert "only 2 of 3 sets logged, consolidate" in why
+
+
+def test_a_lighter_set_does_not_count():
+    """Easier than asked is not the same as harder than asked."""
+    _, why = next_target(
+        CALF_RAISE, Target(17, 20.0), [P(17, 20.0), P(17, 20.0), P(17, 10.0)]
+    )
+    assert "only 2 of 3 sets logged, consolidate" in why
+
+
+def test_a_heavier_set_can_complete_an_uneven_target():
+    """18,17,18 against `17+2` is what was asked, whichever load carried it."""
+    target, why = next_target(
+        CALF_RAISE, Target(17, 20.0, lead=2), [P(18, 20.0), P(17, 20.0), P(18, 30.0)]
+    )
+    assert "missed" not in why, why
+    assert target == Target(18, 20.0), why
+
+
+def test_the_heavier_set_never_flatters_the_reps():
+    """It contributes its own count, so it cannot lift the floor off a weak set."""
+    target, why = next_target(
+        CALF_RAISE, Target(15, 20.0), [P(15, 20.0), P(15, 20.0), P(18, 30.0)]
+    )
+    assert target == Target(16, 20.0), why
