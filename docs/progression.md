@@ -207,13 +207,40 @@ A session may use more than one load for the same exercise - maxing out a set
 that felt light, then adding weight for the rest.
 
 Rather than averaging, the **most common load across the sets** is taken as the
-working weight, ties going to the heavier one, and progression is judged only
-among the sets at that load. A single lighter opening set therefore cannot drag
-the baseline back down.
+working weight, ties going to the heavier one, and the reps are judged among the
+sets at that load. A single lighter opening set therefore cannot drag the
+baseline back down.
 
 Everything then rebases onto that load, even if it differs from what the Garmin
 workout still has stored. Bump the weight mid-session and the new weight is
 banked rather than discarded.
+
+### A harder set still counts
+
+Counting only the sets at the working weight would answer the rep question but
+get the *set* question wrong: three sets done as two at 20 kg and one at 30 kg
+would read as two sets, which is an abandoned session rather than a finished
+one, and the target would consolidate instead of advancing.
+
+So a set carried at a **heavier** load, for at least the reps the working sets
+managed, counts as one of them. Harder than asked is not worse than asked. What
+it contributes is its own rep count - a lower bound on what it would have
+managed at the lighter load - so it can only ever add sets to the tally, never
+flatter the reps.
+
+A set that came up *short* at the heavier load counts for nothing, which is
+what keeps a failed top set from reading as a completed session:
+
+| Session, against a target of 17 x 20 kg over 3 sets | Counts | Result |
+| --- | --- | --- |
+| 17 x 20, 17 x 20, 17 x 30 | 3 of 3 | 18 x 20 kg |
+| 17 x 20, 17 x 20, 5 x 30 | 2 of 3 | consolidate |
+| 17 x 20, 17 x 20 | 2 of 3 | consolidate |
+
+The heavier set moves the reps, not the load. Rebasing onto 30 kg off a single
+set would be a four-step jump earned by a third of the session, which is what
+the modal working weight and [rule 5](#a-load-has-to-be-earned) both exist to
+prevent. A load is adopted once *most of the session* was done at it.
 
 ## A load has to be earned
 
@@ -252,7 +279,7 @@ actually performed:
 | --- | --- | --- |
 | 1 | No sets logged | Unchanged |
 | 2 | Weight changed, floor below `rep_low` | Unchanged (rule 5) |
-| 3 | Fewer than `sets` at the working weight | Bank the weight, consolidate reps |
+| 3 | Fewer than `sets` counted (see [a harder set still counts](#a-harder-set-still-counts)) | Bank the weight, consolidate reps |
 | 4 | Same weight, any set short, first miss | Repeat unchanged (rule 4) |
 | 4b | Same weight, any set short, missed before | Ease the target, or take weight off at the bottom of the range |
 | 5 | Floor at or above `rep_high` | `rep_low` at weight + step (rule 3) |

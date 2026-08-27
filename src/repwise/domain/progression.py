@@ -414,6 +414,24 @@ def next_target(
     # of them does count.
     floor = min(at_weight)
 
+    # A set carried at a *heavier* load, for at least the reps the working sets
+    # managed, counts as one of them: harder than asked is not worse than
+    # asked, and a session split across two loads is still a whole session.
+    # Without this the set count is taken from one load alone, and three sets
+    # done as two at 20 kg and one at 30 kg read as an abandoned session rather
+    # than a finished one.
+    #
+    # What it contributes is its own rep count, which is a lower bound on what
+    # it would have managed at the lighter load, so this can only ever add sets
+    # to the tally - never flatter the reps. A set that came up short at the
+    # heavier load counts for nothing, which is what keeps a failed top set
+    # from reading as a completed session.
+    counted = at_weight + [
+        entry.reps
+        for entry in performed
+        if entry.weight > weight and entry.reps >= floor
+    ]
+
     # Rule 5: a load is only worth keeping once it can be carried for at least
     # the bottom of the range. Falling short of rep_low means the jump was too
     # big -- the 3 kg dumbbells were taken, so you grabbed the 4 kg ones --
@@ -427,21 +445,21 @@ def next_target(
             f"{spec.rep_low}-{spec.rep_high} range",
         )
 
-    # Too few sets at that load to judge progression, so bank the load and
+    # Too few sets that counted to judge progression, so bank the load and
     # repeat. Rule 4 still applies when the load itself did not change. The
     # ramp does not survive this: half a session cannot say which sets levelled.
-    if len(at_weight) < spec.sets:
+    if len(counted) < spec.sets:
         reps = floor if rebased else current.reps
         return (
             Target(reps, weight),
-            f"only {len(at_weight)} of {spec.sets} sets logged, consolidate",
+            f"only {len(counted)} of {spec.sets} sets logged, consolidate",
         )
 
     # Rule 4: every prescribed set must meet what was asked of it to count as a
     # match. Only meaningful while the load is unchanged.
-    if not rebased and not hit(spec, current, at_weight):
+    if not rebased and not hit(spec, current, counted):
         if streak >= STALLED_AFTER:
-            return _deload(spec, current, weight, at_weight)
+            return _deload(spec, current, weight, counted)
         return current, _missed(spec, current, floor)
 
     return _advance(spec, current, weight, floor, streak)
