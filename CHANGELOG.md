@@ -1,3 +1,9 @@
+## 2.1.1 (2026-08-27)
+
+### Fix
+
+- harder set counts towards progression (#70) ([eeb6843](https://github.com/theadzik/repwise/commit/eeb6843974d0882167ddb136c397867fbec4cea0))
+
 ## 2.1.0 (2026-08-25)
 
 ### Feat
