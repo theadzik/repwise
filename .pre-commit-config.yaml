@@ -50,7 +50,7 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Keep in step with the ruff pin in pyproject.toml. Rules come from
     # [tool.ruff] there, so this and `ruff check` cannot disagree.
-    rev: v0.16.3
+    rev: v0.16.4
     hooks:
       - id: ruff-check
         args: [--fix]
@@ -117,7 +117,7 @@ repos:
   - repo: https://github.com/commitizen-tools/commitizen
     # Keep in step with the commitizen pin in pyproject.toml, so the rules
     # enforced here are the ones `cz bump` reads when deciding a release.
-    rev: v4.17.1
+    rev: v4.18.0
     hooks:
       # `cz check`, reading [tool.commitizen] from pyproject.toml.
       - id: commitizen
