@@ -1,3 +1,9 @@
+## 2.2.0 (2026-09-03)
+
+### Feat
+
+- allow disabling partial progression (#73) ([76edd98](https://github.com/theadzik/repwise/commit/76edd9854bec5bac904f53c82a5cbaba614a73c4))
+
 ## 2.1.1 (2026-08-27)
 
 ### Fix
