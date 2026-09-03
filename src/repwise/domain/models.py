@@ -50,6 +50,13 @@ class ExerciseSpec:
     #: carries none of you - so the default is to count only the stored weight.
     #: Read by `check` alone; see `domain/effort.py`.
     bodyweight_factor: float = 0.0
+    #: Whether a hit after a stall may move only some of the sets. On - the
+    #: default - a target can ramp, `8+2` being eight reps with two of the sets
+    #: asked for nine. Off, every set moves together however long the stall,
+    #: and a deload steps the whole target down rather than one set of it.
+    #: Declared once as settings.partial_progression and resolved onto every
+    #: exercise, the way a load type's weight step is.
+    partial_progression: bool = True
 
     @property
     def bodyweight(self) -> bool:

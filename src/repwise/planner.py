@@ -386,6 +386,82 @@ def _streak(
     return miss_streak(spec, past, working_weight(logged))
 
 
+#: Why a target that was part-way up a ramp is evened out. Worth saying in the
+#: report because nothing else in the run accounts for it: no session earned
+#: it, and the figure in workouts.yaml did not move.
+LEVELLED = "partial progression is off, levelled up"
+
+#: What a session that cannot say anything about the stored target reports.
+#: Named because the levelling below has to recognise it: it is a statement
+#: about the session, and it stops being true the moment the target moves.
+UP_TO_DATE = "up to date"
+
+
+def _levelled(spec: ExerciseSpec, target: Target) -> Target:
+    """A ramp evened out - upwards - once partial progression is turned off.
+
+    Up rather than down because the leading sets have already been carried at
+    the higher figure: asking the rest to match it is the smaller of the two
+    demands, and dropping to the base would hand back reps that were earned.
+
+    Only ever reached by a ramp Garmin already holds. With the setting off the
+    rules build no new ones, so this is what turning it off does to the ones
+    left behind, and each of them meets it once.
+    """
+    if spec.partial_progression or not target.lead:
+        return target
+    return Target(min(target.reps + spec.rep_step, spec.rep_high), target.weight)
+
+
+def _judge(  # noqa: PLR0913 - each argument is one independent input
+    spec: ExerciseSpec,
+    block: ExerciseBlock,
+    current: Target | None,
+    performed: Performed | None,
+    *,
+    history: History | None,
+    asked: dict[str, Target] | None,
+    specs: ExerciseIndex[ExerciseSpec],
+    added: set[int],
+    shaped: _Shaping,
+) -> Change | None:
+    """What the session says about one exercise, or None when it says nothing.
+
+    Kept apart from the loop that writes the workout because a target the
+    session leaves alone - or never saw - can still be levelled afterwards, and
+    that has to happen once, after every reason a session might say nothing.
+    """
+    step = block.step
+
+    if performed is None or id(block.outer) in added:
+        # Either no session to learn from, or a step this run has just
+        # built, which already holds exactly what the config asks for.
+        return None
+
+    if current is not None and _moved_on(spec, current, asked):
+        # Already learned from, or overtaken by a hand edit. Either way this
+        # session has nothing left to say about a target it never saw.
+        return Change(spec, current, current, UP_TO_DATE)
+
+    if current is None:
+        kind = "time" if spec.time_based else "rep"
+        label = step_exercise_name(step) or step_category(step)
+        shaped.warnings.append(f"{label}: step has no {kind} target, skipped")
+        return None
+
+    logged = _logged_for(spec, step, performed, specs)
+    if not logged:
+        shaped.warnings.append(f"{spec.name}: not found in the activity, skipped")
+        return None
+
+    if spec.time_based:
+        # Garmin logs a hold as 1 rep; the duration is the real figure.
+        logged = [entry.as_time() for entry in logged]
+
+    new, why = next_target(spec, current, logged, _streak(spec, logged, history))
+    return Change(spec, current, new, why)
+
+
 def _refresh_note(
     block: ExerciseBlock,
     spec: ExerciseSpec,
@@ -909,36 +985,42 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
         if recounted is not None:
             reshaped |= _relay(layout, position, recounted)
 
-        if performed is None or id(block.outer) in added:
-            # Either no session to learn from, or a step this run has just
-            # built, which already holds exactly what the config asks for.
+        change = _judge(
+            spec,
+            block,
+            current,
+            performed,
+            history=history,
+            asked=asked,
+            specs=specs,
+            added=added,
+            shaped=shaped,
+        )
+
+        # The last word on the target, whether a session decided it or nobody
+        # did: with partial progression off, a ramp is not a shape this workout
+        # is allowed to hold, so it is evened out here rather than left for a
+        # session that may not come.
+        decided = change.new if change is not None else current
+        if decided is not None:
+            levelled = _levelled(spec, decided)
+            if levelled != decided:
+                # Whatever the session found is still worth saying alongside -
+                # except that it had nothing to say, which beside a target that
+                # has just moved would read as a contradiction.
+                said = change.reason if change is not None else ""
+                change = Change(
+                    spec,
+                    change.old if change is not None else decided,
+                    levelled,
+                    f"{said}; {LEVELLED}" if said and said != UP_TO_DATE else LEVELLED,
+                )
+
+        if change is None:
             continue
-
-        if current is not None and _moved_on(spec, current, asked):
-            # Already learned from, or overtaken by a hand edit. Either way this
-            # session has nothing left to say about a target it never saw.
-            changes.append(Change(spec, current, current, "up to date"))
-            continue
-
-        if current is None:
-            kind = "time" if spec.time_based else "rep"
-            shaped.warnings.append(f"{label}: step has no {kind} target, skipped")
-            continue
-
-        logged = _logged_for(spec, step, performed, specs)
-        if not logged:
-            shaped.warnings.append(f"{spec.name}: not found in the activity, skipped")
-            continue
-
-        if spec.time_based:
-            # Garmin logs a hold as 1 rep; the duration is the real figure.
-            logged = [entry.as_time() for entry in logged]
-
-        new, why = next_target(spec, current, logged, _streak(spec, logged, history))
-        change = Change(spec, current, new, why)
         changes.append(change)
         if change.moved:
-            reshaped |= _relay(layout, position, apply_block(block, spec, new))
+            reshaped |= _relay(layout, position, apply_block(block, spec, change.new))
 
     if reshaped:
         set_exercise_steps(

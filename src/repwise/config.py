@@ -106,6 +106,9 @@ def default_dump_dir() -> str:
 def _flag(declared: Any, key: str, default: bool) -> bool:
     """A yes-or-no setting, read as one rather than coerced into one.
 
+    `key` is the whole dotted path, since these live at more than one level of
+    the file and a message naming the wrong one is worse than no message.
+
     YAML has booleans, so a setting that wants one should insist: `bool()`
     would read the string `"false"` as true and turn a feature on for someone
     who wrote it in quotes, which is the kind of mistake a config file should
@@ -119,7 +122,7 @@ def _flag(declared: Any, key: str, default: bool) -> bool:
         return default
     if not isinstance(declared, bool):
         raise ConfigError(
-            f"settings.garmin.{key} should be true or false, not "
+            f"settings.{key} should be true or false, not "
             f"{declared!r}. Unquoted, so that YAML reads it as a boolean."
         )
     return declared
@@ -363,7 +366,12 @@ def _bodyweight_factor(raw: dict, where: str, problems: Problems) -> float:
 
 
 def _build_exercise(
-    raw: dict, loads: LoadRules, where: str, problems: Problems
+    raw: dict,
+    loads: LoadRules,
+    where: str,
+    problems: Problems,
+    *,
+    partial_progression: bool = True,
 ) -> ExerciseSpec | None:
     missing = [key for key in _REQUIRED if raw.get(key) is None]
     if missing:
@@ -438,11 +446,17 @@ def _build_exercise(
         min_weight=min_weight,
         max_weight=max_weight,
         bodyweight_factor=bodyweight_factor,
+        partial_progression=partial_progression,
     )
 
 
 def _build_workout(
-    entry: dict, loads: LoadRules, path: str, problems: Problems
+    entry: dict,
+    loads: LoadRules,
+    path: str,
+    problems: Problems,
+    *,
+    partial_progression: bool = True,
 ) -> Workout | None:
     key = entry.get("key")
     if not key:
@@ -455,7 +469,13 @@ def _build_workout(
 
     exercises = []
     for raw in entry.get("exercises") or []:
-        spec = _build_exercise(raw, loads, f"{path}:{key}", problems)
+        spec = _build_exercise(
+            raw,
+            loads,
+            f"{path}:{key}",
+            problems,
+            partial_progression=partial_progression,
+        )
         if spec is not None:
             exercises.append(spec)
 
@@ -550,11 +570,18 @@ def load_config(path: str | None = None) -> Config:
         ),
         activity_caching=_flag(
             garmin_raw.get("activity_caching"),
-            "activity_caching",
+            "garmin.activity_caching",
             defaults.activity_caching,
         ),
     )
     _warn_if_wandering(garmin)
+
+    # Whether a hit after a stall may move only some of the sets. Resolved onto
+    # every exercise, the way a load type's weight step is: the rules read it
+    # off the spec in hand rather than being handed the settings.
+    partial_progression = _flag(
+        settings.get("partial_progression"), "partial_progression", True
+    )
 
     # Unset means "ask Garmin", which is the better answer for anyone who
     # weighs in: it stays current on its own. Stating it here is for accounts
@@ -565,7 +592,9 @@ def load_config(path: str | None = None) -> Config:
     problems = Problems()
     workouts: dict[str, Workout] = {}
     for entry in data["workouts"]:
-        workout = _build_workout(entry, loads, path, problems)
+        workout = _build_workout(
+            entry, loads, path, problems, partial_progression=partial_progression
+        )
         if workout is None:
             continue
         if workout.key in workouts:
