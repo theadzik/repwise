@@ -192,8 +192,10 @@ def _one_rung_down(spec: ExerciseSpec, target: Target) -> Target:
     Without partial progression an advance is the whole target, so the inverse
     is too: the base comes down a step and every set comes with it. A ramp left
     over from before the setting changed loses its lead here along with the
-    step, and `_deload` never eases further than the session actually landed,
-    so what that costs in practice is bounded by what was managed.
+    step, which is the one place this drops by more than a single rung. What
+    bounds it is `_deload`, which never eases *above* what the session managed
+    and never below `rep_low` - not that it stops at where the session landed,
+    since a near miss is exactly the case that eases past it.
     """
     if not spec.partial_progression:
         return Target(target.reps - spec.rep_step, target.weight)
