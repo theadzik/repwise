@@ -118,6 +118,14 @@ settings:
   # max_weights:
   #   dumbbell: 10.0
 
+  # Whether a hit after a stall may move only some of the sets. On - the
+  # default - a target that is climbing out of a stall can be uneven: `8+2` is
+  # eight reps on every set with two of them asked for nine. Off, every set
+  # moves together, a hit always adds a whole rep and a deload always takes
+  # one off. Turning it off evens out any uneven target you already have,
+  # upwards, on the next `repwise update`.
+  # partial_progression: true
+
   # Your weight in kg. Normally left out: `check` reads it from your Garmin
   # weigh-ins, averaged over 30 days, so it stays current on its own. State it
   # here if you do not weigh in, and it wins over anything Garmin has.

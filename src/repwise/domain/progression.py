@@ -187,7 +187,16 @@ def _ladder(spec: ExerciseSpec, target: Target) -> int:
 
 
 def _one_rung_down(spec: ExerciseSpec, target: Target) -> Target:
-    """The target one set easier: the exact inverse of a single advance."""
+    """The target one set easier: the exact inverse of a single advance.
+
+    Without partial progression an advance is the whole target, so the inverse
+    is too: the base comes down a step and every set comes with it. A ramp left
+    over from before the setting changed loses its lead here along with the
+    step, and `_deload` never eases further than the session actually landed,
+    so what that costs in practice is bounded by what was managed.
+    """
+    if not spec.partial_progression:
+        return Target(target.reps - spec.rep_step, target.weight)
     if target.lead:
         return Target(target.reps, target.weight, target.lead - 1)
     return Target(target.reps - spec.rep_step, target.weight, spec.sets - 1)
@@ -202,6 +211,10 @@ def _achieved(spec: ExerciseSpec, weight: float, reps: list[int]) -> Target:
     and asking for less than was managed is the safe direction to round.
     """
     floor = min(reps)
+    if not spec.partial_progression:
+        # No rung between two flat targets to land on, so what the session
+        # managed is what every set managed.
+        return Target(floor, weight)
     higher = floor + spec.rep_step
     beat = sum(1 for done in reps if done >= higher)
     return Target(floor, weight, min(beat, spec.sets - 1))
@@ -265,7 +278,16 @@ def _deload(
     if eased == bottom:
         return eased, "missed twice, ease to the bottom of the range"
     if eased == down:
-        return eased, "missed twice, ease by one set"
+        # With partial progression off there is no set to name: every set moved
+        # together on the way up, and the whole target comes down together too.
+        unit = "second" if spec.time_based else "rep"
+        plural = "" if spec.rep_step == 1 else "s"
+        by = (
+            "ease by one set"
+            if spec.partial_progression
+            else f"take {spec.rep_step} {unit}{plural} off"
+        )
+        return eased, f"missed twice, {by}"
     return eased, "missed twice, ease to where the session landed"
 
 
@@ -345,7 +367,9 @@ def _advance(
     # whole target moving as it always has, and every miss in the streak behind
     # it costs one of them. A hit always earns at least one, however long the
     # streak, or a stall could never end.
-    units = max(spec.sets - streak, 1)
+    # Unless partial progression is off, in which case the streak buys nothing:
+    # every set moves together, so a hit is always the whole target moving.
+    units = spec.sets if not spec.partial_progression else max(spec.sets - streak, 1)
     if lead:
         # Level the sets before the base moves. The ramp is a way through a
         # stall rather than a shape to keep, so it closes at the first

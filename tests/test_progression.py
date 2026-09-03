@@ -444,6 +444,61 @@ def test_a_timed_hold_names_seconds_on_a_partial_advance():
     assert "add 1 second on 2 of 3 sets" in why, why
 
 
+# --- partial progression turned off ---------------------------------------
+#
+# settings.partial_progression: false. The streak stops buying a smaller
+# advance, and every set moves together in both directions: a hit adds a whole
+# rep to the target, and an ease takes one off it.
+
+WHOLE_SET_SQUAT = spec(sets=4, weight_step=2.5, partial_progression=False)
+
+
+def test_a_hit_after_a_stall_still_moves_the_whole_target():
+    target, why = next_target(
+        WHOLE_SET_SQUAT, Target(8, 20.0), [P(8, 20.0)] * 4, streak=2
+    )
+    assert target == Target(9, 20.0), why
+    assert "add 1 rep" in why
+    assert "of 4 sets" not in why, "nothing was held back"
+
+
+def test_a_hit_after_a_long_stall_moves_the_whole_target_too():
+    """However long the streak: there is no smaller step to take."""
+    target, why = next_target(
+        WHOLE_SET_SQUAT, Target(8, 20.0), [P(8, 20.0)] * 4, streak=9
+    )
+    assert target == Target(9, 20.0), why
+
+
+def test_a_ramp_left_behind_is_spent_by_the_next_hit():
+    """A target ramped before the setting changed levels up and stays flat."""
+    target, why = next_target(
+        WHOLE_SET_SQUAT, Target(8, 20.0, lead=2), [P(9, 20.0)] * 2 + [P(8, 20.0)] * 2
+    )
+    assert target == Target(9, 20.0), why
+
+
+def test_easing_takes_a_whole_rep_off_rather_than_one_set():
+    """9,9,9,8 against a target of 9 eases to 8 everywhere, not to `8+3`."""
+    target, why = next_target(
+        WHOLE_SET_SQUAT,
+        Target(9, 20.0),
+        [P(9, 20.0)] * 3 + [P(8, 20.0)],
+        streak=1,
+    )
+    assert target == Target(8, 20.0), why
+    assert target.spread(4) == "8"
+    assert "take 1 rep off" in why, "no set to name when they all moved"
+
+
+def test_easing_still_stops_at_the_bottom_of_the_range():
+    """Out of range is out of range, and then the load comes off."""
+    target, why = next_target(
+        WHOLE_SET_SQUAT, Target(6, 20.0), [P(5, 20.0)] * 4, streak=1
+    )
+    assert target == Target(6, 17.5), why
+
+
 # --- how a target is written ----------------------------------------------
 
 

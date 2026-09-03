@@ -379,6 +379,36 @@ def test_caching_turned_off_by_hand_is_not_read_as_unset(write_config):
     assert load_config(write_config(text)).garmin.activity_caching is False
 
 
+def test_partial_progression_is_on_unless_the_file_says_otherwise(write_config):
+    """The behaviour every config written before the setting existed has."""
+    config = load_config(write_config(FIXTURE))
+
+    assert all(
+        spec.partial_progression for workout in config for spec in workout.exercises
+    )
+
+
+def test_partial_progression_reaches_every_exercise(write_config):
+    """Declared once, and resolved onto the specs the rules actually read."""
+    text = FIXTURE.replace(
+        "settings:\n", "settings:\n  partial_progression: false\n", 1
+    )
+    config = load_config(write_config(text))
+
+    assert not any(
+        spec.partial_progression for workout in config for spec in workout.exercises
+    )
+
+
+def test_partial_progression_must_be_a_boolean(write_config):
+    text = FIXTURE.replace(
+        "settings:\n", "settings:\n  partial_progression: 'false'\n", 1
+    )
+
+    with pytest.raises(ConfigError, match=r"settings\.partial_progression"):
+        load_config(write_config(text))
+
+
 # --- validation -----------------------------------------------------------
 
 

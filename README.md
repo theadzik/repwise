@@ -65,7 +65,8 @@ Three things it handles that a spreadsheet would not:
   pull the target somewhere you cannot repeat.
 - **It eases you back after a stall.** Miss a target twice and the session that
   finally beats it earns a rep on two of your four sets rather than on all of
-  them, so you are not asked again for the jump that just failed.
+  them, so you are not asked again for the jump that just failed. Set
+  `partial_progression: false` if you would rather every set moved together.
 - **It follows the weight you actually used.** Bump the load mid-session and the
   new load is banked, not discarded.
 - **It won't keep a load you didn't earn.** Take the 4 kg dumbbells because the

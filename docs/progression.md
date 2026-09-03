@@ -86,6 +86,41 @@ Only sessions that could still change the answer are fetched. A smoothly
 progressing exercise settles after one, and the walk stops at `sets - 1` misses
 because the advance is pinned at its minimum from there on.
 
+### Turning partial progression off
+
+An uneven target is a way through a stall, not a way everybody wants to train.
+Turn it off and every set always moves together:
+
+```yaml
+settings:
+  partial_progression: false
+```
+
+The streak stops buying a smaller advance: a hit adds a whole `rep_step` to the
+target however long the stall behind it, and the [deload](#deloading) below
+takes a whole one off rather than easing one set at a time. Nothing else
+changes - a miss still repeats the target, a second miss still eases, and the
+load still comes off once the range is spent.
+
+**Turning it off evens out the uneven targets you already have.** The next
+`repwise update` raises each of them to the higher figure on every set - `8+2`
+becomes `9` - and says so in the report, whether or not the exercise was
+trained:
+
+```text
+  # EXERCISE           ACTION  SETS      BEFORE      AFTER     WHY
+* 1 Barbell Back Squat advance 3    8+2 x 20 kg  ->  9 x 20 kg partial progression is off, levelled up
+```
+
+Up rather than down because those leading sets have already been carried at the
+higher figure; asking the rest to match them is the smaller of the two demands,
+and rounding down would hand back reps you earned. It happens once per
+exercise, since nothing builds an uneven target afterwards.
+
+That run still judges the session you actually trained against the target you
+were actually given, so a session that met an uneven target advances from it
+rather than reading as a miss against the levelled one.
+
 ## Deloading
 
 Rule 4 repeats a missed target, which is right the first time: you may simply

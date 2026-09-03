@@ -1156,3 +1156,74 @@ def test_without_a_catalog_the_category_still_rescues_the_step():
     plan_workout(a_workout(exercises=[SEATED_CALF]), built, ({}, {}))
 
     assert calf_steps(built) == ["WEIGHTED_STANDING_CALF_RAISE"]
+
+
+# --- partial progression turned off ---------------------------------------
+#
+# The rules build no ramps with the setting off, so what is left to do here is
+# the ones Garmin is still holding from before it was turned off: they are
+# evened out, upwards, the next time a run reads the workout.
+
+FLAT_SQUAT = replace(SQUAT, partial_progression=False)
+
+
+def a_ramped_squat(base=8, lead=1, sets=3, weight=20.0):
+    """A squat stored as Garmin holds a ramp: two adjacent groups."""
+    return workout(
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", base + 1, weight), sets=lead),
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", base, weight), sets=sets - lead),
+    )
+
+
+def test_a_stored_ramp_is_levelled_up_with_no_session_at_all():
+    """A config edit is the whole reason, so it need not wait to be trained."""
+    built = a_ramped_squat()
+    plan = plan_workout(a_workout(exercises=[FLAT_SQUAT]), built)
+
+    assert [c.new for c in plan.moved] == [Target(9, 20.0)]
+    assert plan.changes[0].reason == "partial progression is off, levelled up"
+    assert [step_target(b.step) for b in iter_exercise_blocks(built)] == [
+        Target(9, 20.0)
+    ], "one group again, asking nine on every set"
+
+
+def test_a_session_that_missed_still_levels_the_ramp_up():
+    """8,8,8 misses the nine it was asked for, and the target still evens out."""
+    built = a_ramped_squat()
+    plan = plan_workout(a_workout(exercises=[FLAT_SQUAT]), built, a_squat_session(8))
+
+    assert [c.new for c in plan.moved] == [Target(9, 20.0)]
+    assert "missed target" in plan.changes[0].reason
+    assert "partial progression is off" in plan.changes[0].reason
+
+
+def test_a_session_that_hit_advances_from_the_ramp_it_was_asked_for():
+    """9,8,8 met the ramp. Judged against the levelled target it would miss."""
+    built = a_ramped_squat()
+    session = performed_sets(
+        {
+            "exerciseSets": [
+                active("BARBELL_BACK_SQUAT", "SQUAT", reps, 20000.0)
+                for reps in (9, 8, 8)
+            ]
+        }
+    )
+    plan = plan_workout(a_workout(exercises=[FLAT_SQUAT]), built, session)
+
+    assert [c.new for c in plan.moved] == [Target(9, 20.0)]
+    assert "add 1 rep" in plan.changes[0].reason
+
+
+def test_levelling_up_stops_at_the_top_of_the_range():
+    """A ramp on top of rep_high has nowhere higher to even out to."""
+    built = a_ramped_squat(base=FLAT_SQUAT.rep_high)
+    plan = plan_workout(a_workout(exercises=[FLAT_SQUAT]), built)
+
+    assert [c.new for c in plan.moved] == [Target(FLAT_SQUAT.rep_high, 20.0)]
+
+
+def test_a_ramp_is_left_alone_while_partial_progression_is_on():
+    built = a_ramped_squat()
+    plan = plan_workout(a_workout(exercises=[SQUAT]), built)
+
+    assert not plan.moved

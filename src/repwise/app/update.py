@@ -362,8 +362,10 @@ def shape_untrained(
     """Bring every workout with no session behind it in line with the config.
 
     Only the shape: which exercises, in what order, how many sets, resting how
-    long, described how. Nothing here was earned in a session, so no target
-    moves and nothing is warned about not having been performed.
+    long, described how. Nothing here was earned in a session, so the one target
+    that can move is the one the config settles on its own - an uneven target
+    evened out because partial progression has been turned off - and nothing is
+    warned about not having been performed.
     """
     plans: list[Plan] = []
     for workout in config:

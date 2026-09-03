@@ -64,6 +64,7 @@ settings:
   max_weights:         # the heaviest each load type can go, by load type
     dumbbell: 10.0     # the heaviest pair you own; omit a load type for no ceiling
 
+  # partial_progression: true   # may a hit after a stall move only some sets
   # bodyweight: 81.0   # normally read from your Garmin weigh-ins
 ```
 
@@ -76,6 +77,7 @@ settings:
 | `weight_steps` | - | kg added per load type when a rep range is topped out |
 | `min_weights` | none | The lightest each load type can go. A [deload](progression.md#deloading) stops here rather than prescribing a weight you cannot make up. A load type left out has no floor |
 | `max_weights` | none | The heaviest each load type can go. Topping out the rep range stops here rather than prescribing a weight you cannot load. A load type left out has no ceiling |
+| `partial_progression` | `true` | Whether a hit after a stall may move only some of the sets, which is what writes an uneven target such as `8+2`. Off, every set moves together in both directions, and an uneven target Garmin still holds is [levelled up](progression.md#turning-partial-progression-off) on the next run |
 | `bodyweight` | your Garmin weigh-ins | Your weight in kg, when you would rather state it than have it read. Only ever an input to [`check`](#does-the-range-fit-the-step); no target depends on it |
 
 ## Workout fields
