@@ -1214,6 +1214,20 @@ def test_a_session_that_hit_advances_from_the_ramp_it_was_asked_for():
     assert "add 1 rep" in plan.changes[0].reason
 
 
+def test_a_session_with_nothing_to_say_does_not_say_it_beside_a_move():
+    """The session had nothing to say; the config moved the target anyway."""
+    built = a_ramped_squat()
+    plan = plan_workout(
+        a_workout(exercises=[FLAT_SQUAT]),
+        built,
+        a_squat_session(8),
+        asked={"barbellbacksquat": Target(8, 0.0)},
+    )
+
+    assert [c.new for c in plan.moved] == [Target(9, 20.0)]
+    assert plan.changes[0].reason == "partial progression is off, levelled up"
+
+
 def test_levelling_up_stops_at_the_top_of_the_range():
     """A ramp on top of rep_high has nowhere higher to even out to."""
     built = a_ramped_squat(base=FLAT_SQUAT.rep_high)

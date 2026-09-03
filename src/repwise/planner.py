@@ -391,6 +391,11 @@ def _streak(
 #: it, and the figure in workouts.yaml did not move.
 LEVELLED = "partial progression is off, levelled up"
 
+#: What a session that cannot say anything about the stored target reports.
+#: Named because the levelling below has to recognise it: it is a statement
+#: about the session, and it stops being true the moment the target moves.
+UP_TO_DATE = "up to date"
+
 
 def _levelled(spec: ExerciseSpec, target: Target) -> Target:
     """A ramp evened out - upwards - once partial progression is turned off.
@@ -436,7 +441,7 @@ def _judge(  # noqa: PLR0913 - each argument is one independent input
     if current is not None and _moved_on(spec, current, asked):
         # Already learned from, or overtaken by a hand edit. Either way this
         # session has nothing left to say about a target it never saw.
-        return Change(spec, current, current, "up to date")
+        return Change(spec, current, current, UP_TO_DATE)
 
     if current is None:
         kind = "time" if spec.time_based else "rep"
@@ -1000,11 +1005,15 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
         if decided is not None:
             levelled = _levelled(spec, decided)
             if levelled != decided:
+                # Whatever the session found is still worth saying alongside -
+                # except that it had nothing to say, which beside a target that
+                # has just moved would read as a contradiction.
+                said = change.reason if change is not None else ""
                 change = Change(
                     spec,
                     change.old if change is not None else decided,
                     levelled,
-                    f"{change.reason}; {LEVELLED}" if change is not None else LEVELLED,
+                    f"{said}; {LEVELLED}" if said and said != UP_TO_DATE else LEVELLED,
                 )
 
         if change is None:
