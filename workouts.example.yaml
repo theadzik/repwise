@@ -137,8 +137,8 @@ load:
     min: 5.0
     step: 5.0
 
-  # The pair in the spare room. Small, and it ends - which is why this one has
-  # a max and the gym's do not.
+  # The pair in the spare room. Every rack of dumbbells ends somewhere; this
+  # is the one that ends soonest, 10 kg being the heaviest thing in the house.
   home_dumbbell:
     min: 1.0
     max: 10.0

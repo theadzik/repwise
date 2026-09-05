@@ -385,7 +385,7 @@ def _load_types(declared: Any, path: str, problems: Problems) -> dict[str, LoadT
             problems.add(f"{where} should state min, step and optionally max")
             continue
 
-        missing = [key for key in ("min", "step") if entry.get(key) is None]
+        missing = [field for field in ("min", "step") if entry.get(field) is None]
         if missing:
             problems.add(f"{where} is missing {', '.join(missing)}")
 
