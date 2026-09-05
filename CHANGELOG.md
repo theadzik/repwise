@@ -1,3 +1,28 @@
+## 3.0.0 (2026-09-05)
+
+### BREAKING CHANGE
+
+- settings.weight_steps, settings.min_weights and
+settings.max_weights are gone, replaced by a top-level `load` key holding one
+named entry per set of weights, each with its own required `min` and `step`
+and an optional `max`. An exercise's `load` names one of them. A config using
+the old settings is refused on load with the shape to write instead, so
+nothing runs against a half-read file. Two rules are stricter than what they
+replace: every load type has to state a `min`, where a type absent from
+min_weights had no floor at all, and an exercise's `load` has to name a
+declared type even when it sets its own weight_step, which used to be enough
+on its own. Exercises sharing one garmin_name now sync a decided target only
+when their `load` matches as well: the same movement on different equipment is
+two exercises, and a weight earned on one is no longer written to the other.
+If you had one garmin_name on two kinds of equipment, those targets stop
+crossing on this release and each side is moved by its own sessions from now
+on. See docs/configuration.md#load-types and
+docs/progression.md#shared-exercises. ([2f0f7cc](https://github.com/theadzik/repwise/commit/2f0f7cc634f94dbe4106f916f862f76dcbfb4fd7))
+
+### Feat
+
+- Allow customizable weights (#76) ([2f0f7cc](https://github.com/theadzik/repwise/commit/2f0f7cc634f94dbe4106f916f862f76dcbfb4fd7))
+
 ## 2.2.0 (2026-09-03)
 
 ### Feat
