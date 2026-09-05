@@ -19,6 +19,7 @@ from ..domain.progression import Target
 from ..planner import (
     Change,
     GapChange,
+    NameChange,
     NoteChange,
     Plan,
     RestChange,
@@ -224,6 +225,18 @@ def gaps_row(change: GapChange) -> Row:
     )
 
 
+def name_row(change: NameChange) -> Row:
+    """The workout's own name, which belongs to no exercise in it."""
+    return Row(
+        marker="*",
+        name="Workout name",
+        action="rename",
+        before=change.was,
+        after=change.new,
+        why="from workouts.yaml",
+    )
+
+
 def gather(plan: Plan) -> dict[str, Gathered]:
     """Everything the plan says, by the exercise it says it about."""
     found: dict[str, Gathered] = {}
@@ -264,6 +277,8 @@ def rows(plan: Plan) -> list[Row]:
     ]
     if plan.gaps:
         built.append(gaps_row(plan.gaps))
+    if plan.name:
+        built.append(name_row(plan.name))
     return built
 
 

@@ -148,6 +148,20 @@ def check_workout(workout: Workout, payload: dict) -> list[Finding]:
     def note(detail: str, severity: str = "warning") -> None:
         findings.append(Finding(workout.key, detail, severity))
 
+    # `update` writes the config key to Garmin, so it is the name your next
+    # session will be logged under - and `activity_prefixes` is what finds it
+    # again. A key none of them claims means the sessions you are about to
+    # perform match nothing, which is silent until a target stops moving.
+    if workout.activity_prefixes and not workout.claims(workout.key):
+        listed = ", ".join(repr(prefix) for prefix in workout.activity_prefixes)
+        note(
+            f"no activity_prefixes entry matches the workout name {workout.key!r}, "
+            f"so sessions logged under it would be found by none of {listed}. "
+            f"Add {workout.key.lower()!r}, keeping the old ones so past sessions "
+            f"still match",
+            "error",
+        )
+
     index: ExerciseIndex[ExerciseBlock] = ExerciseIndex()
     for entry in iter_exercise_blocks(payload):
         index.add(

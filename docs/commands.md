@@ -42,9 +42,37 @@ run, trained or not:
 | From the config | From your sessions |
 | --- | --- |
 | Which workouts exist, creating any Garmin lacks | The target: reps and weight |
+| The workout's name, from its `key` | |
 | Which exercises each holds, and in what order | |
 | `sets`, `rest`, and `rest_between_exercises` | |
 | The note on each step | |
+
+### Renaming a workout
+
+Change a `key` and the next run writes it to Garmin, reported as a `rename`
+row. The `garmin_workout_id` is what identifies the workout, so the name is
+free to change and every stored target survives it.
+
+What does not follow the rename is `activity_prefixes`. Those are matched
+against the name Garmin logged an activity **under at the time**, so a rename
+splits your history: sessions before it carry the old name, sessions after it
+the new one. Keep both, oldest last:
+
+```yaml
+  - key: Gym Deadlift
+    activity_prefixes:
+      - gym deadlift      # what sessions will be logged as from now on
+      - gym hinge         # what they were logged as before the rename
+```
+
+Drop the old one and every past session stops matching, which
+[`session-report`](../README.md) reads as the start of a new routine. Drop the
+new one and the sessions you are about to perform match nothing at all -
+[`check`](#check) reports that as an error, since it is silent until a target
+stops moving.
+
+Never clear `garmin_workout_id` to force a rename: that creates a second
+workout and leaves every target stranded in the first.
 
 That split is why an exercise Garmin already holds is **moved rather than
 rebuilt** when you reorder it: the target lives in the step and nowhere else,

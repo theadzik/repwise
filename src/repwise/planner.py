@@ -119,6 +119,18 @@ class SkipChange:
 
 
 @dataclass(frozen=True)
+class NameChange:
+    """What Garmin calls this workout, before and after.
+
+    One per workout, like the gap between exercises and for the same reason:
+    the config carries a single name for the whole thing.
+    """
+
+    was: str
+    new: str
+
+
+@dataclass(frozen=True)
 class GapChange:
     """The rest between exercises, before and after.
 
@@ -204,6 +216,9 @@ class Plan:
     #: The rest between exercises, when the config moved it. One per workout,
     #: because that is how the config expresses it.
     gaps: GapChange | None = None
+    #: The workout's name, when the config key no longer matches what Garmin
+    #: calls it. Config-driven and one per workout, exactly like `gaps`.
+    name: NameChange | None = None
 
     @property
     def moved(self) -> list[Change]:
@@ -235,6 +250,7 @@ class Plan:
             or self.skips
             or self.structure
             or self.gaps
+            or self.name
         )
 
 
@@ -703,6 +719,27 @@ def _refresh_sets(
     return outers
 
 
+def _refresh_name(workout: Workout, payload: dict[str, Any]) -> NameChange | None:
+    """Keep Garmin's name for this workout at the one the config gives it.
+
+    `workouts.yaml` decides what a workout *is*, and its name is part of that.
+    Until this existed the name was written once, when the workout was created,
+    and never revisited - so renaming a `key` moved every report and left the
+    watch saying something else, with nothing to say the two had drifted.
+
+    The name only reaches Garmin; it is not what finds your sessions.
+    `activity_prefixes` does that, and it is matched against the name Garmin
+    logged an activity *under at the time*. Renaming therefore leaves every
+    past session matched by the old prefix and every future one needing the new
+    name to be listed too, which is why `check` reports a key no prefix claims.
+    """
+    was = payload.get("workoutName")
+    if not was or was == workout.key:
+        return None
+    payload["workoutName"] = workout.key
+    return NameChange(was, workout.key)
+
+
 def _refresh_gaps(workout: Workout, payload: dict[str, Any]) -> GapChange | None:
     """Keep the rest between exercises at the one the workout asks for.
 
@@ -1010,6 +1047,7 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
     structure = _pair_renames(structure)
     shaped.warnings.extend(_renames(structure))
     gaps = _refresh_gaps(workout, payload)
+    renamed = _refresh_name(workout, payload)
 
     # Where each exercise sits, so that one which gains or loses a group as its
     # target ramps can be laid back down in the right place afterwards.
@@ -1089,6 +1127,7 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
         skips=shaped.skips,
         structure=structure,
         gaps=gaps,
+        name=renamed,
     )
 
 
