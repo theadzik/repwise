@@ -367,6 +367,12 @@ a YAML file is not a cue:
 12-16 reps | +2.5 kg | 3-4 RIR | elbow pinned, rotate slow, never heavy
 ```
 
+A note carrying a cue is still one this tool wrote, so a later edit to the rep
+range or the step reaches it like any other. The trade is that a cue typed into
+Connect *on the end of* a generated note is replaced rather than kept - the
+config decides cues now, as it decides everything else about a step. A note
+typed from scratch is still recognised as yours and left alone.
+
 **Keep it to one line.** Garmin stores 512 characters and silently drops the
 rest - no error, nothing to say anything was lost - but the screen runs out
 long before that. Measured on a real account and read off the watch: a

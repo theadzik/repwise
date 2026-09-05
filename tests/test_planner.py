@@ -1381,3 +1381,33 @@ def test_a_payload_with_no_name_is_not_given_one():
     built = a_stored_squat(8)
     built.pop("workoutName", None)
     assert plan_workout(a_workout(key="Gym Squat"), built).name is None
+
+
+def test_a_note_carrying_a_cue_is_still_refreshed_when_the_range_moves():
+    """The invariant a cue is easiest to break: once the note stops looking
+    like one of ours, the exercise is read as hand-annotated and a rep range
+    edit silently stops reaching Garmin for good."""
+    cued = replace(SQUAT, rep_low=6, rep_high=10, notes="2-3 RIR | brace, knees out")
+    built = a_stored_squat(8)
+    for step in built["workoutSegments"][0]["workoutSteps"][0]["workoutSteps"]:
+        step["description"] = "6-10 reps | +2.5 kg | 2-3 RIR | brace, knees out"
+
+    widened = replace(cued, rep_high=12)
+    plan = plan_workout(a_workout(exercises=[widened]), built)
+
+    assert [n.new for n in plan.notes] == [
+        "6-12 reps | +2.5 kg | 2-3 RIR | brace, knees out"
+    ], plan.warnings
+    assert not plan.warnings, "and it is not reported as having its own note"
+
+
+def test_a_note_typed_from_scratch_is_still_left_alone():
+    cued = replace(SQUAT, rep_low=6, rep_high=10, notes="2-3 RIR | brace, knees out")
+    built = a_stored_squat(8)
+    for step in built["workoutSegments"][0]["workoutSteps"][0]["workoutSteps"]:
+        step["description"] = "Bar high on the traps, knees over the toes"
+
+    plan = plan_workout(a_workout(exercises=[cued]), built)
+
+    assert plan.notes == []
+    assert any("has its own note" in w for w in plan.warnings)

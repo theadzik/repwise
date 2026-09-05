@@ -260,6 +260,17 @@ def test_every_rendered_note_is_recognised_as_generated():
         spec(load="bodyweight", weight_step=0.0),  # bodyweight
         spec(load="bodyweight", weight_step=0.0, unit="seconds"),  # timed hold
         spec(load="dumbbell", weight_step=1.0),  # fractional step
+        # and the same again carrying a cue, which is what the note looks like
+        # for most of a real config and what this invariant is easiest to lose
+        spec(notes="2-3 RIR | brace, knees out"),
+        spec(rep_step=2, rep_low=16, rep_high=24, notes="0-1 RIR | hips square"),
+        spec(load="bodyweight", weight_step=0.0, notes="0-1 RIR | body in one line"),
+        spec(
+            load="bodyweight",
+            weight_step=0.0,
+            unit="seconds",
+            notes="stop when the hip drops",
+        ),
         spec(load="cable", weight_step=2.5),
     ]
     for each in cases:
