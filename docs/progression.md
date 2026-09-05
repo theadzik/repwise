@@ -184,8 +184,8 @@ several sessions of real work - rather than a bounce.
 ### How light it can go
 
 A deload stops at `min_weight`: the smallest bar on the rack, the lightest pair
-of dumbbells, the top plate of a stack. Declared per load type in
-[`settings.min_weights`](configuration.md#settings), or per exercise. Reaching
+of dumbbells, the top plate of a stack. Declared as the `min` of the [load
+type](configuration.md#load-types) the exercise names, or per exercise. Reaching
 it is reported rather than silently held, because an exercise pinned at the
 bottom needs a change this tool cannot make - a different variation, more
 sleep, fewer sets.
@@ -197,9 +197,9 @@ Bodyweight exercises have no load to take off, so a stall there says so.
 Rule 3 adds a step every time the top of the range is cleared, which sooner or
 later asks for a weight that does not exist. `max_weight` is where it stops:
 the heaviest pair of dumbbells you own, the bottom plate of a stack. Declared
-per load type in [`settings.max_weights`](configuration.md#settings), or per
-exercise, and unset means no ceiling - which is the right default for a gym,
-where the rack outlasts you.
+as the `max` of the [load type](configuration.md#load-types) the exercise
+names, or per exercise, and unset means no ceiling - which is the right
+default for a gym, where the rack outlasts you.
 
 The last step is shortened to land on the ceiling: at a 2.5 kg step and a 10 kg
 maximum, 9 kg goes to 10 kg rather than to 11.5 kg. `max_weight` is a weight you
@@ -429,6 +429,14 @@ Matching uses the same name-then-category rule as everywhere else, so
 have the same `rep_low`, `rep_high` and `rep_step` everywhere; the config is
 rejected outright if they differ, since a synced target could otherwise land
 outside one workout's range.
+
+**The `load` has to agree too, or the two are not shared at all.** The same
+movement on different equipment is two exercises that happen to carry one
+Garmin name - the seated calf raise on the gym machine and the one done with a
+pair of dumbbells at home - and 20 kg of machine says nothing about a pair of
+dumbbells. Nothing is copied between them, no "Also in ..." line appears, and
+each is moved only by the sessions that performed it. Their rep ranges are
+their own business as well, so they may differ freely.
 
 ## No state file
 

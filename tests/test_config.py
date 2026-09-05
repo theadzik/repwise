@@ -20,9 +20,13 @@ from repwise.config import (
 from repwise.domain.models import GarminSettings
 
 SHARED = """
-settings:
-  weight_steps:
-    machine: 5.0
+load:
+  machine:
+    min: 5.0
+    step: 5.0
+  dumbbell:
+    min: 2.5
+    step: 2.5
 
 workouts:
   - key: Workout A
@@ -126,9 +130,10 @@ def test_notes_are_optional(write_config):
 
 COMMENTED = """\
 # My routine. Edit the numbers, not the ids.
-settings:
-  weight_steps:
-    barbell: 5.0
+load:
+  barbell:
+    min: 12.0
+    step: 5.0
 
 workouts:
   # Trained on Mondays.
@@ -414,7 +419,14 @@ def test_partial_progression_must_be_a_boolean(write_config):
 
 def test_unknown_load_is_rejected(write_config):
     bad = FIXTURE.replace("load: barbell", "load: kettlebell")
-    with pytest.raises(ConfigError, match="weight_steps"):
+    with pytest.raises(ConfigError, match="not among the load types"):
+        load_config(write_config(bad))
+
+
+def test_an_unknown_load_is_told_what_was_defined(write_config):
+    """The name is the user's own, so the list is the only way to spot a typo."""
+    bad = FIXTURE.replace("load: barbell", "load: barbel")
+    with pytest.raises(ConfigError, match=r"\(barbell, dumbbell\)"):
         load_config(write_config(bad))
 
 
@@ -465,7 +477,7 @@ def test_several_problems_are_all_reported(write_config):
     message = str(caught.value)
     assert "2 problems" in message
     assert "rep_low >= rep_high" in message
-    assert "weight_steps" in message
+    assert "not among the load types" in message
 
 
 def test_problems_in_different_workouts_are_all_reported(write_config):
@@ -546,6 +558,21 @@ def test_shared_exercise_with_differing_ranges_is_rejected(write_config):
     """A synced target could otherwise fall outside one workout's range."""
     with pytest.raises(ConfigError, match="different rep ranges"):
         load_config(write_config(SHARED.format(low=8)))
+
+
+def test_one_name_on_two_loads_is_not_shared(write_config):
+    """The machine calf raise and the dumbbell one are two exercises."""
+    text = SHARED.format(low=12).replace("load: machine", "load: dumbbell", 1)
+    assert load_config(write_config(text)).shared_exercises() == set()
+
+
+def test_one_name_on_two_loads_may_have_different_ranges(write_config):
+    """No target crosses between them, so neither constrains the other."""
+    text = SHARED.format(low=8).replace("load: machine", "load: dumbbell", 1)
+    config = load_config(write_config(text))
+
+    assert config["Workout A"].exercises[0].rep_low == 12
+    assert config["Workout B"].exercises[0].rep_low == 8
 
 
 # --- the shipped example --------------------------------------------------
@@ -694,15 +721,129 @@ def test_nothing_found_suggests_import_when_there_is_no_example(nowhere):
         resolve_config()
 
 
+# --- load types of your own naming ----------------------------------------
+
+
+TWO_RACKS = """
+load:
+  home_dumbbell:
+    min: 1.0
+    max: 10.0
+    step: 1.0
+  gym_dumbbell:
+    min: 4.0
+    max: 40.0
+    step: 2.0
+
+workouts:
+  - key: Workout A
+    garmin_workout_id: "1"
+    activity_prefixes: ["training a"]
+    exercises:
+      - name: Dumbbell Curl
+        garmin_name: DUMBBELL_BICEPS_CURL
+        rep_low: 10
+        rep_high: 15
+        sets: 3
+        load: gym_dumbbell
+      - name: Dumbbell Lateral Raise
+        garmin_name: DUMBBELL_LATERAL_RAISE
+        rep_low: 12
+        rep_high: 15
+        sets: 3
+        load: home_dumbbell
+"""
+
+
+def test_two_racks_of_dumbbells_are_two_load_types(write_config):
+    """The whole point: one word does not tell one rack from another."""
+    curl, raise_ = load_config(write_config(TWO_RACKS))["Workout A"].exercises
+
+    assert (curl.weight_step, curl.min_weight, curl.max_weight) == (2.0, 4.0, 40.0)
+    assert (raise_.weight_step, raise_.min_weight, raise_.max_weight) == (
+        1.0,
+        1.0,
+        10.0,
+    )
+
+
+def test_a_load_type_without_a_min_is_rejected(write_config):
+    text = TWO_RACKS.replace("    min: 1.0\n", "")
+    with pytest.raises(ConfigError, match=r"load\.home_dumbbell is missing min"):
+        load_config(write_config(text))
+
+
+def test_a_load_type_without_a_step_is_rejected(write_config):
+    text = TWO_RACKS.replace("    step: 1.0\n", "")
+    with pytest.raises(ConfigError, match=r"load\.home_dumbbell is missing step"):
+        load_config(write_config(text))
+
+
+def test_a_max_below_its_own_min_is_rejected(write_config):
+    text = TWO_RACKS.replace("    max: 10.0", "    max: 0.5")
+    with pytest.raises(ConfigError, match="no load fits between them"):
+        load_config(write_config(text))
+
+
+def test_bodyweight_cannot_be_used_as_a_load_type_name(write_config):
+    """It is what an exercise says when it has no equipment at all."""
+    text = TWO_RACKS.replace("  home_dumbbell:", "  bodyweight:")
+    with pytest.raises(ConfigError, match="reserved name"):
+        load_config(write_config(text))
+
+
+def test_a_load_type_name_is_matched_whatever_the_case(write_config):
+    """`Gym_Dumbbell` and `gym_dumbbell` are one rack, however either is typed."""
+    text = TWO_RACKS.replace("  gym_dumbbell:", "  Gym_Dumbbell:").replace(
+        "load: gym_dumbbell", "load: GYM_DUMBBELL"
+    )
+    curl = load_config(write_config(text))["Workout A"].exercises[0]
+
+    assert curl.load == "gym_dumbbell", "and it is stored lower-cased"
+    assert (curl.weight_step, curl.min_weight, curl.max_weight) == (2.0, 4.0, 40.0)
+
+
+def test_bodyweight_is_reserved_whatever_the_case(write_config):
+    text = TWO_RACKS.replace("  home_dumbbell:", "  BodyWeight:")
+    with pytest.raises(ConfigError, match="reserved name"):
+        load_config(write_config(text))
+
+
+def test_two_load_types_differing_only_in_case_are_rejected(write_config):
+    """One would silently overwrite the other, leaving one rack undeclared."""
+    text = TWO_RACKS.replace("  home_dumbbell:", "  Gym_Dumbbell:")
+    with pytest.raises(ConfigError, match="are one name"):
+        load_config(write_config(text))
+
+
+def test_a_load_block_that_is_not_a_mapping_is_rejected(write_config):
+    text = (
+        TWO_RACKS[: TWO_RACKS.index("load:")]
+        + "load: 5.0\n"
+        + (TWO_RACKS[TWO_RACKS.index("workouts:") :])
+    )
+    with pytest.raises(ConfigError, match="'load' should be a mapping"):
+        load_config(write_config(text))
+
+
+@pytest.mark.parametrize("moved", ["weight_steps", "min_weights", "max_weights"])
+def test_the_settings_that_the_load_block_replaced_are_rejected(write_config, moved):
+    """Loading such a file halfway would quietly drop its floors and steps."""
+    text = FIXTURE.replace("settings:\n", f"settings:\n  {moved}:\n    barbell: 5.0\n")
+
+    with pytest.raises(ConfigError) as caught:
+        load_config(write_config(text))
+
+    message = str(caught.value)
+    assert f"settings.{moved}" in message
+    assert "top-level 'load' key" in message
+
+
 # --- how light a load can go ----------------------------------------------
 
 
-def test_min_weights_come_from_the_load_type(write_config):
-    text = FIXTURE.replace(
-        "  weight_steps:",
-        "  min_weights:\n    barbell: 12.0\n\n  weight_steps:",
-    )
-    config = load_config(write_config(text))
+def test_the_floor_comes_from_the_load_type_named(write_config):
+    config = load_config(write_config(FIXTURE))
     assert config["Workout A"].exercises[0].min_weight == 12.0
 
 
@@ -714,10 +855,10 @@ def test_an_exercise_can_set_its_own_min_weight(write_config):
     assert config["Workout A"].exercises[0].min_weight == 20.0
 
 
-def test_no_min_weights_at_all_means_no_floor(write_config):
-    """A config written before deloads existed keeps loading."""
+def test_bodyweight_has_no_floor(write_config):
+    """It names no load type, so there is no equipment to have a bottom."""
     config = load_config(write_config(FIXTURE))
-    assert config["Workout A"].exercises[0].min_weight == 0.0
+    assert config["Workout A"].exercises[1].min_weight == 0.0
 
 
 def test_a_negative_min_weight_is_rejected(write_config):
@@ -731,10 +872,9 @@ def test_a_negative_min_weight_is_rejected(write_config):
 # --- how heavy a load can go ----------------------------------------------
 
 
-def test_max_weights_come_from_the_load_type(write_config):
+def test_the_ceiling_comes_from_the_load_type_named(write_config):
     text = FIXTURE.replace(
-        "  weight_steps:",
-        "  max_weights:\n    barbell: 100.0\n\n  weight_steps:",
+        "    min: 12.0\n    step: 5.0", "    min: 12.0\n    max: 100.0\n    step: 5.0"
     )
     config = load_config(write_config(text))
     assert config["Workout A"].exercises[0].max_weight == 100.0
@@ -748,11 +888,10 @@ def test_an_exercise_can_set_its_own_max_weight(write_config):
     assert config["Workout A"].exercises[0].max_weight == 60.0
 
 
-def test_an_exercise_max_weight_beats_the_load_type(write_config):
+def test_an_exercise_max_weight_beats_the_load_type_named(write_config):
     """Only this one movement is capped, and the rack is not."""
     text = FIXTURE.replace(
-        "  weight_steps:",
-        "  max_weights:\n    barbell: 100.0\n\n  weight_steps:",
+        "    min: 12.0\n    step: 5.0", "    min: 12.0\n    max: 100.0\n    step: 5.0"
     ).replace(
         "        load: barbell", "        load: barbell\n        max_weight: 60.0"
     )
@@ -760,7 +899,7 @@ def test_an_exercise_max_weight_beats_the_load_type(write_config):
     assert config["Workout A"].exercises[0].max_weight == 60.0
 
 
-def test_no_max_weights_at_all_means_no_ceiling(write_config):
+def test_a_load_type_with_no_max_means_no_ceiling(write_config):
     """Unset is None rather than zero: zero would be a real maximum."""
     config = load_config(write_config(FIXTURE))
     assert config["Workout A"].exercises[0].max_weight is None
@@ -788,7 +927,7 @@ def test_a_start_weight_above_the_max_weight_is_rejected(write_config):
     """The one moment no session exists yet to correct it."""
     text = FIXTURE.replace(
         "        load: barbell",
-        "        load: barbell\n        start_weight: 30.0\n        max_weight: 10.0",
+        "        load: barbell\n        start_weight: 30.0\n        max_weight: 20.0",
     )
     with pytest.raises(ConfigError, match="above its own max_weight"):
         load_config(write_config(text))

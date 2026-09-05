@@ -55,7 +55,7 @@ class ExerciseSpec:
     #: asked for nine. Off, every set moves together however long the stall,
     #: and a deload steps the whole target down rather than one set of it.
     #: Declared once as settings.partial_progression and resolved onto every
-    #: exercise, the way a load type's weight step is.
+    #: exercise, the way a weight step is.
     partial_progression: bool = True
 
     @property
@@ -160,9 +160,17 @@ class Config:
         return iter(self.workouts.values())
 
     def shared_exercises(self) -> set[str]:
-        """Garmin names that appear in more than one workout."""
-        seen: dict[str, int] = {}
+        """Garmin names that appear in more than one workout on one load.
+
+        The load counts as much as the name. The same movement performed on
+        different equipment is two exercises that happen to be called the same
+        thing - the seated calf raise on the gym machine and the one done with
+        a pair of dumbbells at home - and a weight decided on one of them is
+        not a weight the other can be asked for.
+        """
+        seen: dict[tuple[str, str], int] = {}
         for workout in self.workouts.values():
             for spec in workout.exercises:
-                seen[spec.garmin_name] = seen.get(spec.garmin_name, 0) + 1
-        return {name for name, count in seen.items() if count > 1}
+                key = (spec.garmin_name, spec.load)
+                seen[key] = seen.get(key, 0) + 1
+        return {name for (name, _), count in seen.items() if count > 1}
