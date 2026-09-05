@@ -299,6 +299,11 @@ def test_a_dry_run_writes_nothing(account):
 
 
 NEW_WORKOUT = """\
+weights:
+  barbell:
+    min: 12.0
+    step: 2.5
+
 workouts:
   - key: Workout C
     activity_prefixes: ["workout c"]

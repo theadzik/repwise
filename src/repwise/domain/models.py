@@ -55,7 +55,7 @@ class ExerciseSpec:
     #: asked for nine. Off, every set moves together however long the stall,
     #: and a deload steps the whole target down rather than one set of it.
     #: Declared once as settings.partial_progression and resolved onto every
-    #: exercise, the way a load type's weight step is.
+    #: exercise, the way a weight step is.
     partial_progression: bool = True
 
     @property

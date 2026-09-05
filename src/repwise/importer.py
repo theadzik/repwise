@@ -174,6 +174,9 @@ HEADER = """\
 #   - Garmin stores a single target rather than a rep range, and records no
 #     load type, so rep_high and load had to be inferred. Each exercise says
 #     what was guessed about it in its notes.
+#   - weights holds one entry per guessed load type, with a floor and a step
+#     but no ceiling. Rename them, split the ones that are really two racks,
+#     and give each a max where the equipment runs out.
 #
 # notes is free text this tool never reads. Clear it once you have checked the
 # exercise, or keep your own reminders there.
@@ -190,18 +193,18 @@ DEFAULT_SETTINGS: dict = {
     "garmin": {
         "activity_search_limit": 50,
     },
-    "weight_steps": {
-        "barbell": 2.5,
-        "dumbbell": 1.0,
-        "cable": 5.0,
-        "machine": 5.0,
-    },
-    "min_weights": {
-        "barbell": 12.0,
-        "dumbbell": 1.0,
-        "cable": 5.0,
-        "machine": 5.0,
-    },
+}
+
+#: The weights a fresh config starts with, one entry per load `guess_load`
+#: knows how to name. They are a starting point and nothing more: the names are
+#: the user's to choose, and anyone lifting on more than one rack will want an
+#: entry for each - `home_dumbbell` and `gym_dumbbell` rather than `dumbbell` -
+#: with the exercises pointed at whichever they are performed on.
+DEFAULT_WEIGHTS: dict = {
+    "barbell": {"min": 12.0, "step": 2.5},
+    "dumbbell": {"min": 1.0, "step": 1.0},
+    "cable": {"min": 5.0, "step": 5.0},
+    "machine": {"min": 5.0, "step": 5.0},
 }
 
 
@@ -262,6 +265,7 @@ def render_config(workouts: list[ImportedWorkout]) -> str:
     """A complete, valid workouts.yaml for the given workouts."""
     document = {
         "settings": DEFAULT_SETTINGS,
+        "weights": DEFAULT_WEIGHTS,
         "workouts": [render_workout(workout) for workout in workouts],
     }
     return HEADER + dump(document)

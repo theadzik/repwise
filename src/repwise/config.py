@@ -10,7 +10,7 @@ for rather than computed from this module's location - see `search_path()`.
 
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from .domain.models import BODYWEIGHT, Config, ExerciseSpec, GarminSettings, Workout
@@ -49,22 +49,66 @@ _REQUIRED = ("name", "garmin_name", "rep_low", "rep_high", "sets", "load")
 
 
 @dataclass(frozen=True)
-class LoadRules:
-    """What a load type does: its step size, and how light and heavy it goes.
+class WeightType:
+    """One named set of weights: how it steps, and how light and heavy it goes.
+
+    Named by the user rather than drawn from a list of equipment types, because
+    one word does not tell one rack from another: the dumbbells at home start
+    at 1 kg and stop at 10, the pair in the gym start at 2 and run to 40. Both
+    are dumbbells, and a deload can only be told what exists to prescribe if
+    they are declared apart. So each rack is named, and an exercise's `load`
+    says which one it is performed on.
 
     All three are properties of the equipment rather than of any one exercise -
-    a dumbbell rack goes up in ones, starts at one and ends at whatever the
-    heaviest pair is - so they are declared once per load type and only
-    overridden where an exercise really differs.
+    a rack goes up in ones, starts at one and ends at whatever the heaviest
+    pair is - so they are declared once and only overridden where an exercise
+    really differs.
     """
 
-    steps: dict[str, float] = field(default_factory=dict)
-    #: Missing entries mean no floor, so a config written before deloads
-    #: existed keeps loading and simply never stops a deload.
-    minimums: dict[str, float] = field(default_factory=dict)
-    #: Missing entries mean no ceiling, which is the usual case: a gym's rack
-    #: outlasts you, and only equipment you own runs out.
-    maximums: dict[str, float] = field(default_factory=dict)
+    #: kg added when a rep range is topped out. Required: weights that cannot
+    #: say how they step cannot progress anything.
+    step: float
+    #: The lightest this equipment goes: the smallest bar on the rack, the
+    #: lightest pair, the top plate of the stack. Required, because every rack
+    #: has a bottom, and a deload that does not know it prescribes a weight you
+    #: have no way to make up.
+    minimum: float
+    #: The heaviest it goes, or None where it outlasts you - a gym's stack, a
+    #: bar with more plates left in the rack. Only equipment you own runs out.
+    maximum: float | None = None
+
+
+#: The three maps `weights` replaced, each keyed by load type.
+_MOVED = ("weight_steps", "min_weights", "max_weights")
+
+
+def _reject_moved_settings(settings: dict, path: str) -> None:
+    """Say what became of the three maps that `weights` replaced.
+
+    They were keyed by a fixed idea of equipment - one `dumbbell` entry for
+    every dumbbell you own - which is the thing `weights` exists to undo.
+    Loading such a file halfway would quietly drop its floors, ceilings and
+    steps, so it is refused outright with the shape to write instead.
+    """
+    found = [key for key in _MOVED if settings.get(key) is not None]
+    if not found:
+        return
+
+    named = ", ".join(f"settings.{key}" for key in found)
+    raise ConfigError(
+        f"{path}: {named} {'has' if len(found) == 1 else 'have'} been replaced "
+        f"by a top-level 'weights' key. Each named set of weights states its "
+        f"own step and how light and heavy it goes:\n"
+        f"    weights:\n"
+        f"      barbell:\n"
+        f"        min: 12.0\n"
+        f"        step: 2.5\n"
+        f"      home_dumbbell:\n"
+        f"        min: 1.0\n"
+        f"        max: 10.0\n"
+        f"        step: 1.0\n"
+        f"An exercise's 'load' then names one of them."
+    )
 
 
 def _xdg_config_home() -> str:
@@ -292,8 +336,69 @@ class Problems:
         raise ConfigError(f"{len(self.found)} problems:\n{listed}")
 
 
+def _weight_types(
+    declared: Any, path: str, problems: Problems
+) -> dict[str, WeightType]:
+    """The named sets of weights an exercise may be loaded from.
+
+    Every name here is the user's own - `barbell`, `gym_dumbbell`,
+    `home_dumbbell`, whatever tells one rack from another. Only `bodyweight` is
+    spoken for: an exercise loaded that way carries no equipment, so it draws
+    on nothing declared here.
+
+    A broken entry is recorded and then kept, in the shape it can be, so that
+    the exercises using it are still checked rather than each being reported a
+    second time as naming weights that do not exist.
+    """
+    if declared is None:
+        return {}
+    if not isinstance(declared, dict):
+        problems.add(f"{path}: 'weights' should be a mapping of name to min/max/step")
+        return {}
+
+    types: dict[str, WeightType] = {}
+    for name, entry in declared.items():
+        where = f"{path}: weights.{name}"
+        if name == BODYWEIGHT:
+            problems.add(
+                f"{where} is a reserved name: an exercise loaded {BODYWEIGHT!r} "
+                f"has no equipment, so it draws on no weights of yours"
+            )
+            continue
+        if not isinstance(entry, dict):
+            problems.add(f"{where} should state min, step and optionally max")
+            continue
+
+        missing = [key for key in ("min", "step") if entry.get(key) is None]
+        if missing:
+            problems.add(f"{where} is missing {', '.join(missing)}")
+
+        minimum = float(entry.get("min") or 0.0)
+        if minimum < 0:
+            problems.add(f"{where} has a negative min")
+            minimum = 0.0
+
+        step = float(entry.get("step") or 0.0)
+        if step < 0:
+            problems.add(f"{where} has a negative step")
+            step = 0.0
+
+        declared_maximum = entry.get("max")
+        maximum = None if declared_maximum is None else float(declared_maximum)
+        if maximum is not None and maximum < minimum:
+            problems.add(
+                f"{where} has a max of {maximum:g} below its min of "
+                f"{minimum:g}, so no load fits between them"
+            )
+            maximum = None
+
+        types[name] = WeightType(step=step, minimum=minimum, maximum=maximum)
+
+    return types
+
+
 def _bounds(
-    raw: dict, load: str, loads: LoadRules, where: str, problems: Problems
+    raw: dict, weights: WeightType | None, where: str, problems: Problems
 ) -> tuple[float, float | None]:
     """How light and how heavy this exercise may be loaded.
 
@@ -301,12 +406,12 @@ def _bounds(
     ceiling under its own floor leaves progression choosing between two
     impossible loads, and that is only visible once both are known.
 
-    The two ends default differently, and deliberately. No floor is zero, which
-    is the honest answer for anything lifted with no equipment of its own. No
+    The two ends default differently, and deliberately. The floor comes from
+    the weights the exercise names, which always state one; nothing but a
+    bodyweight movement, which has no weights, reaches the zero here. No
     ceiling is `None` rather than zero, because zero is a real maximum -
     nothing may be added at all - and equipment that does not run out before
-    you do is the common case. Either way a config written before deloads or
-    ceilings existed keeps its meaning exactly.
+    you do is the common case.
 
     Anything contradictory is dropped rather than honoured. The file will not
     load either way - `problems` sees to that - so the only question is which
@@ -314,7 +419,7 @@ def _bounds(
     """
     declared_minimum = raw.get("min_weight")
     if declared_minimum is None:
-        minimum = float(loads.minimums.get(load, 0.0))
+        minimum = weights.minimum if weights else 0.0
     else:
         minimum = float(declared_minimum)
     if minimum < 0:
@@ -323,10 +428,10 @@ def _bounds(
 
     declared_maximum = raw.get("max_weight")
     if declared_maximum is None:
-        ceiling = loads.maximums.get(load)
+        ceiling = weights.maximum if weights else None
         if ceiling is None:
             return minimum, None
-        maximum = float(ceiling)
+        maximum = ceiling
     else:
         maximum = float(declared_maximum)
 
@@ -367,7 +472,7 @@ def _bodyweight_factor(raw: dict, where: str, problems: Problems) -> float:
 
 def _build_exercise(
     raw: dict,
-    loads: LoadRules,
+    types: dict[str, WeightType],
     where: str,
     problems: Problems,
     *,
@@ -380,16 +485,21 @@ def _build_exercise(
         return None
 
     load = raw["load"]
+    # Bodyweight is the one load that names no weights: there is no equipment
+    # to describe, and nothing to add to it.
+    weights = None if load == BODYWEIGHT else types.get(load)
+    if load != BODYWEIGHT and weights is None:
+        known = ", ".join(sorted(types)) or "none"
+        problems.add(
+            f"{where}: exercise {raw['name']!r} has load {load!r}, which is "
+            f"not among the weights defined at the top level ({known})"
+        )
+
     # An exercise may set its own step, e.g. the deadlift moves in bigger jumps
-    # than the other barbell lifts. Otherwise the load type decides.
+    # than the other barbell lifts. Otherwise the weights it names decide.
     declared_step = raw.get("weight_step")
     if declared_step is None:
-        if load != BODYWEIGHT and load not in loads.steps:
-            problems.add(
-                f"{where}: exercise {raw['name']!r} has load {load!r}, "
-                f"which has no entry in settings.weight_steps"
-            )
-        weight_step = float(loads.steps.get(load, 0.0))
+        weight_step = weights.step if weights else 0.0
     else:
         weight_step = float(declared_step)
         if weight_step <= 0 and load != BODYWEIGHT:
@@ -415,7 +525,7 @@ def _build_exercise(
         problems.add(f"{where}: {raw['name']!r} has a negative start_weight")
         start_weight = 0.0
 
-    min_weight, max_weight = _bounds(raw, load, loads, where, problems)
+    min_weight, max_weight = _bounds(raw, weights, where, problems)
     if max_weight is not None and start_weight > max_weight:
         # `start_weight` is read only when the step is created, which is the
         # one moment nothing else could catch this: no session has been logged
@@ -452,7 +562,7 @@ def _build_exercise(
 
 def _build_workout(
     entry: dict,
-    loads: LoadRules,
+    types: dict[str, WeightType],
     path: str,
     problems: Problems,
     *,
@@ -471,7 +581,7 @@ def _build_workout(
     for raw in entry.get("exercises") or []:
         spec = _build_exercise(
             raw,
-            loads,
+            types,
             f"{path}:{key}",
             problems,
             partial_progression=partial_progression,
@@ -545,11 +655,7 @@ def load_config(path: str | None = None) -> Config:
         raise ConfigError(f"{path}: 'workouts' should be a list of workouts")
 
     settings = data.get("settings") or {}
-    loads = LoadRules(
-        steps=settings.get("weight_steps") or {},
-        minimums=settings.get("min_weights") or {},
-        maximums=settings.get("max_weights") or {},
-    )
+    _reject_moved_settings(settings, path)
     garmin_raw = settings.get("garmin") or {}
     defaults = GarminSettings()
     # A declared store is an instruction: second-guessing it would move
@@ -577,7 +683,7 @@ def load_config(path: str | None = None) -> Config:
     _warn_if_wandering(garmin)
 
     # Whether a hit after a stall may move only some of the sets. Resolved onto
-    # every exercise, the way a load type's weight step is: the rules read it
+    # every exercise, the way a weight step is: the rules read it
     # off the spec in hand rather than being handed the settings.
     partial_progression = _flag(
         settings.get("partial_progression"), "partial_progression", True
@@ -590,10 +696,11 @@ def load_config(path: str | None = None) -> Config:
     bodyweight = None if declared_bodyweight is None else float(declared_bodyweight)
 
     problems = Problems()
+    types = _weight_types(data.get("weights"), path, problems)
     workouts: dict[str, Workout] = {}
     for entry in data["workouts"]:
         workout = _build_workout(
-            entry, loads, path, problems, partial_progression=partial_progression
+            entry, types, path, problems, partial_progression=partial_progression
         )
         if workout is None:
             continue

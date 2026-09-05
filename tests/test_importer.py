@@ -129,6 +129,15 @@ def test_rendered_config_is_valid_and_loadable(tmp_path):
     assert plank.time_based and plank.bodyweight
 
 
+def test_rendered_config_gives_every_load_its_own_weights(tmp_path):
+    """A weights entry states a floor as well as a step, so both are written."""
+    path = tmp_path / "workouts.yaml"
+    path.write_text(render_config([describe_workout(payload(SQUAT))]))
+
+    squat = load_config(str(path))["Workout A"].exercises[0]
+    assert squat.weight_step > 0 and squat.min_weight > 0
+
+
 def test_rendered_config_flags_what_was_inferred(tmp_path):
     """A dumped document has nowhere to put a comment, so what had to be
     guessed is said in the exercise's own notes."""
