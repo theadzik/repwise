@@ -468,3 +468,21 @@ def test_a_workout_declaring_no_prefixes_is_not_second_guessed():
         )
         == []
     )
+
+
+# --- a note too long to be read --------------------------------------------
+
+
+def test_a_note_past_what_a_watch_shows_is_reported():
+    """Garmin takes 512 characters and drops the rest without a word, so the
+    only way to find out is to be told."""
+    wordy = replace(SQUAT_SPEC, notes="x" * 200)
+    findings = check_workout(Workout("W", "1", ["w"], [wordy]), payload(SQUAT_GROUP))
+
+    assert len(findings) == 1
+    assert "past the 160 a watch shows" in findings[0].detail
+
+
+def test_a_note_that_fits_is_not_mentioned():
+    brief = replace(SQUAT_SPEC, notes="2-3 RIR | brace, knees out, to parallel")
+    assert check_workout(Workout("W", "1", ["w"], [brief]), payload(SQUAT_GROUP)) == []

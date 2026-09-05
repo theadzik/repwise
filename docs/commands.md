@@ -358,6 +358,21 @@ do today:
 30-60 s | bodyweight       a timed hold
 ```
 
+An exercise's own [`notes`](configuration.md#exercise-fields) is written on the
+end, which is what makes it worth writing - a cue you can only read by opening
+a YAML file is not a cue:
+
+```text
+6-10 reps | +2.5 kg | 2-3 RIR | brace, knees out, to parallel
+12-16 reps | +2.5 kg | 3-4 RIR | elbow pinned, rotate slow, never heavy
+```
+
+**Keep it to one line.** Garmin stores 512 characters and silently drops the
+rest - no error, nothing to say anything was lost - but the screen runs out
+long before that. Measured on a real account and read off the watch: a
+160-character note displays whole and a 200-character one is cut. `check`
+reports anything past 160 for that reason.
+
 These are refreshed from `workouts.yaml` on every run, so editing a rep range
 or a `weight_step` updates them. That is a reason to write a workout in its own
 right: a config edit moves no target, and without it the notes would go stale
