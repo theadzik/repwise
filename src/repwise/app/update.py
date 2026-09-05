@@ -317,16 +317,31 @@ def sync_other_workouts(
     source: Workout,
     targets: dict[str, Target],
 ) -> list[Plan]:
-    """Propagate decided targets into every other workout that shares them."""
+    """Propagate decided targets into every other workout that shares them.
+
+    Shared means the same exercise on the same equipment. A movement
+    programmed on another load is a different exercise wearing the same Garmin
+    name, and the weight one of them earned is not a weight the other can be
+    asked for: 20 kg of gym machine says nothing about a pair of dumbbells.
+    Such an entry is left where it is, to be moved by its own sessions.
+    """
+    loads = {normalise(spec.garmin_name): spec.load for spec in source.exercises}
+
     plans: list[Plan] = []
     for other in config:
         if other.key == source.key or other.garmin_workout_id is None:
             continue
-        if not any(normalise(s.garmin_name) in targets for s in other.exercises):
+
+        carried: dict[str, Target] = {}
+        for spec in other.exercises:
+            name = normalise(spec.garmin_name)
+            if name in targets and spec.load == loads.get(name):
+                carried[name] = targets[name]
+        if not carried:
             continue
 
         payload = payloads[garmin_id(other)]
-        plan = plan_sync(other, payload, targets, source.key)
+        plan = plan_sync(other, payload, carried, source.key)
         if not plan.writable:
             continue
 

@@ -430,6 +430,14 @@ have the same `rep_low`, `rep_high` and `rep_step` everywhere; the config is
 rejected outright if they differ, since a synced target could otherwise land
 outside one workout's range.
 
+**The `load` has to agree too, or the two are not shared at all.** The same
+movement on different equipment is two exercises that happen to carry one
+Garmin name - the seated calf raise on the gym machine and the one done with a
+pair of dumbbells at home - and 20 kg of machine says nothing about a pair of
+dumbbells. Nothing is copied between them, no "Also in ..." line appears, and
+each is moved only by the sessions that performed it. Their rep ranges are
+their own business as well, so they may differ freely.
+
 ## No state file
 
 Nothing is stored between runs. The Garmin workout holds the current target and

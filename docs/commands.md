@@ -170,7 +170,8 @@ removing](#ordering-adding-and-removing), [rest between
 sets](#rest-between-sets) and [step notes](#step-notes).
 
 An "Also in ..." section appears when a target that moved also exists in another
-workout. See [shared exercises](progression.md#shared-exercises).
+workout on the same `load`. See [shared
+exercises](progression.md#shared-exercises).
 
 ### Creating a workout
 

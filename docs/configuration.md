@@ -451,7 +451,8 @@ than half-applied. You get an error naming the file and workout for:
 - a workout with neither a `garmin_workout_id` nor any exercises, which is
   nothing to find in Garmin and nothing to build there either
 - a [shared exercise](progression.md#shared-exercises) programmed with
-  different rep ranges in different workouts
+  different rep ranges in different workouts. Two entries carrying one
+  `garmin_name` on different `load`s are not shared, and are free to differ
 
 Every problem in the file is reported at once, rather than one per run:
 

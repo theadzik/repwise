@@ -24,6 +24,9 @@ weights:
   machine:
     min: 5.0
     step: 5.0
+  dumbbell:
+    min: 2.5
+    step: 2.5
 
 workouts:
   - key: Workout A
@@ -555,6 +558,21 @@ def test_shared_exercise_with_differing_ranges_is_rejected(write_config):
     """A synced target could otherwise fall outside one workout's range."""
     with pytest.raises(ConfigError, match="different rep ranges"):
         load_config(write_config(SHARED.format(low=8)))
+
+
+def test_one_name_on_two_loads_is_not_shared(write_config):
+    """The machine calf raise and the dumbbell one are two exercises."""
+    text = SHARED.format(low=12).replace("load: machine", "load: dumbbell", 1)
+    assert load_config(write_config(text)).shared_exercises() == set()
+
+
+def test_one_name_on_two_loads_may_have_different_ranges(write_config):
+    """No target crosses between them, so neither constrains the other."""
+    text = SHARED.format(low=8).replace("load: machine", "load: dumbbell", 1)
+    config = load_config(write_config(text))
+
+    assert config["Workout A"].exercises[0].rep_low == 12
+    assert config["Workout B"].exercises[0].rep_low == 8
 
 
 # --- the shipped example --------------------------------------------------

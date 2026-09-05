@@ -290,6 +290,30 @@ def test_a_shared_exercise_ends_up_at_the_most_recent_decision(account):
     assert calf_targets(account.saved) == {"111": 18.0, "222": 18.0}
 
 
+def test_the_same_exercise_on_another_load_is_not_synced(account):
+    """One Garmin name, two kinds of equipment: two exercises, not one.
+
+    Workout B does the calf raise with dumbbells rather than on the machine,
+    so Workout A's 18 has nothing to say about it and B keeps the 16 its own
+    session earned.
+    """
+    config = config_ab(b_exercises=(BENCH, replace(CALF, load="dumbbell")))
+
+    run(account, config, apply=True)
+
+    assert calf_targets(account.saved) == {"111": 18.0, "222": 16.0}
+
+
+def test_the_same_exercise_on_another_load_is_left_out_of_the_report(account, caplog):
+    """Nothing is 'Also in' a workout the decision does not reach."""
+    config = config_ab(b_exercises=(BENCH, replace(CALF, load="dumbbell")))
+
+    with caplog.at_level(logging.INFO):
+        run(account, config, apply=True)
+
+    assert "Also in" not in caplog.text
+
+
 def test_a_dry_run_writes_nothing(account):
     assert run(account) == ExitCode.OK
     assert account.saved == []

@@ -619,22 +619,25 @@ def _check_shared(config: Config, path: str, problems: Problems) -> None:
     """A shared exercise must be programmed identically everywhere.
 
     Otherwise a target synced out of one workout could land outside another
-    workout's range.
+    workout's range. Only the copies that really do sync are compared: two
+    entries carrying one name on different loads never reach each other, so
+    what they ask for is nobody else's business.
     """
     for garmin_name in config.shared_exercises():
-        specs = [
-            spec
-            for workout in config.workouts.values()
-            for spec in workout.exercises
-            if spec.garmin_name == garmin_name
-        ]
-        ranges = {(s.rep_low, s.rep_high, s.rep_step) for s in specs}
-        if len(ranges) > 1:
-            problems.add(
-                f"{path}: {garmin_name} appears in several workouts with "
-                f"different rep ranges {sorted(ranges)}; a synced target could "
-                f"fall outside one of them"
-            )
+        by_load: dict[str, list[ExerciseSpec]] = {}
+        for workout in config.workouts.values():
+            for spec in workout.exercises:
+                if spec.garmin_name == garmin_name:
+                    by_load.setdefault(spec.load, []).append(spec)
+
+        for load, specs in by_load.items():
+            ranges = {(s.rep_low, s.rep_high, s.rep_step) for s in specs}
+            if len(ranges) > 1:
+                problems.add(
+                    f"{path}: {garmin_name} appears in several workouts on "
+                    f"{load} with different rep ranges {sorted(ranges)}; a "
+                    f"synced target could fall outside one of them"
+                )
 
 
 def load_config(path: str | None = None) -> Config:
