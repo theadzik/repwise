@@ -1241,3 +1241,106 @@ def test_a_ramp_is_left_alone_while_partial_progression_is_on():
     plan = plan_workout(a_workout(exercises=[SQUAT]), built)
 
     assert not plan.moved
+
+
+# --- targets left outside a range the config has moved ---------------------
+
+
+NARROWED = replace(SQUAT, rep_low=6, rep_high=10)
+
+
+def a_stored_squat(reps, weight=20.0, sets=3):
+    return workout(
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", reps, weight), sets=sets)
+    )
+
+
+def test_a_target_above_the_new_top_is_brought_down_with_no_session_at_all():
+    """Narrowing the range is the whole reason, so it need not wait to be trained."""
+    built = a_stored_squat(12)
+    plan = plan_workout(a_workout(exercises=[NARROWED]), built)
+
+    assert [c.new for c in plan.moved] == [Target(10, 20.0)]
+    assert plan.changes[0].reason == "outside the 6-10 range, brought to the top"
+    assert [step_target(b.step) for b in iter_exercise_blocks(built)] == [
+        Target(10, 20.0)
+    ], "the workout Garmin holds is rewritten, not just reported"
+
+
+def test_a_target_below_the_new_bottom_is_brought_up():
+    plan = plan_workout(a_workout(exercises=[NARROWED]), a_stored_squat(4))
+
+    assert [c.new for c in plan.moved] == [Target(6, 20.0)]
+    assert plan.changes[0].reason == "outside the 6-10 range, brought to the bottom"
+
+
+def test_a_target_already_inside_the_range_is_left_alone():
+    plan = plan_workout(a_workout(exercises=[NARROWED]), a_stored_squat(8))
+
+    assert plan.changes == []
+
+
+def test_bringing_a_target_into_range_never_touches_the_load():
+    """Landing on `rep_high` is where rule 3 fires from, and a weight increase
+    is something a session earns, not something editing a config hands over."""
+    plan = plan_workout(
+        a_workout(exercises=[NARROWED]), a_stored_squat(12, weight=40.0)
+    )
+
+    assert plan.moved[0].new == Target(10, 40.0)
+
+
+def test_a_ramp_the_new_range_cannot_hold_is_dropped():
+    """The leading sets ask for a rep more, which at the top is outside it."""
+    built = a_ramped_squat(base=12, lead=1)
+    plan = plan_workout(a_workout(exercises=[NARROWED]), built)
+
+    assert plan.moved[0].new == Target(10, 20.0, 0)
+
+
+def test_a_ramp_at_the_top_is_dropped_without_claiming_the_target_moved():
+    """The base was inside the range all along; only the leading sets were not.
+
+    Reporting this as "brought to the top" would name a move that did not
+    happen - the reps are identical either side of it.
+    """
+    plan = plan_workout(
+        a_workout(exercises=[NARROWED]), a_ramped_squat(base=10, lead=1)
+    )
+
+    assert plan.moved[0].old == Target(10, 20.0, 1)
+    assert plan.moved[0].new == Target(10, 20.0, 0)
+    assert plan.changes[0].reason == "a ramp needs room the 6-10 range no longer has"
+
+
+def test_a_ramp_the_new_range_still_holds_survives():
+    built = a_ramped_squat(base=8, lead=1)
+    plan = plan_workout(a_workout(exercises=[NARROWED]), built)
+
+    assert plan.changes == []
+
+
+def test_a_session_that_tops_the_new_range_earns_the_load_and_needs_no_clamp():
+    """The rules get there first and get there better.
+
+    Twelve reps clears a `rep_high` of ten, so rule 3 fires and the load is
+    earned in the ordinary way. Resetting to `rep_low` lands inside the range
+    on its own, leaving the clamp - which never touches a weight - nothing to
+    do. The clamp is for the workout no session has anything to say about.
+    """
+    built = a_stored_squat(12)
+    plan = plan_workout(a_workout(exercises=[NARROWED]), built, a_squat_session(12))
+
+    assert plan.moved[0].new == Target(6, 22.5)
+    assert plan.changes[0].reason == "hit 12 on every set, top of the range"
+
+
+def test_a_session_that_missed_still_has_its_target_brought_into_range():
+    """The session has its say, and the clamp is the last word after it."""
+    built = a_stored_squat(12)
+    plan = plan_workout(a_workout(exercises=[NARROWED]), built, a_squat_session(8))
+
+    assert plan.moved[0].new == Target(10, 20.0)
+    assert plan.changes[0].reason == (
+        "missed target, 8 on the worst set; outside the 6-10 range, brought to the top"
+    )
