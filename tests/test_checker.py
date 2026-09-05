@@ -317,13 +317,13 @@ def test_the_pair_is_read_as_entered():
 # --- load types offering more than one increment ---------------------------
 
 
-MICRO = (LoadTier(5.0, None, (1.25, 2.5, 5.0)),)
+PLATED = (LoadTier(5.0, None, (1.25, 2.5, 5.0)),)
 
 STACK_GROUP = repeat(rep_step("CABLE_CROSSOVER", "FLYE", 20, 30.0), sets=3)
 
 
 def stack(**kwargs):
-    """A cable stack that takes micro-plates as readily as a pin move.
+    """A cable stack that takes 1.25 kg plates as readily as a pin move.
 
     `weight_step` is the smallest of them, which is what config resolves onto a
     spec whose load type names several.
@@ -338,12 +338,12 @@ def stack(**kwargs):
         "load": "cable",
         "weight_step": 1.25,
         "min_weight": 5.0,
-        "tiers": MICRO,
+        "tiers": PLATED,
     }
     return spec(**{**base, **kwargs})
 
 
-def test_a_micro_plate_is_not_reported_as_too_small_on_a_heavy_stack():
+def test_a_small_increment_is_not_reported_as_too_small_on_a_heavy_stack():
     """The finding has to be about the jump the tool would really prescribe.
 
     Judged on its smallest increment this stack reads as a range far too wide

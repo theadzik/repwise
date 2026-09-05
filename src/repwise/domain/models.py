@@ -29,7 +29,7 @@ class LoadTier:
     what is on the bar, and topping one out moves to the next.
 
     **Increments.** One tier whose `steps` names several: a cable stack that
-    takes 1.25 kg micro-plates as readily as a 5 kg pin move. Every step is
+    takes 1.25 kg plates as readily as a 5 kg pin move. Every step is
     available at every weight, so the choice is not geometry but effort - see
     `chosen_step` in `domain/effort.py`.
 
@@ -44,7 +44,7 @@ class LoadTier:
     #: The heaviest, or None where the equipment outlasts you.
     maximum: float | None
     #: The increments this tier can express, ascending. One is the ordinary
-    #: case; several means the load can be micro-plated and the right size of
+    #: case; several means the load takes more than one plate size and the right
     #: jump depends on how heavy it already is.
     steps: tuple[float, ...]
 

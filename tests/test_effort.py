@@ -268,7 +268,7 @@ def test_a_wide_range_is_still_fixed_by_narrowing_it():
     assert fitted.balanced < CALF.rep_high
 
 
-def test_micro_loading_fixes_what_no_range_can():
+def test_a_smaller_step_fixes_what_no_range_can():
     """A 1 kg step on 1 kg is a 100% jump; no rep range absorbs that."""
     assert fitting_rep_highs(RAISE, 1.0) is None
 

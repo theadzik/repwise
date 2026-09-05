@@ -166,7 +166,7 @@ def reset_drop(
 #: being strength programming, and Epley - already drifting by twelve reps - is
 #: far enough outside its band that a wider suggestion would be arithmetic
 #: rather than advice. A 1 kg step on a 1 kg dumbbell is a 100% jump that no
-#: rep range absorbs; the honest answer there is to micro-load, and refusing to
+#: rep range absorbs; the honest answer there is a smaller step, and refusing to
 #: suggest `12-47` is how this says so.
 _HIGHEST_USEFUL_REPS = 30
 
@@ -248,7 +248,7 @@ def chosen_step(spec: ExerciseSpec, weight: float, bodyweight: float = 0.0) -> f
     """Which of a tier's increments to add at this weight.
 
     A tier naming one step has nothing to choose and returns it. Where it names
-    several - a stack that takes micro-plates as well as pin moves - the right
+    several - a stack that takes 1.25 kg plates as well as pin moves - the right
     one depends on how heavy the load already is, which is the whole reason the
     choice cannot be made in the config file: 2.5 kg on a 5 kg stack is a wall,
     and on a 60 kg stack it is beneath noticing.

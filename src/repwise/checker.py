@@ -265,7 +265,7 @@ def check_programming(
         # Judge the step rule 3 will actually take. Where the equipment offers
         # a choice of increments, that is the one `chosen_step` picks for this
         # weight, not the smallest the load type happens to name - reporting
-        # the 1.25 kg micro-plate as a wall on a 60 kg stack would be a finding
+        # the 1.25 kg increment as a wall on a 60 kg stack would be a finding
         # about a jump the tool was never going to prescribe.
         stepped = replace(
             spec,
@@ -285,7 +285,7 @@ def check_programming(
             settle = "accept the sawtooth"
         else:
             gives, costs = "gives back less", f"{-shift:.0%} jump in effort"
-            settle = "micro-load"
+            settle = "take a smaller step"
         fix = _suggestion(stepped, target.weight, carried)
         findings.append(
             Finding(

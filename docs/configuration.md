@@ -92,7 +92,7 @@ load:
 | `step` | yes | kg added when an exercise on this load tops out its rep range |
 | `max` | no | The heaviest it goes. Topping out the range stops here rather than prescribing a weight you cannot load. Left out, there is no ceiling |
 | `racks` | no | A group of racks, lightest first, where one name covers equipment with gaps in it. See [groups of racks](#groups-of-racks) |
-| `steps` | no | Several increments instead of one `step`, where the equipment can be micro-loaded. See [choosing the increment](#choosing-the-increment) |
+| `steps` | no | Several increments instead of one `step`, where the equipment takes more than one plate size. See [choosing the increment](#choosing-the-increment) |
 
 ### Groups of racks
 
@@ -134,7 +134,7 @@ anyway.
 
 ### Choosing the increment
 
-A cable stack that takes micro-plates can be moved by 1.25 kg as readily as by
+A cable stack that takes 1.25 kg plates can be moved by them as readily as by
 the 5 kg the pin gives you. Which is right depends on how heavy it already is:
 2.5 kg on a 5 kg stack is a wall, and on a 60 kg stack it is beneath noticing.
 No single `step` is right at both ends, and no config file knows where on the
@@ -424,13 +424,13 @@ Workout A (1631254436)
 Workout B (1641921176)
  ! Dumbbell Lateral Raise: +1 kg on 3 kg is 33.3%, but resetting 20->12
    reps gives back less, so the weight increase is a 12% jump in effort
-   (make it 12-26; anything from 12-21 to 12-30 fits, or micro-load)
+   (make it 12-26; anything from 12-21 to 12-30 fits, or take a smaller step)
 ```
 
 | Sign | Meaning | Costs you | Fix |
 | --- | --- | --- | --- |
 | Positive | Range too **wide** for the step | Sessions spent re-treading ground | Narrow the range |
-| Negative | Range too **narrow** for the step | A wall at every weight jump | Widen the range, or micro-load |
+| Negative | Range too **narrow** for the step | A wall at every weight jump | Widen the range, or take a smaller step |
 
 Two figures, because the tolerance is a band rather than a line. The first is
 the top whose reset breaks even exactly; the rest of the window is every other
@@ -483,7 +483,7 @@ the bottom.
 
 Note which way each error drifts. **Too narrow is temporary**: it means the
 step is currently too big a share of the load, and it heals itself as you get
-stronger, which is why micro-loading is often the better answer than rewriting
+stronger, which is why a smaller step is often the better answer than rewriting
 the range. **Too wide only worsens**, and a range that has narrowed to a rung
 or two is the signal to raise `weight_step` rather than to keep trimming.
 
