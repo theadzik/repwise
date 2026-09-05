@@ -117,6 +117,14 @@ dumbbell you own - which is what this replaces. A file still using them is
 refused with the shape to write instead; move each load type into one entry
 under the top-level `load`, carrying its `min`, `step` and any `max`.
 
+Two things that used to be legal are not any more. Every load type has to state
+a `min`, where a load type left out of `min_weights` simply had no floor - so a
+[deload](progression.md#deloading) that used to run down without limit now
+stops at the bottom of the rack. And an exercise's `load` has to name a
+declared load type even when it sets its own `weight_step`, which used to be
+enough on its own: an undeclared name has no floor and no ceiling to inherit,
+so it is refused rather than guessed at.
+
 ## Workout fields
 
 ```yaml
