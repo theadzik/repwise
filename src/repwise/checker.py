@@ -34,7 +34,7 @@ from .domain.effort import (
     within_tolerance,
 )
 from .domain.matching import ExerciseIndex
-from .domain.models import ExerciseSpec, Workout
+from .domain.models import READABLE_NOTE, ExerciseSpec, Workout
 from .garmin.catalog import ExerciseCatalog
 from .garmin.payloads import (
     ExerciseBlock,
@@ -161,6 +161,14 @@ def check_workout(workout: Workout, payload: dict) -> list[Finding]:
             f"still match",
             "error",
         )
+
+    for spec in workout.exercises:
+        if len(spec.note) > READABLE_NOTE:
+            note(
+                f"{spec.name}: its note comes to {len(spec.note)} characters, past "
+                f"the {READABLE_NOTE} a watch shows. Garmin stores 512 and drops the "
+                f"rest without saying so, so the end of it is simply never read"
+            )
 
     index: ExerciseIndex[ExerciseBlock] = ExerciseIndex()
     for entry in iter_exercise_blocks(payload):

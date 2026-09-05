@@ -10,6 +10,15 @@ from dataclasses import dataclass, field
 
 BODYWEIGHT = "bodyweight"
 
+#: How long a step's note may be before it stops being read.
+#:
+#: Not the API's limit, which is 512 - Garmin stores that many characters and
+#: silently drops the rest, with no error and nothing to say anything was lost.
+#: The binding limit is the screen: a Forerunner displays a 160-character note
+#: whole and truncates a 200-character one, measured by writing both to a real
+#: workout and reading them off the watch. Round down to the one that fits.
+READABLE_NOTE = 160
+
 
 @dataclass(frozen=True)
 class LoadTier:
@@ -75,9 +84,10 @@ class ExerciseSpec:
     rep_step: int = 1
     rest: int = 0
     unit: str = "reps"
-    #: Whatever the user wants to keep beside this exercise: a cue, a link, a
-    #: reminder. Read by nobody - not this tool, not Garmin. Distinct from
-    #: `note` below, which this tool writes to the watch.
+    #: A cue to read while you are doing the exercise: how far from failure to
+    #: stop, what the position should look like, anything you keep forgetting.
+    #: Written to the watch on the end of `note` below, so keep it to the one
+    #: short line it will be read as.
     notes: str | None = None
     #: The load a step starts at when this tool has to create it. Only ever
     #: read for an exercise Garmin does not hold yet; progression owns the
@@ -150,14 +160,22 @@ class ExerciseSpec:
         """How this exercise is programmed, for the step's notes field.
 
         The target already tells you what to do today; this says what you are
-        working towards and what happens when you get there. Kept to one short
-        line, because it is read on a watch mid-set.
+        working towards, what happens when you get there, and - from the
+        exercise's own `notes` - how to do it. Kept to one short line, because
+        it is read on a watch mid-set.
+
+        Garmin stores 512 characters and silently drops the rest: no error, no
+        sign anything was lost. Watches run out well before that, at somewhere
+        around 160 on a Forerunner, so the real limit is what fits a screen
+        rather than what the API takes. Hence one line, and hence `check`
+        counting it.
         """
         span = f"{self.rep_low}-{self.rep_high} {'s' if self.time_based else 'reps'}"
         if self.rep_step != 1:
             span += f" by {self.rep_step}"
         load = "bodyweight" if self.bodyweight else f"+{self.weight_step:g} kg"
-        return f"{span} | {load}"
+        written = f"{span} | {load}"
+        return f"{written} | {self.notes}" if self.notes else written
 
 
 @dataclass(frozen=True)

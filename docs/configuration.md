@@ -289,7 +289,7 @@ they are not part of the document. Keep anything worth saying in an exercise's
 | `start_weight` | no | `0` | kg a **newly created** exercise starts at. Never read again once the step exists; progression owns the weight from then on |
 | `unit` | no | `reps` | `reps`, or `seconds` for timed holds like planks |
 | `bodyweight_factor` | no | `0` | The share of **you** this movement carries, 0 to 1. Read only by [`check`](#does-the-range-fit-the-step) |
-| `notes` | no | none | Free text: a cue, a link, a reminder. Read by nobody - not this tool, not Garmin |
+| `notes` | no | none | A cue read mid-set: how far from failure to stop, what the position should look like. Written to the watch on the end of the step's note, so keep it to one line - see [step notes](commands.md#step-notes) |
 
 `garmin_category` is worth filling in even though it is optional: Garmin
 sometimes logs a different name than the one programmed, and the category is

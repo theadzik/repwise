@@ -37,8 +37,20 @@ NOTE_FIELD = "description"
 
 #: The shape ExerciseSpec.note renders. Used to tell a note this tool wrote
 #: from a cue the user typed, so that only the former is ever overwritten.
+#:
+#: The trailing group is an exercise's own `notes`, written on the end of the
+#: generated part. It has to be here: without it a note carrying a cue stops
+#: looking like one of ours the moment it is written, and every later run reads
+#: it as hand-typed - leaving it alone, warning about it, and quietly never
+#: propagating a rep range or a step change again.
+#:
+#: The cost is that a cue typed into Connect *onto the end of a generated note*
+#: is overwritten rather than protected. That is the right way round now that
+#: the config carries cues of its own: `workouts.yaml` decides them, as it
+#: decides everything else about a step. A note typed from scratch still does
+#: not match, and is still left alone.
 GENERATED_NOTE = re.compile(
-    r"^\d+-\d+ (?:reps|s)(?: by \d+)? \| (?:bodyweight|\+[\d.]+ kg)$"
+    r"^\d+-\d+ (?:reps|s)(?: by \d+)? \| (?:bodyweight|\+[\d.]+ kg)(?: \| .*)?$"
 )
 
 # Garmin names the parts of a workout by id and by key together, and returns

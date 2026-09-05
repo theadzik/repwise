@@ -41,3 +41,26 @@ def test_bodyweight_and_time_based_read_from_the_load_and_unit():
     assert not spec().bodyweight
     assert spec(unit="seconds").time_based
     assert not spec().time_based
+
+
+# --- the note a watch reads ------------------------------------------------
+
+
+def test_a_note_says_the_range_and_the_step():
+    written = spec(rep_low=6, rep_high=10, weight_step=2.5).note
+    assert written == "6-10 reps | +2.5 kg"
+
+
+def test_an_exercise_cue_is_written_on_the_end_of_it():
+    """Which is the whole reason `notes` exists: it is read mid-set."""
+    written = spec(
+        rep_low=6, rep_high=10, weight_step=2.5, notes="2-3 RIR | brace, knees out"
+    ).note
+    assert written == "6-10 reps | +2.5 kg | 2-3 RIR | brace, knees out"
+
+
+def test_no_cue_leaves_the_note_exactly_as_it_was():
+    assert "|" in spec(rep_low=6, rep_high=10, weight_step=2.5, notes=None).note
+    assert (
+        spec(rep_low=6, rep_high=10, weight_step=2.5, notes=None).note.count("|") == 1
+    )
