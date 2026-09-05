@@ -438,3 +438,33 @@ def test_the_documented_findings_are_the_ones_the_checker_produces():
     raise_ = _documented(DOC_RAISE, 20, 3.0)
     assert "12% jump in effort" in raise_
     assert raise_ in written, f"docs/configuration.md is stale:\n  {raise_}"
+
+
+# --- a workout name no prefix would find -----------------------------------
+
+
+def test_a_key_no_prefix_claims_is_an_error():
+    """`update` writes the key to Garmin, so it is what the next session is
+    logged under - and nothing would match it."""
+    renamed = Workout("Gym Deadlift", "1", ["gym hinge"], [SQUAT_SPEC])
+    findings = check_workout(renamed, payload(SQUAT_GROUP))
+
+    assert len(findings) == 1
+    assert findings[0].severity == "error"
+    assert "'gym hinge'" in findings[0].detail
+    assert "'gym deadlift'" in findings[0].detail
+
+
+def test_keeping_the_old_prefix_beside_the_new_one_is_fine():
+    """Which is the whole point: past sessions keep matching, future ones match."""
+    renamed = Workout("Gym Deadlift", "1", ["gym deadlift", "gym hinge"], [SQUAT_SPEC])
+    assert check_workout(renamed, payload(SQUAT_GROUP)) == []
+
+
+def test_a_workout_declaring_no_prefixes_is_not_second_guessed():
+    assert (
+        check_workout(
+            Workout("Gym Deadlift", "1", [], [SQUAT_SPEC]), payload(SQUAT_GROUP)
+        )
+        == []
+    )

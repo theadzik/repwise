@@ -1344,3 +1344,40 @@ def test_a_session_that_missed_still_has_its_target_brought_into_range():
     assert plan.changes[0].reason == (
         "missed target, 8 on the worst set; outside the 6-10 range, brought to the top"
     )
+
+
+# --- the workout's own name ------------------------------------------------
+
+
+def a_named_workout(name):
+    built = a_stored_squat(8)
+    built["workoutName"] = name
+    return built
+
+
+def test_a_renamed_key_is_written_to_garmin():
+    """The config decides what a workout is, and its name is part of that."""
+    built = a_named_workout("Gym Hinge")
+    plan = plan_workout(a_workout(key="Gym Deadlift"), built)
+
+    assert plan.name is not None
+    assert (plan.name.was, plan.name.new) == ("Gym Hinge", "Gym Deadlift")
+    assert built["workoutName"] == "Gym Deadlift"
+
+
+def test_a_name_that_already_matches_is_left_alone():
+    plan = plan_workout(a_workout(key="Gym Squat"), a_named_workout("Gym Squat"))
+    assert plan.name is None
+
+
+def test_a_rename_alone_is_worth_saving_for():
+    """Nothing else moved, so without this the workout would not be written."""
+    plan = plan_workout(a_workout(key="Gym Deadlift"), a_named_workout("Gym Hinge"))
+    assert plan.writable
+
+
+def test_a_payload_with_no_name_is_not_given_one():
+    """A shell being created is named by `definition_for`, not renamed here."""
+    built = a_stored_squat(8)
+    built.pop("workoutName", None)
+    assert plan_workout(a_workout(key="Gym Squat"), built).name is None

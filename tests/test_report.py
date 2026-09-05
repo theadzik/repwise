@@ -11,11 +11,13 @@ import pytest
 from builders import spec
 
 from repwise.app.report import report_plan
+from repwise.app.report import rows as built_rows
 from repwise.domain.models import Workout
 from repwise.domain.progression import Target
 from repwise.planner import (
     Change,
     GapChange,
+    NameChange,
     NoteChange,
     Plan,
     RestChange,
@@ -43,13 +45,29 @@ def a_note(each):
     return NoteChange(each, "", "8-12 reps")
 
 
+def _table(caplog) -> int:
+    """Where the table's heading sits among everything `report_plan` said.
+
+    Found rather than counted to: the heading is preceded by the blank that
+    separates it from the workout's own heading block, and by a rename line
+    when there is one.
+    """
+    for index, record in enumerate(caplog.records):
+        if " ".join(record.message.split()).startswith("# EXERCISE"):
+            return index
+    raise AssertionError("no table was printed")
+
+
 def rows(caplog):
     """The table without its heading, as whitespace-collapsed cells."""
-    return [" ".join(record.message.split()) for record in caplog.records[1:]]
+    return [
+        " ".join(record.message.split())
+        for record in caplog.records[_table(caplog) + 1 :]
+    ]
 
 
 def heading(caplog):
-    return " ".join(caplog.records[0].message.split())
+    return " ".join(caplog.records[_table(caplog)].message.split())
 
 
 def test_the_heading_names_every_column(caplog):
@@ -129,7 +147,8 @@ def test_an_exercise_left_alone_has_a_blank_marker(caplog):
 
     report_plan(plan)
 
-    assert [record.message[0] for record in caplog.records[1:]] == [" ", "*"]
+    markers = [record.message[0] for record in caplog.records[_table(caplog) + 1 :]]
+    assert markers == [" ", "*"]
 
 
 def test_a_rename_is_one_row_where_the_exercise_now_sits(caplog):
@@ -198,3 +217,19 @@ def test_warnings_come_last_whatever_they_are_about(caplog):
     report_plan(plan)
 
     assert caplog.records[-1].message == "! Face Pull: not in the activity"
+
+
+def test_a_rename_is_announced_but_kept_out_of_the_table(caplog):
+    """Every row in the table is something the workout contains. The name is
+    what the workout is, so it is said with the heading instead."""
+    plan = a_plan(
+        name=NameChange("Gym Hinge", "Gym Deadlift"),
+        gaps=GapChange(2, (None, None), 90),
+        notes=[a_note(FIRST)],
+    )
+    report_plan(plan)
+
+    assert "Renaming: Gym Hinge -> Gym Deadlift" in caplog.records[0].message
+    assert caplog.records[1].message == "", "set apart from the table below it"
+    assert not any(r.name == "Workout name" for r in built_rows(plan))
+    assert built_rows(plan)[-1].name == "Between exercises", "the gap still last"

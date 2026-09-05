@@ -347,7 +347,6 @@ def sync_other_workouts(
 
         logger.info("")
         logger.info(f"Also in {other.key} (workout {other.garmin_workout_id}):")
-        logger.info("")
         report_plan(plan)
         plans.append(plan)
 
@@ -398,7 +397,6 @@ def shape_untrained(
             logger.info(
                 f"Shaping: {workout.key} -> workout {workout.garmin_workout_id}"
             )
-        logger.info("")
         report_plan(plan)
         plans.append(plan)
 
@@ -430,7 +428,6 @@ def advance_trained(  # noqa: PLR0913 - each argument is one independent input
             logger.info("")
         logger.info(f"Activity: {activity.get('activityName') or ''} ({activity_id})")
         logger.info(f"Updating: {workout.key} -> workout {workout.garmin_workout_id}")
-        logger.info("")
 
         sets_payload = session.exercise_sets(activity_id)
         payload = payloads[garmin_id(workout)]
@@ -559,6 +556,7 @@ def run_update(
     unskipped = counted(plans, lambda plan: (c.spec.garmin_name for c in plan.skips))
     # One per workout however many gap steps it touched: the config says it once.
     regaps = len({counted_as(plan.workout) for plan in plans if plan.gaps})
+    renames = len({counted_as(plan.workout) for plan in plans if plan.name})
     shaped = counted(plans, lambda plan: ((c.kind, c.name) for c in plan.reshaped))
     structure = (
         f", {shaped} exercise(s) would be added, removed or moved" if shaped else ""
@@ -569,6 +567,7 @@ def run_update(
         if regaps
         else ""
     )
+    renamed = f", {renames} workout(s) would be renamed" if renames else ""
     notes = f", {noted} note(s) would be refreshed" if noted else ""
     rests = f", {rested} rest time(s) would change" if rested else ""
     skips = (
@@ -581,11 +580,15 @@ def run_update(
         logger.info("")
         logger.info(
             f"Dry run: {updated} step(s) would change"
-            f"{structure}{counts}{rests}{skips}{between}{notes}. Re-run with --apply."
+            f"{structure}{counts}{rests}{skips}{between}{renamed}{notes}."
+            f" Re-run with --apply."
         )
         return ExitCode.OK
 
-    if not (updated or noted or rested or recounted or unskipped or regaps or shaped):
+    moved_anything = (
+        updated or noted or rested or recounted or unskipped or regaps or renames
+    )
+    if not (moved_anything or shaped):
         logger.info("")
         logger.info("Nothing to write.")
         return ExitCode.OK
@@ -600,6 +603,7 @@ def run_update(
         + (f" Set {rested} rest time(s)." if rested else "")
         + (f" Restored the last rest on {unskipped} step(s)." if unskipped else "")
         + (f" Set the rest between exercises in {regaps} workout(s)." if regaps else "")
+        + (f" Renamed {renames} workout(s)." if renames else "")
         + (f" Refreshed {noted} note(s)." if noted else "")
     )
 
