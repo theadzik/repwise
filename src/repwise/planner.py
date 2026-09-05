@@ -6,7 +6,7 @@ It mutates the workout payload it is handed but performs no I/O, so a caller
 can inspect a plan and discard it -- which is what a dry run does.
 """
 
-from collections.abc import Container
+from collections.abc import Container, Iterator
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -438,7 +438,7 @@ def _clamped(spec: ExerciseSpec, target: Target) -> Target:
     return Target(reps, target.weight, lead)
 
 
-def _config_fixups(spec: ExerciseSpec, target: Target):
+def _config_fixups(spec: ExerciseSpec, target: Target) -> Iterator[tuple[Target, str]]:
     """What the config alone says about a target, in the order it says it.
 
     Both of these are answers to an edit rather than to a session, which is why
@@ -454,8 +454,15 @@ def _config_fixups(spec: ExerciseSpec, target: Target):
     clamped = _clamped(spec, target)
     if clamped != target:
         span = f"{spec.rep_low}-{spec.rep_high}"
-        end = "top" if clamped.reps < target.reps else "bottom"
-        yield clamped, f"outside the {span} range, brought to the {end}"
+        if clamped.reps == target.reps:
+            # Only the ramp went. The base was inside the range the whole time
+            # and it is the leading sets - asking `rep_step` more - that were
+            # not, so neither end of the range is where this target was moved
+            # to and saying so would name a move that did not happen.
+            yield clamped, f"a ramp needs room the {span} range no longer has"
+        else:
+            end = "top" if clamped.reps < target.reps else "bottom"
+            yield clamped, f"outside the {span} range, brought to the {end}"
 
 
 def _judge(  # noqa: PLR0913 - each argument is one independent input

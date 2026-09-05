@@ -1298,6 +1298,21 @@ def test_a_ramp_the_new_range_cannot_hold_is_dropped():
     assert plan.moved[0].new == Target(10, 20.0, 0)
 
 
+def test_a_ramp_at_the_top_is_dropped_without_claiming_the_target_moved():
+    """The base was inside the range all along; only the leading sets were not.
+
+    Reporting this as "brought to the top" would name a move that did not
+    happen - the reps are identical either side of it.
+    """
+    plan = plan_workout(
+        a_workout(exercises=[NARROWED]), a_ramped_squat(base=10, lead=1)
+    )
+
+    assert plan.moved[0].old == Target(10, 20.0, 1)
+    assert plan.moved[0].new == Target(10, 20.0, 0)
+    assert plan.changes[0].reason == "a ramp needs room the 6-10 range no longer has"
+
+
 def test_a_ramp_the_new_range_still_holds_survives():
     built = a_ramped_squat(base=8, lead=1)
     plan = plan_workout(a_workout(exercises=[NARROWED]), built)
