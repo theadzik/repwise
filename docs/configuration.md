@@ -149,7 +149,7 @@ load:
     steps: [1.25, 2.5, 5.0]
 ```
 
-The jump taken is **the largest of them whose effort stays inside the tolerance
+The jump taken is **the largest of them whose effort stays inside the tolerances
 `check` already applies** - see [does the range fit the
 step?](#does-the-range-fit-the-step). So the increment walks up as the load
 does, without you tracking it:
@@ -499,13 +499,38 @@ it at face value would overstate the cost of every such reset and invent
 findings on exercises that are programmed perfectly well.
 
 Some movement is inherent - climbing the range again always gives back part of
-what the load gained - so only exercises past **10% either way** are reported.
-A well-programmed lift sits within a few percent of zero and stays quiet.
+what the load gained - so a well-programmed lift sits within a few percent of
+zero and stays quiet. The two directions are not the same size of problem, and
+they do not get the same threshold:
 
-One threshold serves both signs, which is a simplification rather than a claim
-that they are equally bad: a wide range only wastes sessions, where a narrow one
-stops progress dead. If the narrow side ever proves too quiet, split
-`TOLERATED_SHIFT` in two rather than moving it.
+| Direction | Reported past | What it costs |
+| --- | :---: | --- |
+| The reset **gives back more** than the load gained (a wide range) | **+15%** | Sessions re-treading ground, and nothing else |
+| The reset **gives back less** (a narrow range, a step too big) | **-7.5%** | Progress stopped: rule 5 refuses a load that cannot carry `rep_low` |
+
+The permissive side is set by the guidance it would otherwise convict. ACSM's
+[progression position stand](https://pubmed.ncbi.nlm.nih.gov/19204579/) asks for
+a "2-10% (lower percent for small muscle mass exercises, higher percent increase
+for large muscle mass exercises) increase in load", and 2% - the end it names for
+exactly the small-muscle work that gets a wide range - scores +14.3% on an
+ordinary 12-20. Anything under 15% reports a lateral raise progressed exactly as
+recommended. The cost of that sawtooth is time rather than adaptation:
+[hypertrophy is equivalent across a wide span of
+loads](https://pmc.ncbi.nlm.nih.gov/articles/PMC7927075/) when the sets are
+carried to the same proximity to failure, which they are.
+
+The strict side is set by its own error bars. Day-to-day 1RM reliability has a
+[median CV around
+4.2%](https://academicworks.cuny.edu/cgi/viewcontent.cgi?article=1338&context=le_pubs),
+and `reset_drop` is an Epley estimate that drifts past twelve reps, so a reading
+of -5% is inside the noise - an ordinary 6-10 squat taking 5 kg on 30 kg scores
+exactly that. Past 7.5% is a jump no rep range absorbs, where the exercise loops:
+climb the range, fail the jump, deload, climb it again.
+
+One consequence worth stating: a range narrower than about eight reps can never
+reach +15% however small the step, because with no step at all the shift is only
+`(rep_high - rep_low) / (30 + rep_high)`. Sawtooth findings are therefore always
+about the range being too wide, never about the step being too small.
 
 No suggestion is offered past 30 reps. A 1 kg step on a 1 kg dumbbell is a 100%
 jump that no rep range absorbs, and answering it with `12-47` would be

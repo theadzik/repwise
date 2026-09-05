@@ -1,5 +1,7 @@
 """Reporting drift between the config and Garmin."""
 
+from dataclasses import replace
+
 from builders import catalog, payload, rep_step, repeat, rest_step, spec
 
 from repwise.checker import check_catalog, check_programming, check_workout
@@ -200,9 +202,22 @@ CALF_SPEC = spec(
 )
 
 
+WIDE_CALF = replace(CALF_SPEC, rep_high=24)
+
+
+def test_the_calf_range_as_programmed_is_not_reported():
+    """5 kg on 100 kg is a 5% increase, which is what ACSM asks for, and a
+    12-20 range is ordinary for calves. Reporting it would convict the
+    guidance rather than the programming."""
+    assert (
+        check_programming(configured(CALF_SPEC), payload(CALF_GROUP), bodyweight=80.0)
+        == []
+    )
+
+
 def test_a_range_too_wide_for_its_real_step_is_reported():
     findings = check_programming(
-        configured(CALF_SPEC), payload(CALF_GROUP), bodyweight=80.0
+        configured(WIDE_CALF), payload(CALF_GROUP), bodyweight=80.0
     )
 
     assert len(findings) == 1
@@ -216,17 +231,17 @@ def test_the_suggestion_shows_how_much_room_there_is_around_it():
     """One number reads as the only answer. The tolerance is a band, and a
     range already inside it is not worth rewriting to the decimal."""
     findings = check_programming(
-        configured(CALF_SPEC), payload(CALF_GROUP), bodyweight=80.0
+        configured(WIDE_CALF), payload(CALF_GROUP), bodyweight=80.0
     )
 
-    assert "anything from 12-13 to 12-18 fits" in findings[0].detail
+    assert "anything from 12-13 to 12-21 fits" in findings[0].detail
 
 
 def test_the_bottom_of_the_range_is_never_suggested_away():
     """Whatever is wrong with the arithmetic, `rep_low` is a decision about
     how heavy the exercise gets and stays where it was put."""
     findings = check_programming(
-        configured(CALF_SPEC), payload(CALF_GROUP), bodyweight=80.0
+        configured(WIDE_CALF), payload(CALF_GROUP), bodyweight=80.0
     )
 
     assert findings[0].detail.count("12-") == 3, "every range offered starts at 12"
@@ -318,7 +333,7 @@ def stack(**kwargs):
         "garmin_name": "CABLE_CROSSOVER",
         "garmin_category": "FLYE",
         "rep_low": 12,
-        "rep_high": 20,
+        "rep_high": 24,
         "sets": 3,
         "load": "cable",
         "weight_step": 1.25,
@@ -328,7 +343,7 @@ def stack(**kwargs):
     return spec(**{**base, **kwargs})
 
 
-def test_a_micro_plate_is_not_reported_as_a_wall_on_a_heavy_stack():
+def test_a_micro_plate_is_not_reported_as_too_small_on_a_heavy_stack():
     """The finding has to be about the jump the tool would really prescribe.
 
     Judged on its smallest increment this stack reads as a range far too wide
@@ -356,7 +371,7 @@ def test_a_finding_names_the_increment_that_would_be_chosen():
     it is the one the finding has to be about."""
     wide = repeat(rep_step("CABLE_CROSSOVER", "FLYE", 25, 40.0), sets=3)
     findings = check_programming(
-        configured(stack(rep_low=12, rep_high=25)), payload(wide)
+        configured(stack(rep_low=12, rep_high=28)), payload(wide)
     )
 
     assert len(findings) == 1

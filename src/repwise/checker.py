@@ -27,11 +27,11 @@ Pure: takes a config and payloads, returns findings.
 from dataclasses import dataclass, replace
 
 from .domain.effort import (
-    TOLERATED_SHIFT,
     chosen_step,
     effective_load,
     fitting_rep_highs,
     reset_drop,
+    within_tolerance,
 )
 from .domain.matching import ExerciseIndex
 from .domain.models import ExerciseSpec, Workout
@@ -273,7 +273,7 @@ def check_programming(
             tiers=(),
         )
         shift = reset_drop(stepped, target.weight, carried)
-        if shift is None or abs(shift) <= TOLERATED_SHIFT:
+        if shift is None or within_tolerance(shift):
             continue
 
         load = effective_load(stepped, target.weight, carried)

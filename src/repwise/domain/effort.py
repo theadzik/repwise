@@ -38,24 +38,68 @@ from .models import ExerciseSpec, LoadTier
 #: twelve reps and calf work lives well past that.
 EPLEY_REPS = 30.0
 
-#: How far rule 3 may shift the effort, in *either* direction, before `check`
-#: mentions it.
+#: How much easier rule 3's reset may leave an exercise before `check` says so.
 #:
-#: Some shift is inherent to double progression: topping out the range and
-#: climbing it again from `rep_low` gives back part of what the load just
-#: gained, and a well-programmed barbell lift still hands back a few percent
-#: every cycle. A strict "never moves" test would fire on nearly every exercise
-#: and mean nothing. Ten percent is where the ordinary sawtooth stops and a
-#: mismatch between the range and the step begins.
+#: The permissive side, and deliberately so. A positive shift means the range
+#: hands back more than the weight jump took, which costs sessions re-treading
+#: ground and nothing else: the sets are still carried to the same proximity to
+#: failure, and hypertrophy is [equivalent across a wide span of
+#: loads](https://pmc.ncbi.nlm.nih.gov/articles/PMC7927075/) when they are. It
+#: is a bill paid in time, not in adaptation.
 #:
-#: One threshold for both signs, which is a deliberate simplification rather
-#: than a claim that they are equally bad. A range too wide only wastes
-#: sessions re-treading ground; a range too narrow puts a wall in front of
-#: every weight jump, and rule 5 refusing the load turns that into a loop -
-#: climb the range, fail the jump, deload, climb it again. The narrow side
-#: therefore deserves to fire sooner, and if it ever proves too quiet the fix
-#: is to split this constant in two rather than to move it.
-TOLERATED_SHIFT = 0.10
+#: Fifteen percent because a smaller figure convicts the guidance itself. ACSM's
+#: [progression position stand](https://pubmed.ncbi.nlm.nih.gov/19204579/) asks
+#: for a "2-10% (lower percent for small muscle mass exercises, higher percent
+#: increase for large muscle mass exercises) increase in load", and the low end
+#: of that - the end it names for small muscle mass, which is most of what gets
+#: a wide range - lands at +14.3% on an ordinary 12-20. A threshold under that
+#: reports a lateral raise progressed exactly as recommended.
+#:
+#: There is a ceiling on this side that the other does not have: with no step at
+#: all the shift is `(rep_high - rep_low) / (30 + rep_high)`, so what is really
+#: being measured is a range too wide to be paid for. No range narrower than
+#: about eight reps can reach 15% however small the step, which is the intended
+#: reading - past that width the range is the thing to change, and inside it the
+#: step always can be.
+TOLERATED_SAWTOOTH = 0.15
+
+#: How much *harder* rule 3's reset may leave an exercise before `check` says so.
+#:
+#: The strict side. A negative shift means the load gained more than the range
+#: gives back, so the set straight after the jump is heavier than anything the
+#: last cycle asked for - and rule 5 refuses a load that cannot be carried for
+#: `rep_low`, which turns it into a loop: climb the range, fail the jump,
+#: deload, climb it again. That is progress stopped, not progress slowed.
+#:
+#: Seven and a half percent: a third tighter than the sawtooth side allows in
+#: absolute terms and half what it was when one figure served both, but not so
+#: tight that it fires inside its own error bars.
+#:
+#: Two floors set it. Day-to-day 1RM reliability has a [median CV of about
+#: 4.2%](https://academicworks.cuny.edu/cgi/viewcontent.cgi?article=1338&context=le_pubs),
+#: so a reset harder by less than that is one a good day absorbs and no advice
+#: is owed. And `reset_drop` is an Epley estimate on both sides, drifting past
+#: twelve reps by its own admission above, which puts a few more percent of
+#: slack under any reading. A threshold at 5% sits on top of both: an ordinary
+#: 6-10 squat taking 5 kg on 30 kg scores exactly -5.0%, and calling that a
+#: defect would be reporting the arithmetic's own noise as a finding.
+#:
+#: What is left past 7.5% is a jump no rep range in the config absorbs - the
+#: 1 kg step on a 2 kg dumbbell, the 2.5 kg step on a 2.5 kg one - where rule 5
+#: refuses the load and the exercise loops: climb the range, fail the jump,
+#: deload, climb it again. That is progress stopped rather than slowed, which is
+#: why this side is the strict one.
+TOLERATED_WALL = 0.075
+
+
+def within_tolerance(shift: float) -> bool:
+    """Whether a reset this far from break-even is worth reporting.
+
+    The one place the asymmetry lives. Both signs are defects and they are the
+    same quantity, but they are not the same size of problem, so they do not
+    get the same threshold.
+    """
+    return -TOLERATED_WALL <= shift <= TOLERATED_SAWTOOTH
 
 
 def effective_load(spec: ExerciseSpec, weight: float, bodyweight: float = 0.0) -> float:
@@ -149,9 +193,10 @@ def fitting_rep_highs(
     spec: ExerciseSpec,
     weight: float,
     bodyweight: float = 0.0,
-    tolerance: float = TOLERATED_SHIFT,
+    sawtooth: float = TOLERATED_SAWTOOTH,
+    wall: float = TOLERATED_WALL,
 ) -> RepHighs | None:
-    """Every `rep_high` whose reset lands within `tolerance`, and the best one.
+    """Every `rep_high` whose reset is tolerable, and the best one.
 
     A range too wide is narrowed and one too narrow is widened, both by moving
     the same end. **`rep_low` is never suggested**, and that is a statement
@@ -191,7 +236,7 @@ def fitting_rep_highs(
         spec.rep_low + spec.rep_step, _HIGHEST_USEFUL_REPS + 1, spec.rep_step
     ):
         shift = reset_drop(replace(spec, rep_high=candidate), weight, bodyweight)
-        if shift is not None and abs(shift) <= tolerance:
+        if shift is not None and -wall <= shift <= sawtooth:
             fits.append((abs(shift), candidate))
 
     if not fits:
@@ -232,7 +277,7 @@ def chosen_step(spec: ExerciseSpec, weight: float, bodyweight: float = 0.0) -> f
         drop = reset_drop(replace(spec, weight_step=step, tiers=()), weight, bodyweight)
         if drop is None:
             continue
-        if abs(drop) <= TOLERATED_SHIFT:
+        if within_tolerance(drop):
             return step
         if best is None or abs(drop) < best[1]:
             best = (step, abs(drop))
