@@ -19,7 +19,6 @@ from ..domain.progression import Target
 from ..planner import (
     Change,
     GapChange,
-    NameChange,
     NoteChange,
     Plan,
     RestChange,
@@ -225,18 +224,6 @@ def gaps_row(change: GapChange) -> Row:
     )
 
 
-def name_row(change: NameChange) -> Row:
-    """The workout's own name, which belongs to no exercise in it."""
-    return Row(
-        marker="*",
-        name="Workout name",
-        action="rename",
-        before=change.was,
-        after=change.new,
-        why="from workouts.yaml",
-    )
-
-
 def gather(plan: Plan) -> dict[str, Gathered]:
     """Everything the plan says, by the exercise it says it about."""
     found: dict[str, Gathered] = {}
@@ -266,18 +253,16 @@ def rows(plan: Plan) -> list[Row]:
     does, so a removal follows them, and the rest between exercises - which
     belongs to the whole workout rather than to any one of them - comes last.
 
-    The workout's own name leads, above the exercises rather than below them.
-    It is the only row that renames the thing being listed rather than
-    something in it, and reading that after eight exercise rows would be
-    finding out what you have been looking at once you had finished.
+    The workout's own name is not among them. Every row here is something the
+    workout contains; the name is what the workout *is*, so it is announced
+    with the heading instead - see `report_plan`.
     """
     described = {spec.name: spec for spec in plan.workout.exercises}
     places = {name: place for place, name in enumerate(described, 1)}
     gathered = gather(plan)
 
     ordered = sorted(gathered, key=lambda name: places.get(name, len(places) + 1))
-    built = [name_row(plan.name)] if plan.name else []
-    built += [
+    built = [
         exercise_row(places.get(name), name, gathered[name], described.get(name))
         for name in ordered
     ]
@@ -322,6 +307,13 @@ def joins(row: Row) -> str:
 
 
 def report_plan(plan: Plan) -> None:
+    # Above the table and under the heading the caller has just printed, which
+    # is where the workout is being named anyway. It is a fact about the
+    # workout rather than about anything in it, and a table of exercises is no
+    # place to say it.
+    if plan.name:
+        logger.info(f"Renaming: {plan.name.was} -> {plan.name.new}")
+
     for text in render(rows(plan)):
         logger.info(text)
 

@@ -202,17 +202,16 @@ def test_warnings_come_last_whatever_they_are_about(caplog):
     assert caplog.records[-1].message == "! Face Pull: not in the activity"
 
 
-def test_the_workout_name_leads_the_table():
-    """It renames the thing being listed, not something in it, so it goes
-    above the exercises rather than after them."""
+def test_a_rename_is_announced_but_kept_out_of_the_table(caplog):
+    """Every row in the table is something the workout contains. The name is
+    what the workout is, so it is said with the heading instead."""
     plan = a_plan(
         name=NameChange("Gym Hinge", "Gym Deadlift"),
         gaps=GapChange(2, (None, None), 90),
         notes=[a_note(FIRST)],
     )
-    built = built_rows(plan)
+    report_plan(plan)
 
-    assert built[0].name == "Workout name"
-    assert built[0].action == "rename"
-    assert (built[0].before, built[0].after) == ("Gym Hinge", "Gym Deadlift")
-    assert built[-1].name == "Between exercises", "the gap still comes last"
+    assert "Renaming: Gym Hinge -> Gym Deadlift" in caplog.records[0].message
+    assert not any(r.name == "Workout name" for r in built_rows(plan))
+    assert built_rows(plan)[-1].name == "Between exercises", "the gap still last"
