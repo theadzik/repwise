@@ -29,7 +29,7 @@ computed from the stored weight exactly as they always were.
 
 from dataclasses import dataclass, replace
 
-from .models import ExerciseSpec
+from .models import ExerciseSpec, LoadTier
 
 #: Epley's divisor: one rep is worth roughly 1/30 of the load. Used only to
 #: compare two prescriptions of the *same* exercise, where much of the error in
@@ -197,3 +197,116 @@ def fitting_rep_highs(
     if not fits:
         return None
     return RepHighs(min(fits)[1], fits[0][1], fits[-1][1])
+
+
+def chosen_step(spec: ExerciseSpec, weight: float, bodyweight: float = 0.0) -> float:
+    """Which of a tier's increments to add at this weight.
+
+    A tier naming one step has nothing to choose and returns it. Where it names
+    several - a stack that takes micro-plates as well as pin moves - the right
+    one depends on how heavy the load already is, which is the whole reason the
+    choice cannot be made in the config file: 2.5 kg on a 5 kg stack is a wall,
+    and on a 60 kg stack it is beneath noticing.
+
+    The rule is the largest step whose jump `reset_drop` still calls tolerable.
+    Reading it in the two directions the drop already means:
+
+    - A step too big for the load leaves a large *negative* drop - the range
+      cannot give back what the weight took - so it is refused, and a lighter
+      one is tried.
+    - A step too small leaves a large *positive* drop, the range handing back
+      more than the load gained. Those are tolerable but wasteful, so taking
+      the largest that fits walks the step up as the load grows.
+
+    Where nothing fits - a band so narrow that every step is a wall - the least
+    bad is returned rather than nothing, because rule 3 has to prescribe
+    something and refusing to progress is worse than progressing roughly.
+    """
+    tier = spec.tier_for(weight)
+    steps = tier.steps or (spec.weight_step,)
+    if len(steps) == 1:
+        return steps[0]
+
+    best: tuple[float, float] | None = None
+    for step in sorted(steps, reverse=True):
+        drop = reset_drop(replace(spec, weight_step=step, tiers=()), weight, bodyweight)
+        if drop is None:
+            continue
+        if abs(drop) <= TOLERATED_SHIFT:
+            return step
+        if best is None or abs(drop) < best[1]:
+            best = (step, abs(drop))
+    return best[0] if best else steps[0]
+
+
+def _rungs_above(tier: LoadTier, weight: float, step: float) -> float | None:
+    """The lightest load this tier can express that is heavier than `weight`.
+
+    Counted from the tier's own floor rather than from `weight`, so a load that
+    is not on this rack's grid - carried over from another rack, or typed into
+    the watch by hand - lands back on it rather than dragging the offset along
+    for good.
+    """
+    if step <= 0:
+        return None
+    if weight < tier.minimum:
+        return tier.minimum
+    rungs = int((weight - tier.minimum) / step) + 1
+    landed = tier.minimum + rungs * step
+    if tier.maximum is not None and landed > tier.maximum:
+        # The last pair on the rack is still a pair: a step past the ceiling is
+        # shortened to land on it, exactly as rule 3 has always done.
+        return tier.maximum if weight < tier.maximum else None
+    return landed
+
+
+def next_weight_above(
+    spec: ExerciseSpec, weight: float, bodyweight: float = 0.0
+) -> float | None:
+    """The next load up, crossing onto the next rack where this one ends.
+
+    `None` is the end of the equipment: the heaviest tier at its ceiling, with
+    nothing above it to move to.
+    """
+    span = spec.tier_span
+    tier = spec.tier_for(weight)
+    landed = _rungs_above(tier, weight, chosen_step(spec, weight, bodyweight))
+    if landed is not None:
+        return landed
+    heavier = [nxt for nxt in span if nxt.minimum > tier.minimum]
+    if not heavier:
+        return None
+    # Crossing racks lands on the lightest load the next one can express that
+    # is heavier than where we are. Its own floor, normally - the two racks
+    # meet at a gap, 10 kg to 12 - but a rack that starts below where you
+    # already are is walked up its grid instead of stepping backwards.
+    nxt = heavier[0]
+    if nxt.minimum > weight:
+        return nxt.minimum
+    return _rungs_above(nxt, weight, chosen_step(spec, nxt.minimum, bodyweight))
+
+
+def next_weight_below(
+    spec: ExerciseSpec, weight: float, bodyweight: float = 0.0
+) -> float | None:
+    """The next load down, dropping onto the rack below where this one starts.
+
+    `None` is the bottom of the equipment. A deload that reaches it stays put:
+    there is no lighter weight to prescribe, which is what `min_weight` has
+    always meant.
+    """
+    span = spec.tier_span
+    tier = spec.tier_for(weight)
+    step = chosen_step(spec, weight, bodyweight)
+    if step > 0 and weight - step >= tier.minimum:
+        return weight - step
+    lighter = [prev for prev in span if prev.minimum < tier.minimum]
+    if not lighter:
+        return None
+    prev = lighter[-1]
+    if prev.maximum is not None and prev.maximum < weight:
+        return prev.maximum
+    below = _rungs_above(
+        prev, weight - step, chosen_step(spec, prev.minimum, bodyweight)
+    )
+    return below if below is not None and below < weight else prev.minimum

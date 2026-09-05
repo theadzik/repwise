@@ -12,6 +12,55 @@ BODYWEIGHT = "bodyweight"
 
 
 @dataclass(frozen=True)
+class LoadTier:
+    """One rack in a group: how light and heavy it goes, and how it steps.
+
+    A load type is a *group* of these, in ascending order. Most groups hold
+    exactly one - a barbell is a barbell, and the plates run out long after you
+    do - and that single tier is what every config written before groups
+    existed resolves to, which is why nothing had to change to keep working.
+
+    Two kinds of equipment need more than one, and they are different problems
+    wearing the same word:
+
+    **Racks.** Two tiers with disjoint ranges: the fixed dumbbells that run
+    1-10 kg in ones, and the rack next to them that starts at 12 and goes up in
+    twos. Exactly one tier holds any given weight, so the tier is chosen by
+    what is on the bar, and topping one out moves to the next.
+
+    **Increments.** One tier whose `steps` names several: a cable stack that
+    takes 1.25 kg micro-plates as readily as a 5 kg pin move. Every step is
+    available at every weight, so the choice is not geometry but effort - see
+    `chosen_step` in `domain/effort.py`.
+
+    Both fall out of the same two fields, which is why they are one class: a
+    tier says what loads exist between its ends, and a group says which tiers
+    exist. Nothing here knows why you own two racks.
+    """
+
+    #: The lightest this tier goes. Every rack has a bottom, and a deload that
+    #: does not know it prescribes a weight you have no way to make up.
+    minimum: float
+    #: The heaviest, or None where the equipment outlasts you.
+    maximum: float | None
+    #: The increments this tier can express, ascending. One is the ordinary
+    #: case; several means the load can be micro-plated and the right size of
+    #: jump depends on how heavy it already is.
+    steps: tuple[float, ...]
+
+    @property
+    def step(self) -> float:
+        """The smallest increment, which is what a single-step tier states."""
+        return self.steps[0] if self.steps else 0.0
+
+    def holds(self, weight: float) -> bool:
+        """Whether this tier can express `weight` at all."""
+        if weight < self.minimum:
+            return False
+        return self.maximum is None or weight <= self.maximum
+
+
+@dataclass(frozen=True)
 class ExerciseSpec:
     """One exercise as declared in workouts.yaml."""
 
@@ -57,6 +106,35 @@ class ExerciseSpec:
     #: Declared once as settings.partial_progression and resolved onto every
     #: exercise, the way a weight step is.
     partial_progression: bool = True
+    #: The equipment this exercise is loaded on, ascending. Empty means the
+    #: load type said nothing a single `weight_step`, `min_weight` and
+    #: `max_weight` could not, which is every config written before groups
+    #: existed; `tier_span` builds the one tier those three describe, so
+    #: nothing downstream has to ask which kind of file it came from.
+    tiers: tuple[LoadTier, ...] = ()
+
+    @property
+    def tier_span(self) -> tuple[LoadTier, ...]:
+        """The tiers, or the single one this exercise's own bounds describe."""
+        if self.tiers:
+            return self.tiers
+        return (LoadTier(self.min_weight, self.max_weight, (self.weight_step,)),)
+
+    def tier_for(self, weight: float) -> LoadTier:
+        """Which rack `weight` is on.
+
+        A weight between two racks - 11 kg, with one ending at 10 and the next
+        starting at 12 - belongs to neither, and is answered with the heavier,
+        because a load above a rack's ceiling got there by going up. The same
+        answer serves a weight below every rack, where the lightest is the only
+        one that could ever hold it.
+        """
+        span = self.tier_span
+        for tier in span:
+            if tier.holds(weight):
+                return tier
+        above = [tier for tier in span if tier.minimum > weight]
+        return above[0] if above else span[-1]
 
     @property
     def bodyweight(self) -> bool:

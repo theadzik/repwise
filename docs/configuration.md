@@ -91,6 +91,83 @@ load:
 | `min` | yes | The lightest this equipment goes, in kg. A [deload](progression.md#deloading) stops here rather than prescribing a weight you have no way to make up |
 | `step` | yes | kg added when an exercise on this load tops out its rep range |
 | `max` | no | The heaviest it goes. Topping out the range stops here rather than prescribing a weight you cannot load. Left out, there is no ceiling |
+| `racks` | no | A group of racks, lightest first, where one name covers equipment with gaps in it. See [groups of racks](#groups-of-racks) |
+| `steps` | no | Several increments instead of one `step`, where the equipment can be micro-loaded. See [choosing the increment](#choosing-the-increment) |
+
+### Groups of racks
+
+Some equipment is not one continuous range. The fixed dumbbells run 1-10 kg in
+ones, and the pairs beside them start at 12 kg and go up in twos: two racks, one
+gap, and no 11 kg dumbbell anywhere. Declaring them as separate load types works
+until an exercise tops the first one out, at which point it parks - `max` is the
+end of the load, and nothing tells it there is more equipment in the room.
+
+`racks` says there is:
+
+```yaml
+load:
+  dumbbell_gym:
+    racks:
+      - {min: 1.0,  max: 10.0, step: 1.0}   # the small fixed pairs
+      - {min: 12.0, max: 40.0, step: 2.0}   # the rack next to them
+```
+
+An exercise names the *group* - `load: dumbbell_gym` - and which rack it is on
+is decided by what is on the bar. Topping out the 10 kg pair prescribes 12 kg
+and the 2 kg step that comes with it; nothing in the file changes, and no state
+is kept, because the weight itself says which rack you are on.
+
+The boundary is crossable in both directions. A 10 to 12 kg jump is a real 20%,
+and if it turns out to be too much, a [deload](progression.md#deloading) drops
+back to 10 kg rather than parking at a floor it only reached by graduating.
+
+Racks are listed lightest first and may not overlap, because a weight in two of
+them would belong to neither. A rack with another above it must state its `max`,
+or the one above could never be reached. And a group states its equipment in
+`racks` alone: naming `min`, `max` or `step` beside them is refused rather than
+guessed at.
+
+An exercise that overrides `weight_step`, `min_weight` or `max_weight` opts out
+of the group and states its own single rack. A `max_weight` on one movement is
+where *that* movement stops, not an invitation to graduate onto the next rack
+anyway.
+
+### Choosing the increment
+
+A cable stack that takes micro-plates can be moved by 1.25 kg as readily as by
+the 5 kg the pin gives you. Which is right depends on how heavy it already is:
+2.5 kg on a 5 kg stack is a wall, and on a 60 kg stack it is beneath noticing.
+No single `step` is right at both ends, and no config file knows where on the
+stack you will be.
+
+`steps` names what the equipment can express and lets the weight decide:
+
+```yaml
+load:
+  cable_gym:
+    min: 5.0
+    steps: [1.25, 2.5, 5.0]
+```
+
+The jump taken is **the largest of them whose effort stays inside the tolerance
+`check` already applies** - see [does the range fit the
+step?](#does-the-range-fit-the-step). So the increment walks up as the load
+does, without you tracking it:
+
+| On the stack | Step taken |
+| --- | --- |
+| 5 kg | 1.25 kg |
+| 20 kg | 2.5 kg |
+| 45 kg and up | 5 kg |
+
+Because the choice satisfies `check`'s own criterion, an exercise loaded this
+way stops appearing in its findings: the step is picked to fit the range rather
+than reported for not fitting it. Where the range is so narrow that no
+increment fits, the least bad is taken - rule 3 has to prescribe something, and
+progressing roughly beats refusing to progress.
+
+`step` and `steps` are alternatives; naming both is refused. A rack inside a
+`racks` group may name `steps` of its own.
 
 **The names are yours, and that is the point.** One word does not tell one rack
 from another: the dumbbells at home start at 1 kg and stop at 10, the fixed

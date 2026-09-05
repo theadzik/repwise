@@ -4,11 +4,15 @@ from builders import spec
 
 from repwise.domain.effort import (
     TOLERATED_SHIFT,
+    chosen_step,
     effective_load,
     fitting_rep_highs,
+    next_weight_above,
+    next_weight_below,
     reset_drop,
     worked_reps,
 )
+from repwise.domain.models import LoadTier
 
 #: The exercise this module exists for: 12-20 reps, 5 kg step, and 80 kg of
 #: lifter riding on top of a 20 kg stack.
@@ -243,3 +247,90 @@ def test_a_wide_range_is_still_fixed_by_narrowing_it():
 def test_micro_loading_fixes_what_no_range_can():
     """A 1 kg step on 1 kg is a 100% jump; no rep range absorbs that."""
     assert fitting_rep_highs(RAISE, 1.0) is None
+
+
+# --- load groups: racks and increments ------------------------------------
+
+RACKS = (LoadTier(1.0, 10.0, (1.0,)), LoadTier(12.0, 40.0, (2.0,)))
+STACK = (LoadTier(5.0, None, (1.25, 2.5, 5.0)),)
+
+
+def _racked(**kwargs):
+    return spec(
+        rep_low=10,
+        rep_high=15,
+        tiers=RACKS,
+        min_weight=1.0,
+        max_weight=40.0,
+        weight_step=1.0,
+        **kwargs,
+    )
+
+
+def test_a_rack_steps_by_its_own_increment():
+    assert next_weight_above(_racked(), 8.0) == 9.0
+    assert next_weight_above(_racked(), 12.0) == 14.0
+
+
+def test_topping_a_rack_out_crosses_onto_the_next():
+    """10 kg is the last pair on the small rack; the large one starts at 12."""
+    assert next_weight_above(_racked(), 10.0) == 12.0
+
+
+def test_the_last_load_on_the_heaviest_rack_has_nothing_above_it():
+    assert next_weight_above(_racked(), 40.0) is None
+
+
+def test_a_step_past_a_rack_ceiling_lands_on_it():
+    """9 + 2 would be 11, which neither rack holds; the 10 kg pair does."""
+    wide = spec(
+        rep_low=10,
+        rep_high=15,
+        weight_step=2.0,
+        tiers=(LoadTier(1.0, 10.0, (2.0,)),),
+        min_weight=1.0,
+        max_weight=10.0,
+    )
+    assert next_weight_above(wide, 9.0) == 10.0
+
+
+def test_a_deload_drops_back_onto_the_rack_below():
+    """The boundary is crossable both ways, so a premature jump self-corrects."""
+    assert next_weight_below(_racked(), 12.0) == 10.0
+
+
+def test_the_lightest_load_in_the_group_has_nothing_below_it():
+    assert next_weight_below(_racked(), 1.0) is None
+
+
+def test_one_increment_is_returned_without_being_chosen():
+    assert chosen_step(_racked(), 8.0) == 1.0
+
+
+def test_the_increment_grows_with_the_load():
+    """1.25 kg is a wall on a light stack and beneath noticing on a heavy one."""
+    stack = spec(rep_low=10, rep_high=15, tiers=STACK, min_weight=5.0, weight_step=1.25)
+    assert chosen_step(stack, 5.0) == 1.25
+    assert chosen_step(stack, 20.0) == 2.5
+    assert chosen_step(stack, 45.0) == 5.0
+
+
+def test_the_lifter_counts_towards_choosing_an_increment():
+    """A calf raise carrying 80 kg of you can take the biggest step at once."""
+    stack = spec(
+        rep_low=10,
+        rep_high=15,
+        tiers=STACK,
+        min_weight=5.0,
+        weight_step=1.25,
+        bodyweight_factor=1.0,
+    )
+    assert chosen_step(stack, 5.0, bodyweight=80.0) == 5.0
+    assert chosen_step(stack, 5.0, bodyweight=0.0) == 1.25
+
+
+def test_a_spec_with_no_tiers_behaves_as_it_always_did():
+    plain = spec(weight_step=2.5, min_weight=20.0)
+    assert next_weight_above(plain, 45.0) == 47.5
+    assert next_weight_below(plain, 22.5) == 20.0
+    assert next_weight_below(plain, 20.0) is None

@@ -27,6 +27,7 @@ is where a miss streak is read from.
 from collections import Counter
 from dataclasses import dataclass, field
 
+from .effort import next_weight_above, next_weight_below
 from .models import ExerciseSpec
 
 
@@ -233,7 +234,12 @@ def _missed(spec: ExerciseSpec, current: Target, floor: int) -> str:
 
 
 def _deload(
-    spec: ExerciseSpec, current: Target, weight: float, reps: list[int]
+    spec: ExerciseSpec,
+    current: Target,
+    weight: float,
+    reps: list[int],
+    *,
+    bodyweight: float = 0.0,
 ) -> tuple[Target, str]:
     """Give something back, having now missed the same target twice.
 
@@ -258,12 +264,14 @@ def _deload(
         stalled = "stalled at the bottom of the range"
         if spec.bodyweight or spec.weight_step <= 0:
             return current, f"{stalled}, and there is no load to take off"
-        lighter = weight - spec.weight_step
-        if lighter < spec.min_weight:
-            return (
-                current,
-                f"{stalled}, already at the {spec.min_weight:g} kg minimum",
-            )
+        # The mirror of rule 3's question, and the reason a rack boundary is
+        # crossable in both directions: a jump onto the next rack that proves
+        # too heavy drops back onto the one below rather than parking at a
+        # floor it only reached by graduating.
+        lighter = next_weight_below(spec, weight, bodyweight)
+        if lighter is None:
+            floor_kg = spec.tier_span[0].minimum
+            return current, f"{stalled}, already at the {floor_kg:g} kg minimum"
         return Target(spec.rep_low, lighter), f"{stalled}, take a step off the load"
 
     # At least one rung down, and no higher than the session managed: a near
@@ -293,12 +301,14 @@ def _deload(
     return eased, "missed twice, ease to where the session landed"
 
 
-def _advance(
+def _advance(  # noqa: PLR0913 - each argument is one independent input
     spec: ExerciseSpec,
     current: Target,
     weight: float,
     floor: int,
     streak: int,
+    *,
+    bodyweight: float = 0.0,
 ) -> tuple[Target, str]:
     """Move a session that counted, by an amount the streak behind it decides.
 
@@ -328,40 +338,47 @@ def _advance(
         # different weight moves the prescription by more than one step. Name
         # what was lifted, otherwise the jump looks arbitrary.
         lifted = f" at {weight:g} kg" if rebased else ""
-        heavier = weight + spec.weight_step
-        # `max_weight` is the heaviest load that exists to be prescribed, so a
-        # step past it is shortened to land *on* it rather than refused. The
-        # last pair on the rack is still a pair, and stopping short of a weight
-        # you own would leave the top of your equipment permanently unused for
-        # the sake of a step size the equipment never promised to divide into.
+        # The equipment says what exists above this weight, which is a question
+        # only it can answer: the step depends on how heavy the load already is
+        # where a stack takes micro-plates, and the answer crosses onto the
+        # next rack where this one ends. A step past a rack's ceiling is
+        # shortened to land *on* it rather than refused - the last pair on the
+        # rack is still a pair - and `None` comes back only when the whole span
+        # has run out.
         #
         # Not the mirror of the deload's floor, deliberately. A short step up
         # is a smaller increase than usual, which is always safe to prescribe;
         # a short step *down* is a smaller decrease than usual, which may not
         # be enough to break the stall that asked for it. So the ceiling is
         # rounded to and the floor is refused.
-        if spec.max_weight is not None and heavier > spec.max_weight:
-            if weight >= spec.max_weight:
-                # Nothing left to add. The target settles at the top of the
-                # range, which is where bodyweight work already lives: once
-                # the load has run out, the range is all there is to progress.
-                # "past" rather than "at" for a load above the ceiling, which
-                # is what a target set before the ceiling was declared leaves
-                # behind. Rule 3 does not pull it down - taking load off is the
-                # deload's job - so the report has to be able to say so.
-                sits = "already at" if weight == spec.max_weight else "past"
-                return (
-                    Target(spec.rep_high, weight),
-                    f"top of the range, {sits} the {spec.max_weight:g} kg maximum",
-                )
+        heavier = next_weight_above(spec, weight, bodyweight)
+        if heavier is None:
+            # Nothing left to add. The target settles at the top of the range,
+            # which is where bodyweight work already lives: once the load has
+            # run out, the range is all there is to progress. "past" rather
+            # than "at" for a load above the ceiling, which is what a target
+            # set before the ceiling was declared leaves behind. Rule 3 does
+            # not pull it down - taking load off is the deload's job - so the
+            # report has to be able to say so.
+            ceiling = spec.tier_span[-1].maximum
+            sits = "already at" if weight == ceiling else "past"
+            shown = weight if ceiling is None else ceiling
             return (
-                Target(spec.rep_low, spec.max_weight),
-                f"hit {floor} on every set{lifted}, top of the range, "
-                f"up to the {spec.max_weight:g} kg maximum",
+                Target(spec.rep_high, weight),
+                f"top of the range, {sits} the {shown:g} kg maximum",
             )
+        # Three shapes of the same move, and the report is the only place they
+        # differ: a plain step, a step shortened to land on the rack's own
+        # ceiling, and a step that ran off the end of one rack onto the next.
+        here = spec.tier_for(weight)
+        landed = ""
+        if here.maximum is not None and heavier == here.maximum > weight:
+            landed = f", up to the {here.maximum:g} kg maximum"
+        elif spec.tier_for(heavier) != here:
+            landed = f", onto the next rack at {heavier:g} kg"
         return (
             Target(spec.rep_low, heavier),
-            f"hit {floor} on every set{lifted}, top of the range",
+            f"hit {floor} on every set{lifted}, top of the range{landed}",
         )
 
     # Rule 2, one set at a time. A unit is a `rep_step` on a single set, filled
@@ -415,6 +432,7 @@ def next_target(
     current: Target,
     performed: list[PerformedSet],
     streak: int = 0,
+    bodyweight: float = 0.0,
 ) -> tuple[Target, str]:
     """Decide the next prescription for one exercise.
 
@@ -422,6 +440,13 @@ def next_target(
     `miss_streak`, and only narrows how far a session that counted moves the
     target. It defaults to none, which is the smoothly-progressing case and the
     behaviour this tool had before granular progression existed.
+
+    `bodyweight` is read only where a load type names several increments, to
+    decide which of them this weight deserves; everything else about a target
+    is settled without it. Zero - the default - simply values the lifter at
+    nothing, which is exactly right for the stack-only exercises that make up
+    most of any routine and harmless for the rest, because a step chosen a size
+    small still progresses.
 
     Returns the new target plus a short human-readable reason.
     """
@@ -485,7 +510,7 @@ def next_target(
     # match. Only meaningful while the load is unchanged.
     if not rebased and not hit(spec, current, counted):
         if streak >= STALLED_AFTER:
-            return _deload(spec, current, weight, counted)
+            return _deload(spec, current, weight, counted, bodyweight=bodyweight)
         return current, _missed(spec, current, floor)
 
-    return _advance(spec, current, weight, floor, streak)
+    return _advance(spec, current, weight, floor, streak, bodyweight=bodyweight)
