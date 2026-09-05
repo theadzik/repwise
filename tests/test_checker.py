@@ -1,5 +1,6 @@
 """Reporting drift between the config and Garmin."""
 
+import pathlib
 from dataclasses import replace
 
 from builders import catalog, payload, rep_step, repeat, rest_step, spec
@@ -378,3 +379,62 @@ def test_a_finding_names_the_increment_that_would_be_chosen():
     detail = findings[0].detail
     assert "+5 kg" in detail, "the step chosen at 40 kg, not the 1.25 kg floor"
     assert "1.25" not in detail
+
+
+# --- the worked examples in the documentation ------------------------------
+
+
+DOCUMENTED = pathlib.Path(__file__).resolve().parents[1] / "docs" / "configuration.md"
+
+#: The two exercises `docs/configuration.md` walks through, as it describes
+#: them: a calf raise whose range is too wide for its step even with the lifter
+#: counted, and a lateral raise whose step is too big for its load.
+DOC_CALF = spec(
+    name="Weighted Standing Calf Raise",
+    garmin_name="WEIGHTED_STANDING_CALF_RAISE",
+    garmin_category="CALF_RAISE",
+    rep_low=12,
+    rep_high=24,
+    sets=3,
+    load="machine",
+    weight_step=5.0,
+    bodyweight_factor=1.0,
+)
+DOC_RAISE = spec(
+    name="Dumbbell Lateral Raise",
+    garmin_name="DUMBBELL_LATERAL_RAISE",
+    garmin_category="LATERAL_RAISE",
+    rep_low=12,
+    rep_high=20,
+    sets=3,
+    load="dumbbell",
+    weight_step=1.0,
+)
+
+
+def _documented(exercise, reps, weight, bodyweight=None):
+    group = repeat(
+        rep_step(exercise.garmin_name, exercise.garmin_category, reps, weight),
+        sets=exercise.sets,
+    )
+    findings = check_programming(configured(exercise), payload(group), bodyweight)
+    assert len(findings) == 1
+    return " ".join(findings[0].detail.split())
+
+
+def test_the_documented_findings_are_the_ones_the_checker_produces():
+    """The worked examples are hand-written, so they drift in silence.
+
+    Both thresholds have moved once already and took these with them: the
+    figures in the file were still the ones a symmetric 10% produced. Nothing
+    failed, because nothing was checking. This is.
+    """
+    written = " ".join(DOCUMENTED.read_text().split())
+
+    calf = _documented(DOC_CALF, 20, 21.0, bodyweight=80.0)
+    assert "18% drop in effort" in calf
+    assert calf in written, f"docs/configuration.md is stale:\n  {calf}"
+
+    raise_ = _documented(DOC_RAISE, 20, 3.0)
+    assert "12% jump in effort" in raise_
+    assert raise_ in written, f"docs/configuration.md is stale:\n  {raise_}"

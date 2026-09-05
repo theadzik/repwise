@@ -398,11 +398,14 @@ written so the stored weight is the whole load.
 
 [Rule 3](progression.md#the-five-rules) tops out the range, adds a step, and
 resets to `rep_low`. That trade only works if the step is worth more than the
-reps just given back. A calf raise programmed 12-20 with a 5 kg step looks like
+reps just given back. A calf raise programmed 12-24 with a 5 kg step looks like
 a 25% jump on a 20 kg stack - ample. With 80 kg of lifter on top it is a 5%
-jump, nowhere near enough to pay for dropping 20 reps to 12, and the "weight
-increase" leaves the exercise about 12% *easier* than it was. You then spend
-six sessions climbing back to ground you already held.
+jump, nowhere near enough to pay for dropping 24 reps to 12, and the "weight
+increase" leaves the exercise about 18% *easier* than it was. You then spend
+twelve sessions climbing back to ground you already held.
+
+The same step over 12-20 gives back 12%, which is inside the tolerance and goes
+unreported: the range, not the step, is what makes the wide case a finding.
 
 The mirror image is just as wrong. A lateral raise programmed 12-20 at 3 kg
 steps by 1 kg, which is a 33% jump - so the reset to 12 reps is about 12%
@@ -417,14 +420,14 @@ weight the exercise is loaded to today:
 ```text
 Workout A (1631254436)
  ! Weighted Standing Calf Raise: +5 kg on 101 kg is 5.0%, but resetting
-   20->12 reps gives back more, so the weight increase is a 12% drop in
-   effort (make it 12-14; anything from 12-13 to 12-18 fits, or accept
+   24->12 reps gives back more, so the weight increase is a 18% drop in
+   effort (make it 12-14; anything from 12-13 to 12-21 fits, or accept
    the sawtooth)
 
 Workout B (1641921176)
  ! Dumbbell Lateral Raise: +1 kg on 3 kg is 33.3%, but resetting 20->12
    reps gives back less, so the weight increase is a 12% jump in effort
-   (make it 12-26; anything from 12-21 to 12-30 fits, or take a smaller step)
+   (make it 12-26; anything from 12-23 to 12-30 fits, or take a smaller step)
 ```
 
 | Sign | Meaning | Costs you | Fix |
