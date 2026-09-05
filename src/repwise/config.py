@@ -49,15 +49,15 @@ _REQUIRED = ("name", "garmin_name", "rep_low", "rep_high", "sets", "load")
 
 
 @dataclass(frozen=True)
-class WeightType:
-    """One named set of weights: how it steps, and how light and heavy it goes.
+class LoadType:
+    """One named way of loading: how it steps, and how light and heavy it goes.
 
     Named by the user rather than drawn from a list of equipment types, because
     one word does not tell one rack from another: the dumbbells at home start
     at 1 kg and stop at 10, the pair in the gym start at 2 and run to 40. Both
     are dumbbells, and a deload can only be told what exists to prescribe if
-    they are declared apart. So each rack is named, and an exercise's `load`
-    says which one it is performed on.
+    they are declared apart. So each rack is named under the top-level `load`,
+    and an exercise's own `load` says which one it is performed on.
 
     All three are properties of the equipment rather than of any one exercise -
     a rack goes up in ones, starts at one and ends at whatever the heaviest
@@ -65,8 +65,8 @@ class WeightType:
     really differs.
     """
 
-    #: kg added when a rep range is topped out. Required: weights that cannot
-    #: say how they step cannot progress anything.
+    #: kg added when a rep range is topped out. Required: a load type that
+    #: cannot say how it steps cannot progress anything.
     step: float
     #: The lightest this equipment goes: the smallest bar on the rack, the
     #: lightest pair, the top plate of the stack. Required, because every rack
@@ -78,15 +78,16 @@ class WeightType:
     maximum: float | None = None
 
 
-#: The three maps `weights` replaced, each keyed by load type.
+#: The three maps the top-level `load` replaced, each keyed by load type.
 _MOVED = ("weight_steps", "min_weights", "max_weights")
 
 
 def _reject_moved_settings(settings: dict, path: str) -> None:
-    """Say what became of the three maps that `weights` replaced.
+    """Say what became of the three maps that the top-level `load` replaced.
 
     They were keyed by a fixed idea of equipment - one `dumbbell` entry for
-    every dumbbell you own - which is the thing `weights` exists to undo.
+    every dumbbell you own - which is the thing named load types exist to
+    undo.
     Loading such a file halfway would quietly drop its floors, ceilings and
     steps, so it is refused outright with the shape to write instead.
     """
@@ -97,9 +98,9 @@ def _reject_moved_settings(settings: dict, path: str) -> None:
     named = ", ".join(f"settings.{key}" for key in found)
     raise ConfigError(
         f"{path}: {named} {'has' if len(found) == 1 else 'have'} been replaced "
-        f"by a top-level 'weights' key. Each named set of weights states its "
-        f"own step and how light and heavy it goes:\n"
-        f"    weights:\n"
+        f"by a top-level 'load' key. Each named load type states its own step "
+        f"and how light and heavy it goes:\n"
+        f"    load:\n"
         f"      barbell:\n"
         f"        min: 12.0\n"
         f"        step: 2.5\n"
@@ -336,10 +337,8 @@ class Problems:
         raise ConfigError(f"{len(self.found)} problems:\n{listed}")
 
 
-def _weight_types(
-    declared: Any, path: str, problems: Problems
-) -> dict[str, WeightType]:
-    """The named sets of weights an exercise may be loaded from.
+def _load_types(declared: Any, path: str, problems: Problems) -> dict[str, LoadType]:
+    """The named ways of loading an exercise, from the top-level `load`.
 
     Every name here is the user's own - `barbell`, `gym_dumbbell`,
     `home_dumbbell`, whatever tells one rack from another. Only `bodyweight` is
@@ -354,30 +353,30 @@ def _weight_types(
 
     A broken entry is recorded and then kept, in the shape it can be, so that
     the exercises using it are still checked rather than each being reported a
-    second time as naming weights that do not exist.
+    second time as naming a load type that does not exist.
     """
     if declared is None:
         return {}
     if not isinstance(declared, dict):
-        problems.add(f"{path}: 'weights' should be a mapping of name to min/max/step")
+        problems.add(f"{path}: 'load' should be a mapping of name to min/max/step")
         return {}
 
-    types: dict[str, WeightType] = {}
+    types: dict[str, LoadType] = {}
     #: Lower-cased name -> the name as written, for a message that can be
     #: found in the file.
     written: dict[str, str] = {}
     for name, entry in declared.items():
-        where = f"{path}: weights.{name}"
+        where = f"{path}: load.{name}"
         key = str(name).lower()
         if key == BODYWEIGHT:
             problems.add(
                 f"{where} is a reserved name: an exercise loaded {BODYWEIGHT!r} "
-                f"has no equipment, so it draws on no weights of yours"
+                f"has no equipment, so it draws on no load type of yours"
             )
             continue
         if key in written:
             problems.add(
-                f"{where} and weights.{written[key]} are one name: weights are "
+                f"{where} and load.{written[key]} are one name: load types are "
                 f"matched in lower case, so only one of the two would survive"
             )
             continue
@@ -409,13 +408,13 @@ def _weight_types(
             )
             maximum = None
 
-        types[key] = WeightType(step=step, minimum=minimum, maximum=maximum)
+        types[key] = LoadType(step=step, minimum=minimum, maximum=maximum)
 
     return types
 
 
 def _bounds(
-    raw: dict, weights: WeightType | None, where: str, problems: Problems
+    raw: dict, load_type: LoadType | None, where: str, problems: Problems
 ) -> tuple[float, float | None]:
     """How light and how heavy this exercise may be loaded.
 
@@ -424,8 +423,8 @@ def _bounds(
     impossible loads, and that is only visible once both are known.
 
     The two ends default differently, and deliberately. The floor comes from
-    the weights the exercise names, which always state one; nothing but a
-    bodyweight movement, which has no weights, reaches the zero here. No
+    the load type the exercise names, which always states one; nothing but a
+    bodyweight movement, which names none, reaches the zero here. No
     ceiling is `None` rather than zero, because zero is a real maximum -
     nothing may be added at all - and equipment that does not run out before
     you do is the common case.
@@ -436,7 +435,7 @@ def _bounds(
     """
     declared_minimum = raw.get("min_weight")
     if declared_minimum is None:
-        minimum = weights.minimum if weights else 0.0
+        minimum = load_type.minimum if load_type else 0.0
     else:
         minimum = float(declared_minimum)
     if minimum < 0:
@@ -445,7 +444,7 @@ def _bounds(
 
     declared_maximum = raw.get("max_weight")
     if declared_maximum is None:
-        ceiling = weights.maximum if weights else None
+        ceiling = load_type.maximum if load_type else None
         if ceiling is None:
             return minimum, None
         maximum = ceiling
@@ -489,7 +488,7 @@ def _bodyweight_factor(raw: dict, where: str, problems: Problems) -> float:
 
 def _build_exercise(
     raw: dict,
-    types: dict[str, WeightType],
+    types: dict[str, LoadType],
     where: str,
     problems: Problems,
     *,
@@ -501,25 +500,25 @@ def _build_exercise(
         problems.add(f"{where}: exercise is missing {', '.join(missing)}")
         return None
 
-    # Lower-cased to match the weights, which are keyed that way, and stored
+    # Lower-cased to match the load types, which are keyed that way, and stored
     # lower-cased so that everything reading a load downstream - the bodyweight
     # test, the sync that refuses to cross equipment - compares like with like.
     load = str(raw["load"]).lower()
-    # Bodyweight is the one load that names no weights: there is no equipment
-    # to describe, and nothing to add to it.
-    weights = None if load == BODYWEIGHT else types.get(load)
-    if load != BODYWEIGHT and weights is None:
+    # Bodyweight is the one load that names no load type: there is no
+    # equipment to describe, and nothing to add to it.
+    load_type = None if load == BODYWEIGHT else types.get(load)
+    if load != BODYWEIGHT and load_type is None:
         known = ", ".join(sorted(types)) or "none"
         problems.add(
             f"{where}: exercise {raw['name']!r} has load {load!r}, which is "
-            f"not among the weights defined at the top level ({known})"
+            f"not among the load types defined at the top level ({known})"
         )
 
     # An exercise may set its own step, e.g. the deadlift moves in bigger jumps
-    # than the other barbell lifts. Otherwise the weights it names decide.
+    # than the other barbell lifts. Otherwise the load type it names decides.
     declared_step = raw.get("weight_step")
     if declared_step is None:
-        weight_step = weights.step if weights else 0.0
+        weight_step = load_type.step if load_type else 0.0
     else:
         weight_step = float(declared_step)
         if weight_step <= 0 and load != BODYWEIGHT:
@@ -545,7 +544,7 @@ def _build_exercise(
         problems.add(f"{where}: {raw['name']!r} has a negative start_weight")
         start_weight = 0.0
 
-    min_weight, max_weight = _bounds(raw, weights, where, problems)
+    min_weight, max_weight = _bounds(raw, load_type, where, problems)
     if max_weight is not None and start_weight > max_weight:
         # `start_weight` is read only when the step is created, which is the
         # one moment nothing else could catch this: no session has been logged
@@ -582,7 +581,7 @@ def _build_exercise(
 
 def _build_workout(
     entry: dict,
-    types: dict[str, WeightType],
+    types: dict[str, LoadType],
     path: str,
     problems: Problems,
     *,
@@ -719,7 +718,7 @@ def load_config(path: str | None = None) -> Config:
     bodyweight = None if declared_bodyweight is None else float(declared_bodyweight)
 
     problems = Problems()
-    types = _weight_types(data.get("weights"), path, problems)
+    types = _load_types(data.get("load"), path, problems)
     workouts: dict[str, Workout] = {}
     for entry in data["workouts"]:
         workout = _build_workout(

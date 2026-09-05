@@ -213,7 +213,7 @@ def active(name, category, reps, grams, duration=40.0):
 FIXTURE = """
 settings:
 
-weights:
+load:
   barbell:
     min: 12.0
     step: 5.0

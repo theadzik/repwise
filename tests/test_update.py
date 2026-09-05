@@ -323,7 +323,7 @@ def test_a_dry_run_writes_nothing(account):
 
 
 NEW_WORKOUT = """\
-weights:
+load:
   barbell:
     min: 12.0
     step: 2.5

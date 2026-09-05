@@ -16,7 +16,7 @@ complete working A/B split annotated field by field, or generate one with
 
 - [Where the file lives](#where-the-file-lives)
 - [Settings](#settings)
-- [Weights](#weights)
+- [Load types](#load-types)
 - [Workout fields](#workout-fields)
 - [Exercise fields](#exercise-fields)
 - [Load and weight steps](#load-and-weight-steps)
@@ -63,13 +63,14 @@ settings:
 | `partial_progression` | `true` | Whether a hit after a stall may move only some of the sets, which is what writes an uneven target such as `8+2`. Off, every set moves together in both directions, and an uneven target Garmin still holds is [levelled up](progression.md#turning-partial-progression-off) on the next run |
 | `bodyweight` | your Garmin weigh-ins | Your weight in kg, when you would rather state it than have it read. Only ever an input to [`check`](#does-the-range-fit-the-step); no target depends on it |
 
-## Weights
+## Load types
 
-`weights` is a top-level key, beside `settings` and `workouts`. Each entry is a
-set of weights you actually own or train on, under a name of your choosing:
+`load` is a top-level key, beside `settings` and `workouts` - the same word an
+exercise uses to point at one. Each entry is a way you actually load a lift,
+under a name of your choosing:
 
 ```yaml
-weights:
+load:
   barbell:
     min: 12.0          # the smallest bar on the rack, not the standard 20 kg
     step: 2.5
@@ -88,7 +89,7 @@ weights:
 | Key | Required | Meaning |
 | --- | :---: | --- |
 | `min` | yes | The lightest this equipment goes, in kg. A [deload](progression.md#deloading) stops here rather than prescribing a weight you have no way to make up |
-| `step` | yes | kg added when an exercise on these weights tops out its rep range |
+| `step` | yes | kg added when an exercise on this load tops out its rep range |
 | `max` | no | The heaviest it goes. Topping out the range stops here rather than prescribing a weight you cannot load. Left out, there is no ceiling |
 
 **The names are yours, and that is the point.** One word does not tell one rack
@@ -113,8 +114,8 @@ here, and never gains load.
 `settings.weight_steps`, `settings.min_weights` and `settings.max_weights` were
 three maps keyed by a fixed idea of equipment - one `dumbbell` entry for every
 dumbbell you own - which is what this replaces. A file still using them is
-refused with the shape to write instead; move each load type into one `weights`
-entry carrying its `min`, `step` and any `max`.
+refused with the shape to write instead; move each load type into one entry
+under the top-level `load`, carrying its `min`, `step` and any `max`.
 
 ## Workout fields
 
@@ -195,8 +196,8 @@ they are not part of the document. Keep anything worth saying in an exercise's
 | `rep_high` | yes | | Top of the range; clearing it on every set earns a weight jump |
 | `sets` | yes | | Working sets, written to the Garmin workout by `update --apply` |
 | `rep_step` | no | `1` | Reps added when a target is met. Use `2` for exercises counted per side |
-| `load` | yes | | Which of your [`weights`](#weights) this is performed on, or `bodyweight` |
-| `weight_step` | no | from `load` | kg added when the range is topped out, overriding those weights' `step` |
+| `load` | yes | | Which of your [load types](#load-types) this is performed on, or `bodyweight` |
+| `weight_step` | no | from `load` | kg added when the range is topped out, overriding that type's `step` |
 | `min_weight` | no | from `load` | The lightest this exercise can be loaded, overriding their `min` |
 | `max_weight` | no | from `load` | The heaviest this exercise can be loaded, overriding their `max`. No ceiling unless one is set |
 | `rest` | no | none | Seconds between sets, written to the Garmin workout by `update --apply`. Left out, Garmin's own rest is kept |
@@ -229,11 +230,12 @@ down; see [rest between sets](commands.md#rest-between-sets).
 
 ## Load and weight steps
 
-`load` does real work: it names the [`weights`](#weights) the exercise is
-performed on, and those decide its step, its floor and its ceiling.
+An exercise's `load` does real work: it names the [load type](#load-types) the
+exercise is performed on, and that decides its step, its floor and its ceiling.
 `bodyweight` is the exception - it names nothing, and never gains load. Any
-other `load` must be a name defined in `weights`; an unknown one is refused,
-and the error lists what you did define, which is how a typo is spotted.
+other `load` must be a name declared in the top-level `load`; an unknown one is
+refused, and the error lists what you did declare, which is how a typo is
+spotted.
 
 A per-exercise `weight_step` overrides that step. A deadlift is the usual case:
 it recruits far more musculature than the other barbell lifts, so novice
@@ -243,22 +245,22 @@ programs step it by 5 kg where a bench or curl gets 2.5 kg. Drop it back once
 `min_weight` overrides the floor, and answers how light a
 [deload](progression.md#deloading) may go for this one movement: a machine
 whose stack starts at 15 kg, or a barbell lift you would not perform with less
-than the 20 kg bar even though a 12 kg one exists. Usually the rack's own `min`
-is the whole answer and no exercise needs to say anything.
+than the 20 kg bar even though a 12 kg one exists. Usually the load type's own
+`min` is the whole answer and no exercise needs to say anything.
 
 ## Running out of weight
 
-A weights entry's `max`, and the per-exercise `max_weight` that overrides it,
-are the mirror of the floor: the heaviest load that exists to be prescribed. Without
+A load type's `max`, and the per-exercise `max_weight` that overrides it, are
+the mirror of the floor: the heaviest load that exists to be prescribed. Without
 one, rule 3 keeps adding a step every time you clear the top of the range, and
 sooner or later it asks for a weight you do not own - which is a target you
 cannot log a session against at all, so nothing that follows can put it right
 on its own.
 
-Weights with no `max` have no ceiling, and that is the right default for a gym:
-the rack outlasts you. Set one where the equipment really ends - the pair of
-dumbbells at home, a stack whose last plate you are already on - either on the
-weights themselves, or per exercise where only that one movement is capped.
+A load type with no `max` has no ceiling, and that is the right default for a
+gym: the rack outlasts you. Set one where the equipment really ends - the pair
+of dumbbells at home, a stack whose last plate you are already on - either on
+the load type itself, or per exercise where only that one movement is capped.
 
 The last step is shortened to land on the maximum rather than refused. At a
 2.5 kg step and a 10 kg ceiling, 9 kg goes to 10 kg, not to 11.5 kg and not
@@ -445,11 +447,10 @@ The config is validated on load, and a bad file is rejected outright rather
 than half-applied. You get an error naming the file and workout for:
 
 - a missing required field
-- a `load` naming no entry in `weights`
-- a `weights` entry missing its `min` or `step`, or whose `max` is below its
-  own `min`
-- two `weights` entries whose names differ only in case, or one named
-  `bodyweight`, which is reserved
+- an exercise `load` naming no declared load type
+- a load type missing its `min` or `step`, or whose `max` is below its own `min`
+- two load types whose names differ only in case, or one named `bodyweight`,
+  which is reserved
 - a `weight_step` of zero or less, which would never progress
 - `rep_step` below 1
 - `rep_low >= rep_high`
@@ -469,7 +470,7 @@ Every problem in the file is reported at once, rather than one per run:
   - workouts.yaml:Workout A: 'Barbell Back Squat' has rep_low >= rep_high
   - workouts.yaml:Workout A: exercise is missing sets
   - workouts.yaml:Workout B: exercise 'Plank' has load 'kettlebell', which
-    is not among the weights defined at the top level (barbell, machine)
+    is not among the load types defined at the top level (barbell, machine)
 ```
 
 ## Reusing what is on disk

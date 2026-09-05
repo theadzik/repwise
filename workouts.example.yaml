@@ -43,9 +43,9 @@
 #   sets            prescribed working sets
 #   rest            seconds between sets, written to the Garmin workout;
 #                   leave it out to keep whatever Garmin already prescribes
-#   load            which of the `weights` below this is performed on, or
+#   load            which of the load types below this is performed on, or
 #                   bodyweight, which needs no entry there and never gains load
-#   weight_step     kg added on a weight jump, overriding those weights' step
+#   weight_step     kg added on a weight jump, overriding that type's step
 #   start_weight    kg a newly created exercise starts at; never read again
 #                   once the step exists, progression owns the weight from then
 #   unit            reps (default) or seconds for timed holds
@@ -103,14 +103,14 @@ settings:
   # here if you do not weigh in, and it wins over anything Garmin has.
   # bodyweight: 81.0
 
-# The weights you actually have, each set of them under a name of your own.
-# An exercise's `load` names one of these, and that is what decides how it
+# The ways you actually load a lift, each under a name of your own. An
+# exercise's own `load` names one of these, and that is what decides how it
 # progresses. Every entry states:
 #
 #   min   required. The lightest this equipment goes, in kg: the smallest bar
 #         on the rack, the lightest pair, the top plate of a stack. A deload
 #         stops here rather than prescribing a weight you cannot make up.
-#   step  required. kg added when an exercise on these weights tops out its
+#   step  required. kg added when an exercise on this load tops out its
 #         rep range.
 #   max   optional. The heaviest it goes. Topping out the range stops here
 #         rather than prescribing a weight you cannot load. Leave it out and
@@ -124,7 +124,7 @@ settings:
 #
 # `bodyweight` is the one name spoken for: an exercise loaded that way has no
 # equipment, needs no entry here, and never gains load.
-weights:
+load:
   barbell:
     min: 12.0
     step: 2.5
