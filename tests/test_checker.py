@@ -3,7 +3,7 @@
 from builders import catalog, payload, rep_step, repeat, rest_step, spec
 
 from repwise.checker import check_catalog, check_programming, check_workout
-from repwise.domain.models import Workout
+from repwise.domain.models import LoadTier, Workout
 
 SQUAT_GROUP = repeat(
     rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0), sets=4, rest=120.0
@@ -297,3 +297,69 @@ def test_the_pair_is_read_as_entered():
     assert len(findings) == 1
     # 24 kg of dumbbell as entered, plus 0.85 of 80 kg.
     assert "+2 kg on 92 kg" in findings[0].detail
+
+
+# --- load types offering more than one increment ---------------------------
+
+
+MICRO = (LoadTier(5.0, None, (1.25, 2.5, 5.0)),)
+
+STACK_GROUP = repeat(rep_step("CABLE_CROSSOVER", "FLYE", 20, 30.0), sets=3)
+
+
+def stack(**kwargs):
+    """A cable stack that takes micro-plates as readily as a pin move.
+
+    `weight_step` is the smallest of them, which is what config resolves onto a
+    spec whose load type names several.
+    """
+    base = {
+        "name": "Cable Crossover",
+        "garmin_name": "CABLE_CROSSOVER",
+        "garmin_category": "FLYE",
+        "rep_low": 12,
+        "rep_high": 20,
+        "sets": 3,
+        "load": "cable",
+        "weight_step": 1.25,
+        "min_weight": 5.0,
+        "tiers": MICRO,
+    }
+    return spec(**{**base, **kwargs})
+
+
+def test_a_micro_plate_is_not_reported_as_a_wall_on_a_heavy_stack():
+    """The finding has to be about the jump the tool would really prescribe.
+
+    Judged on its smallest increment this stack reads as a range far too wide
+    for 1.25 kg; rule 3 was never going to take 1.25 kg at 30 kg, so there is
+    nothing to report.
+    """
+    assert check_programming(configured(stack()), payload(STACK_GROUP)) == []
+
+
+def test_the_same_stack_is_reported_when_judged_on_its_smallest_increment():
+    """The other half of the pair: pinning the step by hand brings it back.
+
+    An exercise overriding `weight_step` opts out of the group, which is
+    exactly the spec config builds for it, and then 1.25 kg really is what
+    would be added.
+    """
+    findings = check_programming(configured(stack(tiers=())), payload(STACK_GROUP))
+
+    assert len(findings) == 1
+    assert "+1.25 kg" in findings[0].detail
+
+
+def test_a_finding_names_the_increment_that_would_be_chosen():
+    """Where no increment fits, the least bad is still the one prescribed, so
+    it is the one the finding has to be about."""
+    wide = repeat(rep_step("CABLE_CROSSOVER", "FLYE", 25, 40.0), sets=3)
+    findings = check_programming(
+        configured(stack(rep_low=12, rep_high=25)), payload(wide)
+    )
+
+    assert len(findings) == 1
+    detail = findings[0].detail
+    assert "+5 kg" in detail, "the step chosen at 40 kg, not the 1.25 kg floor"
+    assert "1.25" not in detail

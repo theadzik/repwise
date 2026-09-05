@@ -2,6 +2,7 @@
 
 from builders import held, spec
 
+from repwise.domain.models import LoadTier
 from repwise.domain.progression import PerformedSet as P
 from repwise.domain.progression import (
     Session,
@@ -867,3 +868,63 @@ def test_the_heavier_set_never_flatters_the_reps():
         CALF_RAISE, Target(15, 20.0), [P(15, 20.0), P(15, 20.0), P(18, 30.0)]
     )
     assert target == Target(16, 20.0), why
+
+
+# --- load groups ----------------------------------------------------------
+
+FLYE = spec(
+    name="Incline Dumbbell Flye",
+    rep_low=10,
+    rep_high=14,
+    weight_step=1.0,
+    min_weight=1.0,
+    max_weight=40.0,
+    tiers=(LoadTier(1.0, 10.0, (1.0,)), LoadTier(12.0, 40.0, (2.0,))),
+)
+
+
+def test_topping_out_a_rack_graduates_to_the_next_one():
+    """10 kg is the heaviest pair on the small rack, so rule 3 crosses over."""
+    target, why = next_target(FLYE, Target(14, 10.0), [P(14, 10.0)] * 3)
+    assert target == Target(10, 12.0), why
+    assert "onto the next rack at 12 kg" in why
+
+
+def test_climbing_within_a_rack_says_nothing_about_racks():
+    target, why = next_target(FLYE, Target(14, 12.0), [P(14, 12.0)] * 3)
+    assert target == Target(10, 14.0), why
+    assert "rack" not in why
+
+
+def test_a_stall_after_graduating_drops_back_to_the_rack_below():
+    """Crossing is reversible: 12 kg proved too heavy, so 10 kg is offered."""
+    target, why = next_target(FLYE, Target(10, 12.0), [P(8, 12.0)] * 3, streak=1)
+    assert target == Target(10, 10.0), why
+    assert "take a step off the load" in why
+
+
+def test_the_top_of_the_heaviest_rack_is_the_end_of_the_load():
+    target, why = next_target(FLYE, Target(14, 40.0), [P(14, 40.0)] * 3)
+    assert target == Target(14, 40.0), why
+    assert "already at the 40 kg maximum" in why
+
+
+def test_the_bottom_of_the_lightest_rack_refuses_a_deload():
+    target, why = next_target(FLYE, Target(10, 1.0), [P(8, 1.0)] * 3, streak=1)
+    assert target == Target(10, 1.0), why
+    assert "already at the 1 kg minimum" in why
+
+
+def test_the_increment_chosen_grows_with_the_load():
+    """One stack, three plate sizes: the jump matches what is already on it."""
+    stack = spec(
+        rep_low=10,
+        rep_high=15,
+        weight_step=1.25,
+        min_weight=5.0,
+        tiers=(LoadTier(5.0, None, (1.25, 2.5, 5.0)),),
+    )
+    light, _ = next_target(stack, Target(15, 5.0), [P(15, 5.0)] * 3)
+    heavy, _ = next_target(stack, Target(15, 45.0), [P(15, 45.0)] * 3)
+    assert light == Target(10, 6.25)
+    assert heavy == Target(10, 50.0)

@@ -1055,3 +1055,111 @@ def test_yaml_spells_yes_and_no_several_ways_and_all_of_them_work(write_config):
     for spelling in ("true", "True", "yes", "on"):
         config = load_config(flagged(write_config, spelling))
         assert config.garmin.activity_caching is True, spelling
+
+
+# --- load groups ----------------------------------------------------------
+
+GROUPED = """
+load:
+  dumbbell-gym:
+    racks:
+      - {min: 1.0, max: 10.0, step: 1.0}
+      - {min: 12.0, max: 40.0, step: 2.0}
+  cable-gym:
+    min: 5.0
+    steps: [1.25, 2.5, 5.0]
+workouts:
+  - key: A
+    garmin_workout_id: "1"
+    activity_prefixes: [a]
+    exercises:
+      - name: Flye
+        garmin_name: INCLINE_DUMBBELL_FLYE
+        rep_low: 10
+        rep_high: 14
+        sets: 3
+        load: %s
+"""
+
+
+def _only(write_config, load="dumbbell-gym"):
+    return load_config(write_config(GROUPED % load))["A"].exercises[0]
+
+
+def test_racks_become_tiers_in_order(write_config):
+    flye = _only(write_config)
+    assert [(t.minimum, t.maximum, t.steps) for t in flye.tiers] == [
+        (1.0, 10.0, (1.0,)),
+        (12.0, 40.0, (2.0,)),
+    ]
+
+
+def test_a_group_spans_from_its_lightest_rack_to_its_heaviest(write_config):
+    flye = _only(write_config)
+    assert (flye.min_weight, flye.max_weight, flye.weight_step) == (1.0, 40.0, 1.0)
+
+
+def test_several_increments_are_carried_ascending(write_config):
+    cross = _only(write_config, load="cable-gym")
+    assert cross.tiers[0].steps == (1.25, 2.5, 5.0)
+    assert cross.weight_step == 1.25
+
+
+def test_one_rack_taking_one_increment_carries_no_tiers(write_config):
+    """What `min`, `max` and `step` already say needs no second telling."""
+    plain = GROUPED.replace(
+        "    racks:\n      - {min: 1.0, max: 10.0, step: 1.0}\n"
+        "      - {min: 12.0, max: 40.0, step: 2.0}",
+        "    min: 1.0\n    max: 10.0\n    step: 1.0",
+    )
+    spec = load_config(write_config(plain % "dumbbell-gym"))["A"].exercises[0]
+    assert spec.tiers == ()
+
+
+def test_an_exercise_overriding_a_bound_states_its_own_single_rack(write_config):
+    """A max_weight on one movement is where it stops, not where it graduates."""
+    capped = GROUPED % "dumbbell-gym"
+    capped = capped.replace(
+        "        sets: 3\n", "        sets: 3\n        max_weight: 8.0\n"
+    )
+    spec = load_config(write_config(capped))["A"].exercises[0]
+    assert spec.tiers == ()
+    assert spec.max_weight == 8.0
+
+
+def test_overlapping_racks_are_refused(write_config):
+    bad = GROUPED.replace(
+        "{min: 12.0, max: 40.0, step: 2.0}", "{min: 8.0, max: 40.0, step: 2.0}"
+    )
+    with pytest.raises(ConfigError, match="overlaps"):
+        load_config(write_config(bad % "dumbbell-gym"))
+
+
+def test_racks_listed_out_of_order_are_refused(write_config):
+    light = "      - {min: 1.0, max: 10.0, step: 1.0}"
+    heavy = "      - {min: 12.0, max: 40.0, step: 2.0}"
+    bad = GROUPED.replace(f"{light}\n{heavy}", f"{heavy}\n{light}")
+    with pytest.raises(ConfigError, match="lightest first"):
+        load_config(write_config(bad % "dumbbell-gym"))
+
+
+def test_a_rack_with_no_ceiling_below_another_is_refused(write_config):
+    bad = GROUPED.replace("{min: 1.0, max: 10.0, step: 1.0}", "{min: 1.0, step: 1.0}")
+    with pytest.raises(ConfigError, match="never be reached"):
+        load_config(write_config(bad % "dumbbell-gym"))
+
+
+def test_naming_both_step_and_steps_is_refused(write_config):
+    bad = GROUPED.replace(
+        "    steps: [1.25, 2.5, 5.0]", "    step: 5.0\n    steps: [1.25, 2.5]"
+    )
+    with pytest.raises(ConfigError, match="both step and steps"):
+        load_config(write_config(bad % "cable-gym"))
+
+
+def test_racks_beside_a_scalar_bound_is_refused(write_config):
+    bad = GROUPED.replace(
+        "  dumbbell-gym:\n    racks:", "  dumbbell-gym:\n    min: 1.0\n    racks:"
+    )
+    with pytest.raises(ConfigError, match="both racks and min"):
+        load_config(write_config(bad % "dumbbell-gym"))

@@ -24,10 +24,11 @@ Sets, rests and the exercise list are left to the command that owns them.
 Pure: takes a config and payloads, returns findings.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .domain.effort import (
     TOLERATED_SHIFT,
+    chosen_step,
     effective_load,
     fitting_rep_highs,
     reset_drop,
@@ -261,11 +262,21 @@ def check_programming(
             continue
 
         carried = bodyweight or 0.0
-        shift = reset_drop(spec, target.weight, carried)
+        # Judge the step rule 3 will actually take. Where the equipment offers
+        # a choice of increments, that is the one `chosen_step` picks for this
+        # weight, not the smallest the load type happens to name - reporting
+        # the 1.25 kg micro-plate as a wall on a 60 kg stack would be a finding
+        # about a jump the tool was never going to prescribe.
+        stepped = replace(
+            spec,
+            weight_step=chosen_step(spec, target.weight, carried),
+            tiers=(),
+        )
+        shift = reset_drop(stepped, target.weight, carried)
         if shift is None or abs(shift) <= TOLERATED_SHIFT:
             continue
 
-        load = effective_load(spec, target.weight, carried)
+        load = effective_load(stepped, target.weight, carried)
         # The sign is the whole diagnosis, so it decides every word that
         # follows: which way the range is wrong, which way to move it, and
         # what it costs you to leave it alone.
@@ -275,12 +286,12 @@ def check_programming(
         else:
             gives, costs = "gives back less", f"{-shift:.0%} jump in effort"
             settle = "micro-load"
-        fix = _suggestion(spec, target.weight, carried)
+        fix = _suggestion(stepped, target.weight, carried)
         findings.append(
             Finding(
                 workout.key,
-                f"{spec.name}: +{spec.weight_step:g} kg on {load:g} kg is "
-                f"{spec.weight_step / load:.1%}, but resetting "
+                f"{spec.name}: +{stepped.weight_step:g} kg on {load:g} kg is "
+                f"{stepped.weight_step / load:.1%}, but resetting "
                 f"{spec.rep_high}->{spec.rep_low} reps {gives}, so the weight "
                 f"increase is a {costs} ({fix}, or {settle})",
             )

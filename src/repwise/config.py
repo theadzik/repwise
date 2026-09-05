@@ -8,12 +8,20 @@ Where that file is depends on how the tool was installed, so it is searched
 for rather than computed from this module's location - see `search_path()`.
 """
 
+import itertools
 import logging
 import os
 from dataclasses import dataclass
 from typing import Any
 
-from .domain.models import BODYWEIGHT, Config, ExerciseSpec, GarminSettings, Workout
+from .domain.models import (
+    BODYWEIGHT,
+    Config,
+    ExerciseSpec,
+    GarminSettings,
+    LoadTier,
+    Workout,
+)
 from .errors import ConfigError
 from .yamlio import dump, read, write
 
@@ -66,7 +74,8 @@ class LoadType:
     """
 
     #: kg added when a rep range is topped out. Required: a load type that
-    #: cannot say how it steps cannot progress anything.
+    #: cannot say how it steps cannot progress anything. Where the equipment
+    #: offers a choice of increments this is the smallest of them.
     step: float
     #: The lightest this equipment goes: the smallest bar on the rack, the
     #: lightest pair, the top plate of the stack. Required, because every rack
@@ -76,6 +85,17 @@ class LoadType:
     #: The heaviest it goes, or None where it outlasts you - a gym's stack, a
     #: bar with more plates left in the rack. Only equipment you own runs out.
     maximum: float | None = None
+    #: The equipment behind the name, ascending. One tier is the ordinary case
+    #: and what the three fields above already describe; several is either a
+    #: group of racks declared under `racks`, or one rack whose `steps` names
+    #: more than one increment. `domain/models.LoadTier` says how the two
+    #: differ and why they are the same shape.
+    tiers: tuple[LoadTier, ...] = ()
+
+    @property
+    def span(self) -> tuple[LoadTier, ...]:
+        """The tiers, or the single one the three scalar fields describe."""
+        return self.tiers or (LoadTier(self.minimum, self.maximum, (self.step,)),)
 
 
 #: The three maps the top-level `load` replaced, each keyed by load type.
@@ -337,6 +357,113 @@ class Problems:
         raise ConfigError(f"{len(self.found)} problems:\n{listed}")
 
 
+def _steps(entry: dict, where: str, problems: Problems) -> tuple[float, ...]:
+    """The increments this equipment can express, ascending.
+
+    `step` is the single-increment form and stays the whole story for barbells,
+    fixed racks and any stack you only ever move by the pin. `steps` is for
+    equipment that takes micro-plates: every figure in it is available at every
+    weight, and which one a jump uses is decided per weight by
+    `domain/effort.chosen_step`, because the right size of increment depends on
+    how heavy the load already is and nothing in a config file knows that.
+
+    Naming both is a contradiction rather than a shorthand - one of them would
+    have to lose - so it is refused instead of resolved.
+    """
+    declared = entry.get("steps")
+    if declared is None:
+        step = float(entry.get("step") or 0.0)
+        if step < 0:
+            problems.add(f"{where} has a negative step")
+            step = 0.0
+        return (step,)
+
+    if entry.get("step") is not None:
+        problems.add(
+            f"{where} names both step and steps; `steps` is the list of "
+            f"increments the equipment offers, so state only that one"
+        )
+    if not isinstance(declared, (list, tuple)) or not declared:
+        problems.add(f"{where}: 'steps' should be a non-empty list of increments")
+        return (0.0,)
+
+    sizes = []
+    for raw in declared:
+        size = float(raw or 0.0)
+        if size <= 0:
+            problems.add(
+                f"{where} has a step of {size:g} in 'steps', which would never progress"
+            )
+            continue
+        sizes.append(size)
+    if not sizes:
+        return (0.0,)
+    return tuple(sorted(set(sizes)))
+
+
+def _racks(entry: dict, where: str, problems: Problems) -> tuple[LoadTier, ...]:
+    """The racks a group is made of, ascending and non-overlapping.
+
+    A group with no `racks` is one rack, which is every load type written
+    before groups existed and most of them since. Several is the fixed
+    dumbbells that stop at 10 kg beside the pairs that start at 12: two ranges
+    that between them describe one exercise's whole life, so that topping the
+    first out moves onto the second instead of parking.
+
+    Order is taken from the file rather than sorted into place, and then
+    checked, because a list whose order the tool silently repaired would hide
+    the thing most likely to be wrong with it.
+    """
+    declared = entry.get("racks")
+    if declared is None:
+        return ()
+    if not isinstance(declared, (list, tuple)) or not declared:
+        problems.add(f"{where}: 'racks' should be a non-empty list of min/max/step")
+        return ()
+
+    tiers: list[LoadTier] = []
+    for index, raw in enumerate(declared):
+        seat = f"{where}.racks[{index}]"
+        if not isinstance(raw, dict):
+            problems.add(f"{seat} should state min, step and optionally max")
+            continue
+        missing = [field for field in ("min", "step") if raw.get(field) is None]
+        if missing and raw.get("steps") is None:
+            problems.add(f"{seat} is missing {', '.join(missing)}")
+        minimum = float(raw.get("min") or 0.0)
+        if minimum < 0:
+            problems.add(f"{seat} has a negative min")
+            minimum = 0.0
+        declared_max = raw.get("max")
+        maximum = None if declared_max is None else float(declared_max)
+        if maximum is not None and maximum < minimum:
+            problems.add(
+                f"{seat} has a max of {maximum:g} below its min of {minimum:g}, "
+                f"so no load fits between them"
+            )
+            maximum = None
+        tiers.append(LoadTier(minimum, maximum, _steps(raw, seat, problems)))
+
+    for lower, higher in itertools.pairwise(tiers):
+        if higher.minimum <= lower.minimum:
+            problems.add(
+                f"{where}: racks are listed lightest first, but one starting at "
+                f"{higher.minimum:g} kg follows one starting at {lower.minimum:g}"
+            )
+        elif lower.maximum is None:
+            problems.add(
+                f"{where}: the rack starting at {lower.minimum:g} kg states no "
+                f"max, so the one above it could never be reached"
+            )
+        elif higher.minimum <= lower.maximum:
+            problems.add(
+                f"{where}: the rack ending at {lower.maximum:g} kg overlaps the "
+                f"one starting at {higher.minimum:g}, so a weight in both would "
+                f"belong to neither"
+            )
+    return tuple(tiers)
+
+
 def _load_types(declared: Any, path: str, problems: Problems) -> dict[str, LoadType]:
     """The named ways of loading an exercise, from the top-level `load`.
 
@@ -385,8 +512,29 @@ def _load_types(declared: Any, path: str, problems: Problems) -> dict[str, LoadT
             problems.add(f"{where} should state min, step and optionally max")
             continue
 
+        racks = _racks(entry, where, problems)
+        if racks:
+            # A group states its equipment in `racks`; the scalar fields are
+            # then the span of the whole group, so that anything reading a load
+            # type without caring about tiers still sees where it starts, where
+            # it ends and the smallest thing it can add.
+            for stray in ("min", "max", "step", "steps"):
+                if entry.get(stray) is not None:
+                    problems.add(
+                        f"{where} states both racks and {stray}; a group of "
+                        f"racks says where each of them starts and stops"
+                    )
+            top = racks[-1].maximum
+            types[key] = LoadType(
+                step=min(tier.step for tier in racks),
+                minimum=racks[0].minimum,
+                maximum=top,
+                tiers=racks,
+            )
+            continue
+
         missing = [field for field in ("min", "step") if entry.get(field) is None]
-        if missing:
+        if missing and entry.get("steps") is None:
             problems.add(f"{where} is missing {', '.join(missing)}")
 
         minimum = float(entry.get("min") or 0.0)
@@ -394,10 +542,8 @@ def _load_types(declared: Any, path: str, problems: Problems) -> dict[str, LoadT
             problems.add(f"{where} has a negative min")
             minimum = 0.0
 
-        step = float(entry.get("step") or 0.0)
-        if step < 0:
-            problems.add(f"{where} has a negative step")
-            step = 0.0
+        sizes = _steps(entry, where, problems)
+        step = sizes[0]
 
         declared_maximum = entry.get("max")
         maximum = None if declared_maximum is None else float(declared_maximum)
@@ -408,7 +554,14 @@ def _load_types(declared: Any, path: str, problems: Problems) -> dict[str, LoadT
             )
             maximum = None
 
-        types[key] = LoadType(step=step, minimum=minimum, maximum=maximum)
+        types[key] = LoadType(
+            step=step,
+            minimum=minimum,
+            maximum=maximum,
+            # Only worth carrying where there is a choice to make; one
+            # increment is what the scalar `step` already says.
+            tiers=((LoadTier(minimum, maximum, sizes),) if len(sizes) > 1 else ()),
+        )
 
     return types
 
@@ -557,6 +710,21 @@ def _build_exercise(
 
     bodyweight_factor = _bodyweight_factor(raw, where, problems)
 
+    # The equipment comes from the load type, but an exercise that overrides
+    # any of the three scalars has stated its own single rack and means it: a
+    # `max_weight` on one exercise is the point at which *that* movement stops,
+    # not an invitation to graduate onto the next rack anyway.
+    tiers = load_type.span if load_type else ()
+    overridden = any(
+        raw.get(field) is not None
+        for field in ("weight_step", "min_weight", "max_weight")
+    )
+    # Nothing to carry where the equipment is one rack taking one increment,
+    # which is what `weight_step`, `min_weight` and `max_weight` already say.
+    plain = len(tiers) <= 1 and all(len(tier.steps) <= 1 for tier in tiers)
+    if overridden or plain:
+        tiers = ()
+
     return ExerciseSpec(
         name=raw["name"],
         garmin_name=raw["garmin_name"],
@@ -576,6 +744,7 @@ def _build_exercise(
         max_weight=max_weight,
         bodyweight_factor=bodyweight_factor,
         partial_progression=partial_progression,
+        tiers=tiers,
     )
 
 
