@@ -265,20 +265,24 @@ def rows(plan: Plan) -> list[Row]:
     An exercise the config no longer names has no place among the ones it
     does, so a removal follows them, and the rest between exercises - which
     belongs to the whole workout rather than to any one of them - comes last.
+
+    The workout's own name leads, above the exercises rather than below them.
+    It is the only row that renames the thing being listed rather than
+    something in it, and reading that after eight exercise rows would be
+    finding out what you have been looking at once you had finished.
     """
     described = {spec.name: spec for spec in plan.workout.exercises}
     places = {name: place for place, name in enumerate(described, 1)}
     gathered = gather(plan)
 
     ordered = sorted(gathered, key=lambda name: places.get(name, len(places) + 1))
-    built = [
+    built = [name_row(plan.name)] if plan.name else []
+    built += [
         exercise_row(places.get(name), name, gathered[name], described.get(name))
         for name in ordered
     ]
     if plan.gaps:
         built.append(gaps_row(plan.gaps))
-    if plan.name:
-        built.append(name_row(plan.name))
     return built
 
 

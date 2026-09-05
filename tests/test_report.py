@@ -11,11 +11,13 @@ import pytest
 from builders import spec
 
 from repwise.app.report import report_plan
+from repwise.app.report import rows as built_rows
 from repwise.domain.models import Workout
 from repwise.domain.progression import Target
 from repwise.planner import (
     Change,
     GapChange,
+    NameChange,
     NoteChange,
     Plan,
     RestChange,
@@ -198,3 +200,19 @@ def test_warnings_come_last_whatever_they_are_about(caplog):
     report_plan(plan)
 
     assert caplog.records[-1].message == "! Face Pull: not in the activity"
+
+
+def test_the_workout_name_leads_the_table():
+    """It renames the thing being listed, not something in it, so it goes
+    above the exercises rather than after them."""
+    plan = a_plan(
+        name=NameChange("Gym Hinge", "Gym Deadlift"),
+        gaps=GapChange(2, (None, None), 90),
+        notes=[a_note(FIRST)],
+    )
+    built = built_rows(plan)
+
+    assert built[0].name == "Workout name"
+    assert built[0].action == "rename"
+    assert (built[0].before, built[0].after) == ("Gym Hinge", "Gym Deadlift")
+    assert built[-1].name == "Between exercises", "the gap still comes last"
