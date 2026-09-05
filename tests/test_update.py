@@ -925,3 +925,38 @@ def test_a_session_already_filed_is_not_downloaded_again(account, tmp_path):
     run(account, caching(tmp_path))
 
     assert list(tmp_path.iterdir()) == [], "nothing was missing, so nothing was written"
+
+
+def with_a_rename(account, new_key="Workout Z"):
+    """Workout A as Garmin stores it, under a key the config has since changed.
+
+    Nothing else moves, which is the case worth testing: a rename on its own
+    has to carry the plan all the way to Garmin by itself.
+    """
+    account.workouts["111"] = steps(
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 30.0), sets=SQUAT.sets),
+    )
+    account.workouts["111"]["workoutName"] = "Workout A"
+    config = config_ab()
+    config.workouts[new_key] = replace(config.workouts.pop("Workout A"), key=new_key)
+    return config
+
+
+def test_the_dry_run_mentions_a_rename(account, caplog):
+    """It is counted in the write guard, so it has to be counted in the line
+    that says whether there is anything to write."""
+    config = with_a_rename(account)
+
+    with caplog.at_level(logging.INFO, logger="repwise.app.update"):
+        run(account, config)
+
+    assert "1 workout(s) would be renamed" in caplog.text
+
+
+def test_the_rename_summary_says_the_same_thing_the_other_way_round(account, caplog):
+    config = with_a_rename(account)
+
+    with caplog.at_level(logging.INFO, logger="repwise.app.update"):
+        run(account, config, apply=True)
+
+    assert "Renamed 1 workout(s)." in caplog.text

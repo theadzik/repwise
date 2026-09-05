@@ -567,6 +567,7 @@ def run_update(
         if regaps
         else ""
     )
+    renamed = f", {renames} workout(s) would be renamed" if renames else ""
     notes = f", {noted} note(s) would be refreshed" if noted else ""
     rests = f", {rested} rest time(s) would change" if rested else ""
     skips = (
@@ -579,7 +580,8 @@ def run_update(
         logger.info("")
         logger.info(
             f"Dry run: {updated} step(s) would change"
-            f"{structure}{counts}{rests}{skips}{between}{notes}. Re-run with --apply."
+            f"{structure}{counts}{rests}{skips}{between}{renamed}{notes}."
+            f" Re-run with --apply."
         )
         return ExitCode.OK
 
