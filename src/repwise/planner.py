@@ -413,6 +413,51 @@ def _levelled(spec: ExerciseSpec, target: Target) -> Target:
     return Target(min(target.reps + spec.rep_step, spec.rep_high), target.weight)
 
 
+def _clamped(spec: ExerciseSpec, target: Target) -> Target:
+    """A stored target pulled back inside a range the config has since moved.
+
+    Narrowing a rep range in `workouts.yaml` leaves every target above the new
+    `rep_high` stranded: the rules only ever run against a session, so a
+    workout nobody has trained since the edit keeps asking for reps the range
+    no longer contains, and `update` has nothing to say about it. The edit is
+    the whole reason, exactly as it is for `_levelled`, so it need not wait to
+    be trained.
+
+    Reps only, and the weight is left alone. Landing on `rep_high` is where
+    rule 3 fires from, and a load increase is something a session earns rather
+    than something an edit to a config file hands over.
+
+    A ramp goes when the range can no longer hold one: its leading sets ask for
+    `rep_step` more, and at the top of the range that is a figure outside it.
+    """
+    top = target.reps + spec.rep_step if target.lead else target.reps
+    if spec.rep_low <= target.reps and top <= spec.rep_high:
+        return target
+    reps = min(max(target.reps, spec.rep_low), spec.rep_high)
+    lead = target.lead if reps + spec.rep_step <= spec.rep_high else 0
+    return Target(reps, target.weight, lead)
+
+
+def _config_fixups(spec: ExerciseSpec, target: Target):
+    """What the config alone says about a target, in the order it says it.
+
+    Both of these are answers to an edit rather than to a session, which is why
+    they are applied where no session is needed. Levelling first: it is capped
+    at `rep_high` already, so a ramp evened out can only ever land inside a
+    range the clamp then finds nothing to do about.
+    """
+    levelled = _levelled(spec, target)
+    if levelled != target:
+        yield levelled, LEVELLED
+        target = levelled
+
+    clamped = _clamped(spec, target)
+    if clamped != target:
+        span = f"{spec.rep_low}-{spec.rep_high}"
+        end = "top" if clamped.reps < target.reps else "bottom"
+        yield clamped, f"outside the {span} range, brought to the {end}"
+
+
 def _judge(  # noqa: PLR0913 - each argument is one independent input
     spec: ExerciseSpec,
     block: ExerciseBlock,
@@ -1003,8 +1048,7 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
         # session that may not come.
         decided = change.new if change is not None else current
         if decided is not None:
-            levelled = _levelled(spec, decided)
-            if levelled != decided:
+            for fixed, label in _config_fixups(spec, decided):
                 # Whatever the session found is still worth saying alongside -
                 # except that it had nothing to say, which beside a target that
                 # has just moved would read as a contradiction.
@@ -1012,8 +1056,8 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
                 change = Change(
                     spec,
                     change.old if change is not None else decided,
-                    levelled,
-                    f"{said}; {LEVELLED}" if said and said != UP_TO_DATE else LEVELLED,
+                    fixed,
+                    f"{said}; {label}" if said and said != UP_TO_DATE else label,
                 )
 
         if change is None:
