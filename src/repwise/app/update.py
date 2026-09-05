@@ -347,7 +347,6 @@ def sync_other_workouts(
 
         logger.info("")
         logger.info(f"Also in {other.key} (workout {other.garmin_workout_id}):")
-        logger.info("")
         report_plan(plan)
         plans.append(plan)
 
@@ -398,7 +397,6 @@ def shape_untrained(
             logger.info(
                 f"Shaping: {workout.key} -> workout {workout.garmin_workout_id}"
             )
-        logger.info("")
         report_plan(plan)
         plans.append(plan)
 
@@ -430,7 +428,6 @@ def advance_trained(  # noqa: PLR0913 - each argument is one independent input
             logger.info("")
         logger.info(f"Activity: {activity.get('activityName') or ''} ({activity_id})")
         logger.info(f"Updating: {workout.key} -> workout {workout.garmin_workout_id}")
-        logger.info("")
 
         sets_payload = session.exercise_sets(activity_id)
         payload = payloads[garmin_id(workout)]

@@ -307,12 +307,16 @@ def joins(row: Row) -> str:
 
 
 def report_plan(plan: Plan) -> None:
-    # Above the table and under the heading the caller has just printed, which
-    # is where the workout is being named anyway. It is a fact about the
-    # workout rather than about anything in it, and a table of exercises is no
-    # place to say it.
+    # Under the heading the caller has just printed, which is where the workout
+    # is being named anyway. It is a fact about the workout rather than about
+    # anything in it, and a table of exercises is no place to say it.
     if plan.name:
         logger.info(f"Renaming: {plan.name.was} -> {plan.name.new}")
+
+    # The blank between the heading and the table belongs here rather than to
+    # the caller, so that a rename joins the heading above it instead of being
+    # stranded on the far side of the gap.
+    logger.info("")
 
     for text in render(rows(plan)):
         logger.info(text)
