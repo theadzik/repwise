@@ -362,7 +362,7 @@ def _steps(entry: dict, where: str, problems: Problems) -> tuple[float, ...]:
 
     `step` is the single-increment form and stays the whole story for barbells,
     fixed racks and any stack you only ever move by the pin. `steps` is for
-    equipment that takes micro-plates: every figure in it is available at every
+    equipment that takes smaller plates: every figure in it is available at every
     weight, and which one a jump uses is decided per weight by
     `domain/effort.chosen_step`, because the right size of increment depends on
     how heavy the load already is and nothing in a config file knows that.

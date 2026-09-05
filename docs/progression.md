@@ -302,8 +302,8 @@ short session is already rule 4's "missed target".
 
 Persistent rejections mean `weight_step` is too big for the range: at 3 kg a
 1 kg dumbbell step is a 33% jump, which a 12-15 range cannot absorb. Widen the
-range or micro-load. Isolation work usually wants a wider range than a barbell
-compound for exactly this reason.
+range or take a smaller step. Isolation work usually wants a wider range than
+a barbell compound for exactly this reason.
 
 ## Decision order
 

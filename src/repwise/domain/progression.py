@@ -340,7 +340,7 @@ def _advance(  # noqa: PLR0913 - each argument is one independent input
         lifted = f" at {weight:g} kg" if rebased else ""
         # The equipment says what exists above this weight, which is a question
         # only it can answer: the step depends on how heavy the load already is
-        # where a stack takes micro-plates, and the answer crosses onto the
+        # where a stack takes smaller plates, and the answer crosses onto the
         # next rack where this one ends. A step past a rack's ceiling is
         # shortened to land *on* it rather than refused - the last pair on the
         # rack is still a pair - and `None` comes back only when the whole span

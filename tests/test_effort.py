@@ -1,15 +1,19 @@
 """Reading a stored weight as the load it actually is."""
 
+from dataclasses import replace
+
 from builders import spec
 
 from repwise.domain.effort import (
-    TOLERATED_SHIFT,
+    TOLERATED_SAWTOOTH,
+    TOLERATED_WALL,
     chosen_step,
     effective_load,
     fitting_rep_highs,
     next_weight_above,
     next_weight_below,
     reset_drop,
+    within_tolerance,
     worked_reps,
 )
 from repwise.domain.models import LoadTier
@@ -58,12 +62,23 @@ def test_bodyweight_is_added_on_top_of_a_pair_entered_whole():
     assert effective_load(LUNGE, 24.0, bodyweight=80.0) == 24.0 + 68.0
 
 
-def test_the_calf_raise_weight_jump_is_a_large_step_backwards():
-    """20 reps at 100 kg -> 12 reps at 105 kg, which is easier, not harder."""
+def test_the_calf_raise_as_programmed_is_inside_the_sawtooth_tolerance():
+    """20 reps at 100 kg -> 12 reps at 105 kg gives back 12%, and that is fine.
+
+    5 kg on 100 kg is a 5% increase, squarely inside the 2-10% ACSM asks for,
+    and a 12-20 range is ordinary for calves. A threshold that reported this
+    would be convicting the guidance rather than the programming.
+    """
     drop = reset_drop(CALF, 20.0, bodyweight=80.0)
     assert drop is not None
     assert 0.11 < drop < 0.13
-    assert drop > TOLERATED_SHIFT
+    assert within_tolerance(drop)
+
+
+def test_a_range_too_wide_even_for_that_tolerance_is_still_caught():
+    """The same step and the same load, with eight more reps to climb back."""
+    drop = reset_drop(replace(CALF, rep_high=24), 20.0, bodyweight=80.0)
+    assert drop is not None and drop > TOLERATED_SAWTOOTH
 
 
 def test_ignoring_bodyweight_hides_the_problem_entirely():
@@ -85,7 +100,7 @@ def test_an_ordinary_barbell_lift_stays_under_the_tolerance():
     squat = spec(rep_low=6, rep_high=10, load="barbell", weight_step=2.5)
     drop = reset_drop(squat, 60.0)
     assert drop is not None
-    assert 0 < drop <= TOLERATED_SHIFT
+    assert 0 < drop <= TOLERATED_SAWTOOTH
 
 
 def test_bodyweight_and_timed_exercises_have_no_weight_jump_to_judge():
@@ -104,7 +119,7 @@ def test_the_suggested_range_is_one_the_step_can_pay_for():
 
     narrowed = spec(**{**CALF.__dict__, "rep_high": fitted.balanced})
     drop = reset_drop(narrowed, 20.0, bodyweight=80.0)
-    assert drop is not None and drop <= TOLERATED_SHIFT
+    assert drop is not None and drop <= TOLERATED_SAWTOOTH
 
 
 def test_the_balanced_top_is_the_one_nearest_to_breaking_even():
@@ -131,7 +146,7 @@ def test_the_window_holds_every_top_that_fits_and_nothing_else():
 
     def fits(rep_high):
         drop = reset_drop(spec(**{**CALF.__dict__, "rep_high": rep_high}), 20.0, 80.0)
-        return drop is not None and abs(drop) <= TOLERATED_SHIFT
+        return drop is not None and within_tolerance(drop)
 
     assert all(fits(each) for each in range(fitted.narrowest, fitted.widest + 1))
     assert not fits(fitted.widest + 1)
@@ -160,7 +175,10 @@ def test_even_a_trivial_step_can_afford_some_range():
 def test_no_range_is_suggested_when_nothing_meets_the_tolerance():
     """Reachable only by demanding a reset that costs literally nothing."""
     trivial = spec(**{**CALF.__dict__, "weight_step": 0.1})
-    assert fitting_rep_highs(trivial, 20.0, bodyweight=80.0, tolerance=0.0) is None
+    assert (
+        fitting_rep_highs(trivial, 20.0, bodyweight=80.0, sawtooth=0.0, wall=0.0)
+        is None
+    )
 
 
 # --- exercises the watch counts per side -----------------------------------
@@ -177,15 +195,21 @@ def test_an_ordinary_exercise_works_the_reps_it_is_programmed():
 
 
 def test_counting_both_legs_would_invent_a_finding():
-    """The bug this exists to stop: 5 kg dumbbells, a range that is fine."""
-    drop = reset_drop(LUNGE, 10.0, bodyweight=81.0)
+    """The bug this exists to stop: 5 kg dumbbells, a range that is fine.
+
+    16-28 in the watch's units, which is 8-14 for the leg doing the work - a
+    perfectly ordinary range, and one the step pays for. Doubled, it reads as
+    a 16-28 range no step could ever keep up with.
+    """
+    wide = replace(LUNGE, rep_high=28)
+    drop = reset_drop(wide, 10.0, bodyweight=81.0)
     assert drop is not None
-    assert drop < TOLERATED_SHIFT
+    assert drop < TOLERATED_SAWTOOTH
 
     # Read in the watch's units instead, the same exercise looks broken.
-    doubled = spec(**{**LUNGE.__dict__, "rep_step": 1})
+    doubled = replace(wide, rep_step=1)
     naive = reset_drop(doubled, 10.0, bodyweight=81.0)
-    assert naive is not None and naive > TOLERATED_SHIFT
+    assert naive is not None and naive > TOLERATED_SAWTOOTH
 
 
 def test_a_suggested_range_lands_on_a_rung_the_ladder_reaches():
@@ -217,14 +241,14 @@ RAISE = spec(
 def test_a_step_too_big_for_its_range_reads_as_a_negative_shift():
     shift = reset_drop(RAISE, 3.0)
     assert shift is not None
-    assert shift < -TOLERATED_SHIFT
+    assert shift < -TOLERATED_WALL
 
 
 def test_the_same_exercise_is_fine_once_the_dumbbells_are_heavier():
     """The wall is the step as a share of the load, not the range alone."""
     shift = reset_drop(RAISE, 12.0)
     assert shift is not None
-    assert abs(shift) <= TOLERATED_SHIFT
+    assert within_tolerance(shift)
 
 
 def test_a_narrow_range_is_fixed_by_widening_it():
@@ -234,7 +258,7 @@ def test_a_narrow_range_is_fixed_by_widening_it():
 
     widened = spec(**{**RAISE.__dict__, "rep_high": fitted.balanced})
     shift = reset_drop(widened, 3.0)
-    assert shift is not None and abs(shift) <= TOLERATED_SHIFT
+    assert shift is not None and within_tolerance(shift)
 
 
 def test_a_wide_range_is_still_fixed_by_narrowing_it():
@@ -244,7 +268,7 @@ def test_a_wide_range_is_still_fixed_by_narrowing_it():
     assert fitted.balanced < CALF.rep_high
 
 
-def test_micro_loading_fixes_what_no_range_can():
+def test_a_smaller_step_fixes_what_no_range_can():
     """A 1 kg step on 1 kg is a 100% jump; no rep range absorbs that."""
     assert fitting_rep_highs(RAISE, 1.0) is None
 

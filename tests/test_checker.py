@@ -1,5 +1,8 @@
 """Reporting drift between the config and Garmin."""
 
+import pathlib
+from dataclasses import replace
+
 from builders import catalog, payload, rep_step, repeat, rest_step, spec
 
 from repwise.checker import check_catalog, check_programming, check_workout
@@ -200,9 +203,22 @@ CALF_SPEC = spec(
 )
 
 
+WIDE_CALF = replace(CALF_SPEC, rep_high=24)
+
+
+def test_the_calf_range_as_programmed_is_not_reported():
+    """5 kg on 100 kg is a 5% increase, which is what ACSM asks for, and a
+    12-20 range is ordinary for calves. Reporting it would convict the
+    guidance rather than the programming."""
+    assert (
+        check_programming(configured(CALF_SPEC), payload(CALF_GROUP), bodyweight=80.0)
+        == []
+    )
+
+
 def test_a_range_too_wide_for_its_real_step_is_reported():
     findings = check_programming(
-        configured(CALF_SPEC), payload(CALF_GROUP), bodyweight=80.0
+        configured(WIDE_CALF), payload(CALF_GROUP), bodyweight=80.0
     )
 
     assert len(findings) == 1
@@ -216,17 +232,17 @@ def test_the_suggestion_shows_how_much_room_there_is_around_it():
     """One number reads as the only answer. The tolerance is a band, and a
     range already inside it is not worth rewriting to the decimal."""
     findings = check_programming(
-        configured(CALF_SPEC), payload(CALF_GROUP), bodyweight=80.0
+        configured(WIDE_CALF), payload(CALF_GROUP), bodyweight=80.0
     )
 
-    assert "anything from 12-13 to 12-18 fits" in findings[0].detail
+    assert "anything from 12-13 to 12-21 fits" in findings[0].detail
 
 
 def test_the_bottom_of_the_range_is_never_suggested_away():
     """Whatever is wrong with the arithmetic, `rep_low` is a decision about
     how heavy the exercise gets and stays where it was put."""
     findings = check_programming(
-        configured(CALF_SPEC), payload(CALF_GROUP), bodyweight=80.0
+        configured(WIDE_CALF), payload(CALF_GROUP), bodyweight=80.0
     )
 
     assert findings[0].detail.count("12-") == 3, "every range offered starts at 12"
@@ -302,13 +318,13 @@ def test_the_pair_is_read_as_entered():
 # --- load types offering more than one increment ---------------------------
 
 
-MICRO = (LoadTier(5.0, None, (1.25, 2.5, 5.0)),)
+PLATED = (LoadTier(5.0, None, (1.25, 2.5, 5.0)),)
 
 STACK_GROUP = repeat(rep_step("CABLE_CROSSOVER", "FLYE", 20, 30.0), sets=3)
 
 
 def stack(**kwargs):
-    """A cable stack that takes micro-plates as readily as a pin move.
+    """A cable stack that takes 1.25 kg plates as readily as a pin move.
 
     `weight_step` is the smallest of them, which is what config resolves onto a
     spec whose load type names several.
@@ -318,17 +334,17 @@ def stack(**kwargs):
         "garmin_name": "CABLE_CROSSOVER",
         "garmin_category": "FLYE",
         "rep_low": 12,
-        "rep_high": 20,
+        "rep_high": 24,
         "sets": 3,
         "load": "cable",
         "weight_step": 1.25,
         "min_weight": 5.0,
-        "tiers": MICRO,
+        "tiers": PLATED,
     }
     return spec(**{**base, **kwargs})
 
 
-def test_a_micro_plate_is_not_reported_as_a_wall_on_a_heavy_stack():
+def test_a_small_increment_is_not_reported_as_too_small_on_a_heavy_stack():
     """The finding has to be about the jump the tool would really prescribe.
 
     Judged on its smallest increment this stack reads as a range far too wide
@@ -356,10 +372,69 @@ def test_a_finding_names_the_increment_that_would_be_chosen():
     it is the one the finding has to be about."""
     wide = repeat(rep_step("CABLE_CROSSOVER", "FLYE", 25, 40.0), sets=3)
     findings = check_programming(
-        configured(stack(rep_low=12, rep_high=25)), payload(wide)
+        configured(stack(rep_low=12, rep_high=28)), payload(wide)
     )
 
     assert len(findings) == 1
     detail = findings[0].detail
     assert "+5 kg" in detail, "the step chosen at 40 kg, not the 1.25 kg floor"
     assert "1.25" not in detail
+
+
+# --- the worked examples in the documentation ------------------------------
+
+
+DOCUMENTED = pathlib.Path(__file__).resolve().parents[1] / "docs" / "configuration.md"
+
+#: The two exercises `docs/configuration.md` walks through, as it describes
+#: them: a calf raise whose range is too wide for its step even with the lifter
+#: counted, and a lateral raise whose step is too big for its load.
+DOC_CALF = spec(
+    name="Weighted Standing Calf Raise",
+    garmin_name="WEIGHTED_STANDING_CALF_RAISE",
+    garmin_category="CALF_RAISE",
+    rep_low=12,
+    rep_high=24,
+    sets=3,
+    load="machine",
+    weight_step=5.0,
+    bodyweight_factor=1.0,
+)
+DOC_RAISE = spec(
+    name="Dumbbell Lateral Raise",
+    garmin_name="DUMBBELL_LATERAL_RAISE",
+    garmin_category="LATERAL_RAISE",
+    rep_low=12,
+    rep_high=20,
+    sets=3,
+    load="dumbbell",
+    weight_step=1.0,
+)
+
+
+def _documented(exercise, reps, weight, bodyweight=None):
+    group = repeat(
+        rep_step(exercise.garmin_name, exercise.garmin_category, reps, weight),
+        sets=exercise.sets,
+    )
+    findings = check_programming(configured(exercise), payload(group), bodyweight)
+    assert len(findings) == 1
+    return " ".join(findings[0].detail.split())
+
+
+def test_the_documented_findings_are_the_ones_the_checker_produces():
+    """The worked examples are hand-written, so they drift in silence.
+
+    Both thresholds have moved once already and took these with them: the
+    figures in the file were still the ones a symmetric 10% produced. Nothing
+    failed, because nothing was checking. This is.
+    """
+    written = " ".join(DOCUMENTED.read_text().split())
+
+    calf = _documented(DOC_CALF, 20, 21.0, bodyweight=80.0)
+    assert "18% drop in effort" in calf
+    assert calf in written, f"docs/configuration.md is stale:\n  {calf}"
+
+    raise_ = _documented(DOC_RAISE, 20, 3.0)
+    assert "12% jump in effort" in raise_
+    assert raise_ in written, f"docs/configuration.md is stale:\n  {raise_}"

@@ -161,12 +161,12 @@ load:
   #     - {min: 1.0,  max: 10.0, step: 1.0}
   #     - {min: 12.0, max: 40.0, step: 2.0}
 
-  # Several increments instead of one, for a stack that takes micro-plates.
+  # Several increments instead of one, for a stack that takes small plates.
   # The jump is the largest of these whose effort still fits the rep range,
   # so it walks up as the load does - 1.25 kg on a 5 kg stack, 5 kg on a
   # 45 kg one - and `check` stops flagging the exercise, because the step is
   # now chosen to fit rather than reported for not fitting.
-  # cable_micro:
+  # cable_plated:
   #   min: 5.0
   #   steps: [1.25, 2.5, 5.0]
 

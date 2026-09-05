@@ -92,7 +92,7 @@ load:
 | `step` | yes | kg added when an exercise on this load tops out its rep range |
 | `max` | no | The heaviest it goes. Topping out the range stops here rather than prescribing a weight you cannot load. Left out, there is no ceiling |
 | `racks` | no | A group of racks, lightest first, where one name covers equipment with gaps in it. See [groups of racks](#groups-of-racks) |
-| `steps` | no | Several increments instead of one `step`, where the equipment can be micro-loaded. See [choosing the increment](#choosing-the-increment) |
+| `steps` | no | Several increments instead of one `step`, where the equipment takes more than one plate size. See [choosing the increment](#choosing-the-increment) |
 
 ### Groups of racks
 
@@ -134,7 +134,7 @@ anyway.
 
 ### Choosing the increment
 
-A cable stack that takes micro-plates can be moved by 1.25 kg as readily as by
+A cable stack that takes 1.25 kg plates can be moved by them as readily as by
 the 5 kg the pin gives you. Which is right depends on how heavy it already is:
 2.5 kg on a 5 kg stack is a wall, and on a 60 kg stack it is beneath noticing.
 No single `step` is right at both ends, and no config file knows where on the
@@ -149,7 +149,7 @@ load:
     steps: [1.25, 2.5, 5.0]
 ```
 
-The jump taken is **the largest of them whose effort stays inside the tolerance
+The jump taken is **the largest of them whose effort stays inside the tolerances
 `check` already applies** - see [does the range fit the
 step?](#does-the-range-fit-the-step). So the increment walks up as the load
 does, without you tracking it:
@@ -398,11 +398,14 @@ written so the stored weight is the whole load.
 
 [Rule 3](progression.md#the-five-rules) tops out the range, adds a step, and
 resets to `rep_low`. That trade only works if the step is worth more than the
-reps just given back. A calf raise programmed 12-20 with a 5 kg step looks like
+reps just given back. A calf raise programmed 12-24 with a 5 kg step looks like
 a 25% jump on a 20 kg stack - ample. With 80 kg of lifter on top it is a 5%
-jump, nowhere near enough to pay for dropping 20 reps to 12, and the "weight
-increase" leaves the exercise about 12% *easier* than it was. You then spend
-six sessions climbing back to ground you already held.
+jump, nowhere near enough to pay for dropping 24 reps to 12, and the "weight
+increase" leaves the exercise about 18% *easier* than it was. You then spend
+twelve sessions climbing back to ground you already held.
+
+The same step over 12-20 gives back 12%, which is inside the tolerance and goes
+unreported: the range, not the step, is what makes the wide case a finding.
 
 The mirror image is just as wrong. A lateral raise programmed 12-20 at 3 kg
 steps by 1 kg, which is a 33% jump - so the reset to 12 reps is about 12%
@@ -417,20 +420,20 @@ weight the exercise is loaded to today:
 ```text
 Workout A (1631254436)
  ! Weighted Standing Calf Raise: +5 kg on 101 kg is 5.0%, but resetting
-   20->12 reps gives back more, so the weight increase is a 12% drop in
-   effort (make it 12-14; anything from 12-13 to 12-18 fits, or accept
+   24->12 reps gives back more, so the weight increase is a 18% drop in
+   effort (make it 12-14; anything from 12-13 to 12-21 fits, or accept
    the sawtooth)
 
 Workout B (1641921176)
  ! Dumbbell Lateral Raise: +1 kg on 3 kg is 33.3%, but resetting 20->12
    reps gives back less, so the weight increase is a 12% jump in effort
-   (make it 12-26; anything from 12-21 to 12-30 fits, or micro-load)
+   (make it 12-26; anything from 12-23 to 12-30 fits, or take a smaller step)
 ```
 
 | Sign | Meaning | Costs you | Fix |
 | --- | --- | --- | --- |
 | Positive | Range too **wide** for the step | Sessions spent re-treading ground | Narrow the range |
-| Negative | Range too **narrow** for the step | A wall at every weight jump | Widen the range, or micro-load |
+| Negative | Range too **narrow** for the step | A wall at every weight jump | Widen the range, or take a smaller step |
 
 Two figures, because the tolerance is a band rather than a line. The first is
 the top whose reset breaks even exactly; the rest of the window is every other
@@ -483,7 +486,7 @@ the bottom.
 
 Note which way each error drifts. **Too narrow is temporary**: it means the
 step is currently too big a share of the load, and it heals itself as you get
-stronger, which is why micro-loading is often the better answer than rewriting
+stronger, which is why a smaller step is often the better answer than rewriting
 the range. **Too wide only worsens**, and a range that has narrowed to a rung
 or two is the signal to raise `weight_step` rather than to keep trimming.
 
@@ -499,13 +502,38 @@ it at face value would overstate the cost of every such reset and invent
 findings on exercises that are programmed perfectly well.
 
 Some movement is inherent - climbing the range again always gives back part of
-what the load gained - so only exercises past **10% either way** are reported.
-A well-programmed lift sits within a few percent of zero and stays quiet.
+what the load gained - so a well-programmed lift sits within a few percent of
+zero and stays quiet. The two directions are not the same size of problem, and
+they do not get the same threshold:
 
-One threshold serves both signs, which is a simplification rather than a claim
-that they are equally bad: a wide range only wastes sessions, where a narrow one
-stops progress dead. If the narrow side ever proves too quiet, split
-`TOLERATED_SHIFT` in two rather than moving it.
+| Direction | Reported past | What it costs |
+| --- | :---: | --- |
+| The reset **gives back more** than the load gained (a wide range) | **+15%** | Sessions re-treading ground, and nothing else |
+| The reset **gives back less** (a narrow range, a step too big) | **-7.5%** | Progress stopped: rule 5 refuses a load that cannot carry `rep_low` |
+
+The permissive side is set by the guidance it would otherwise convict. ACSM's
+[progression position stand](https://pubmed.ncbi.nlm.nih.gov/19204579/) asks for
+a "2-10% (lower percent for small muscle mass exercises, higher percent increase
+for large muscle mass exercises) increase in load", and 2% - the end it names for
+exactly the small-muscle work that gets a wide range - scores +14.3% on an
+ordinary 12-20. Anything under 15% reports a lateral raise progressed exactly as
+recommended. The cost of that sawtooth is time rather than adaptation:
+[hypertrophy is equivalent across a wide span of
+loads](https://pmc.ncbi.nlm.nih.gov/articles/PMC7927075/) when the sets are
+carried to the same proximity to failure, which they are.
+
+The strict side is set by its own error bars. Day-to-day 1RM reliability has a
+[median CV around
+4.2%](https://academicworks.cuny.edu/cgi/viewcontent.cgi?article=1338&context=le_pubs),
+and `reset_drop` is an Epley estimate that drifts past twelve reps, so a reading
+of -5% is inside the noise - an ordinary 6-10 squat taking 5 kg on 30 kg scores
+exactly that. Past 7.5% is a jump no rep range absorbs, where the exercise loops:
+climb the range, fail the jump, deload, climb it again.
+
+One consequence worth stating: a range narrower than about eight reps can never
+reach +15% however small the step, because with no step at all the shift is only
+`(rep_high - rep_low) / (30 + rep_high)`. Sawtooth findings are therefore always
+about the range being too wide, never about the step being too small.
 
 No suggestion is offered past 30 reps. A 1 kg step on a 1 kg dumbbell is a 100%
 jump that no rep range absorbs, and answering it with `12-47` would be

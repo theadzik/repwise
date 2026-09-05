@@ -27,11 +27,11 @@ Pure: takes a config and payloads, returns findings.
 from dataclasses import dataclass, replace
 
 from .domain.effort import (
-    TOLERATED_SHIFT,
     chosen_step,
     effective_load,
     fitting_rep_highs,
     reset_drop,
+    within_tolerance,
 )
 from .domain.matching import ExerciseIndex
 from .domain.models import ExerciseSpec, Workout
@@ -265,7 +265,7 @@ def check_programming(
         # Judge the step rule 3 will actually take. Where the equipment offers
         # a choice of increments, that is the one `chosen_step` picks for this
         # weight, not the smallest the load type happens to name - reporting
-        # the 1.25 kg micro-plate as a wall on a 60 kg stack would be a finding
+        # the 1.25 kg increment as a wall on a 60 kg stack would be a finding
         # about a jump the tool was never going to prescribe.
         stepped = replace(
             spec,
@@ -273,7 +273,7 @@ def check_programming(
             tiers=(),
         )
         shift = reset_drop(stepped, target.weight, carried)
-        if shift is None or abs(shift) <= TOLERATED_SHIFT:
+        if shift is None or within_tolerance(shift):
             continue
 
         load = effective_load(stepped, target.weight, carried)
@@ -285,7 +285,7 @@ def check_programming(
             settle = "accept the sawtooth"
         else:
             gives, costs = "gives back less", f"{-shift:.0%} jump in effort"
-            settle = "micro-load"
+            settle = "take a smaller step"
         fix = _suggestion(stepped, target.weight, carried)
         findings.append(
             Finding(
