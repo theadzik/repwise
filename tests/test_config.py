@@ -792,6 +792,30 @@ def test_bodyweight_cannot_be_used_as_a_weights_name(write_config):
         load_config(write_config(text))
 
 
+def test_a_weights_name_is_matched_whatever_the_case(write_config):
+    """`Gym_Dumbbell` and `gym_dumbbell` are one rack, however either is typed."""
+    text = TWO_RACKS.replace("  gym_dumbbell:", "  Gym_Dumbbell:").replace(
+        "load: gym_dumbbell", "load: GYM_DUMBBELL"
+    )
+    curl = load_config(write_config(text))["Workout A"].exercises[0]
+
+    assert curl.load == "gym_dumbbell", "and it is stored lower-cased"
+    assert (curl.weight_step, curl.min_weight, curl.max_weight) == (2.0, 4.0, 40.0)
+
+
+def test_bodyweight_is_reserved_whatever_the_case(write_config):
+    text = TWO_RACKS.replace("  home_dumbbell:", "  BodyWeight:")
+    with pytest.raises(ConfigError, match="reserved name"):
+        load_config(write_config(text))
+
+
+def test_two_weights_differing_only_in_case_are_rejected(write_config):
+    """One would silently overwrite the other, leaving one rack undeclared."""
+    text = TWO_RACKS.replace("  home_dumbbell:", "  Gym_Dumbbell:")
+    with pytest.raises(ConfigError, match="are one name"):
+        load_config(write_config(text))
+
+
 def test_weights_that_are_not_a_mapping_are_rejected(write_config):
     text = (
         TWO_RACKS[: TWO_RACKS.index("weights:")]

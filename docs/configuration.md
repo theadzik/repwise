@@ -99,8 +99,14 @@ apart can a deload know what exists to prescribe. Name them however you tell
 them apart - `home_dumbbell`, `gym_dumbbell`, `gym_dumbbell_adjustable` - and
 point each exercise at the one you perform it on.
 
-`bodyweight` is the one name spoken for. An exercise loaded that way has no
-equipment, needs no entry here, and never gains load.
+Names are matched in lower case, at both ends: `Gym_Dumbbell` here and
+`load: GYM_DUMBBELL` on an exercise are the same rack. Two entries differing
+only in case are refused, since one would otherwise overwrite the other and
+leave a rack you thought you had declared missing.
+
+`bodyweight` is the one name spoken for - in any case, so `Bodyweight` is
+refused too. An exercise loaded that way has no equipment, needs no entry
+here, and never gains load.
 
 ### Moving from the old settings
 
@@ -442,6 +448,8 @@ than half-applied. You get an error naming the file and workout for:
 - a `load` naming no entry in `weights`
 - a `weights` entry missing its `min` or `step`, or whose `max` is below its
   own `min`
+- two `weights` entries whose names differ only in case, or one named
+  `bodyweight`, which is reserved
 - a `weight_step` of zero or less, which would never progress
 - `rep_step` below 1
 - `rep_low >= rep_high`

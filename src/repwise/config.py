@@ -346,6 +346,12 @@ def _weight_types(
     spoken for: an exercise loaded that way carries no equipment, so it draws
     on nothing declared here.
 
+    Names are lower-cased on the way in, and an exercise's `load` is lower-cased
+    to match, so `Gym_Dumbbell` and `gym_dumbbell` are one rack however either
+    end happens to be typed. Which is also why two names differing only in case
+    are refused: they would otherwise be one entry silently overwriting the
+    other, and only one of the two racks would survive.
+
     A broken entry is recorded and then kept, in the shape it can be, so that
     the exercises using it are still checked rather than each being reported a
     second time as naming weights that do not exist.
@@ -357,14 +363,25 @@ def _weight_types(
         return {}
 
     types: dict[str, WeightType] = {}
+    #: Lower-cased name -> the name as written, for a message that can be
+    #: found in the file.
+    written: dict[str, str] = {}
     for name, entry in declared.items():
         where = f"{path}: weights.{name}"
-        if name == BODYWEIGHT:
+        key = str(name).lower()
+        if key == BODYWEIGHT:
             problems.add(
                 f"{where} is a reserved name: an exercise loaded {BODYWEIGHT!r} "
                 f"has no equipment, so it draws on no weights of yours"
             )
             continue
+        if key in written:
+            problems.add(
+                f"{where} and weights.{written[key]} are one name: weights are "
+                f"matched in lower case, so only one of the two would survive"
+            )
+            continue
+        written[key] = str(name)
         if not isinstance(entry, dict):
             problems.add(f"{where} should state min, step and optionally max")
             continue
@@ -392,7 +409,7 @@ def _weight_types(
             )
             maximum = None
 
-        types[name] = WeightType(step=step, minimum=minimum, maximum=maximum)
+        types[key] = WeightType(step=step, minimum=minimum, maximum=maximum)
 
     return types
 
@@ -484,7 +501,10 @@ def _build_exercise(
         problems.add(f"{where}: exercise is missing {', '.join(missing)}")
         return None
 
-    load = raw["load"]
+    # Lower-cased to match the weights, which are keyed that way, and stored
+    # lower-cased so that everything reading a load downstream - the bodyweight
+    # test, the sync that refuses to cross equipment - compares like with like.
+    load = str(raw["load"]).lower()
     # Bodyweight is the one load that names no weights: there is no equipment
     # to describe, and nothing to add to it.
     weights = None if load == BODYWEIGHT else types.get(load)
