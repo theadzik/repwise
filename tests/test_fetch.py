@@ -226,6 +226,20 @@ def test_workouts_are_saved_one_file_each(config):
     assert read(config, "workout-123.json")["workoutId"] == "123"
 
 
+def test_a_workout_garmin_holds_no_name_for_is_saved_as_unnamed(config, caplog):
+    """Garmin allows a null name, and `.get(key, default)` hands a null
+    straight back - so the line used to read `Saved None -> ...`."""
+    session = account()
+    session.workout = lambda workout_id: {"workoutId": workout_id, "workoutName": None}
+
+    with caplog.at_level(logging.INFO, logger="repwise.app.fetch"):
+        assert run_fetch(session, config, ["123"]) == ExitCode.OK
+
+    said = "\n".join(caplog.messages)
+    assert "(unnamed)" in said
+    assert "None" not in said
+
+
 def test_a_workout_id_carrying_a_path_is_refused(config):
     """An absolute one is worse: os.path.join drops the directory entirely."""
     with pytest.raises(UsageError):
