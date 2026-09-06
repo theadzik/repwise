@@ -26,6 +26,7 @@ from repwise.garmin.payloads import (
     step_target,
 )
 from repwise.planner import (
+    NOT_TRAINED,
     decided_targets,
     find_workout,
     index_specs,
@@ -229,10 +230,11 @@ def test_an_ambiguous_category_is_not_a_pile_of_sets_to_progress_from():
         performed,
     )
 
-    assert [c.spec for c in plan.changes] == [HOME_SINGLE_LEG_CALF], (
+    assert [c.spec for c in plan.moved] == [HOME_SINGLE_LEG_CALF], (
         "only the one matched"
     )
-    assert "Seated Calf Raise: not found in the activity" in plan.warnings[0]
+    seated = next(c for c in plan.changes if c.spec is HOME_SEATED_CALF)
+    assert seated.reason == NOT_TRAINED, "the other is reported, not progressed"
 
 
 def test_plan_removes_an_exercise_the_config_does_not_name():
@@ -245,11 +247,17 @@ def test_plan_removes_an_exercise_the_config_does_not_name():
     assert plan.changes == []
 
 
-def test_plan_warns_when_an_exercise_was_not_performed():
+def test_an_exercise_the_session_never_trained_keeps_its_target_and_says_why():
+    """It still belongs to the workout, so it still gets a row: the target it
+    holds, unmoved, and the reason nothing moved it."""
     payload = workout(repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0), sets=3))
     plan = plan_workout(a_workout(), payload, ({}, {}))
-    assert plan.changes == []
-    assert "not found in the activity" in plan.warnings[0]
+
+    assert [(c.old, c.new, c.reason) for c in plan.changes] == [
+        (Target(7, 20.0), Target(7, 20.0), NOT_TRAINED)
+    ]
+    assert plan.moved == [], "nothing was logged, so no target moved"
+    assert plan.warnings == [], "an exercise not trained is not a fault to warn about"
 
 
 def test_plan_leaves_an_unchanged_step_alone():
@@ -305,7 +313,7 @@ def test_note_is_written_even_when_the_exercise_was_not_performed():
     payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0))
     plan = plan_workout(a_workout(), payload, ({}, {}))
 
-    assert plan.changes == [], "nothing was logged, so no target moved"
+    assert plan.moved == [], "nothing was logged, so no target moved"
     assert noted(plan) == [("Barbell Back Squat", "", "6-10 reps | +2.5 kg")]
     assert plan.writable, "a note alone is worth writing"
 
@@ -673,7 +681,7 @@ def test_a_newly_built_exercise_is_not_reported_as_missing_from_the_activity():
     plan = plan_workout(a_workout(exercises=[SQUAT, CURLS]), built, performed)
 
     assert [c.kind for c in plan.structure] == ["added"]
-    assert not [w for w in plan.warnings if "not found in the activity" in w]
+    assert not [c for c in plan.changes if c.reason == NOT_TRAINED]
 
 
 def test_the_rests_between_exercises_are_kept_as_they_were():

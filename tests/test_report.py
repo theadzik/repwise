@@ -15,6 +15,7 @@ from repwise.app.report import rows as built_rows
 from repwise.domain.models import Workout
 from repwise.domain.progression import Target
 from repwise.planner import (
+    NOT_TRAINED,
     Change,
     GapChange,
     NameChange,
@@ -149,6 +150,25 @@ def test_an_exercise_left_alone_has_a_blank_marker(caplog):
 
     markers = [record.message[0] for record in caplog.records[_table(caplog) + 1 :]]
     assert markers == [" ", "*"]
+
+
+def test_an_untrained_exercise_holds_its_place_and_its_target(caplog):
+    """Adding an exercise to workouts.yaml and then training the workout
+    without it used to leave it out of the table and warn underneath. It is
+    still in the workout, so it is still a row where the config puts it."""
+    plan = a_plan(
+        changes=[
+            Change(FIRST, Target(8, 30.0), Target(9, 30.0), "hit 8 on every set"),
+            Change(MIDDLE, Target(8, 30.0), Target(8, 30.0), NOT_TRAINED),
+        ]
+    )
+
+    report_plan(plan)
+
+    assert rows(caplog) == [
+        "* 1 Barbell Back Squat advance 3 8 x 30 kg -> 9 x 30 kg hit 8 on every set",
+        f"2 Lat Pull-down hold 3 8 x 30 kg == 8 x 30 kg {NOT_TRAINED}",
+    ]
 
 
 def test_a_rename_is_one_row_where_the_exercise_now_sits(caplog):

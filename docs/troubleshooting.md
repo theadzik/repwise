@@ -3,7 +3,7 @@
 - [Authentication](#authentication)
 - [Common symptoms](#common-symptoms)
 - [Nothing matched my session](#nothing-matched-my-session)
-- [An exercise was skipped](#an-exercise-was-skipped)
+- [An exercise was not trained](#an-exercise-was-not-trained)
 - [An exercise disappeared from my workout](#an-exercise-disappeared-from-my-workout)
 - [A workout was created twice](#a-workout-was-created-twice)
 - [Known limitations](#known-limitations)
@@ -122,14 +122,16 @@ repwise update --activity 1234567890
 Prefixes are matched case-insensitively against the start of the name, so
 `workout a` matches "Workout A - evening".
 
-## An exercise was skipped
+## An exercise was not trained
 
 ```text
-! Standing Calf Raise: not found in the activity, skipped
+  4 Standing Calf Raise    hold    3    18 x 20 kg  ==  18 x 20 kg        not trained in this session
 ```
 
 The exercise is in your config and in the Garmin workout, but you did not
-perform it in that session. Harmless if you skipped it.
+perform it in that session. Harmless if you skipped it, and the ordinary
+reading for one you added to `workouts.yaml` after training the workout: there
+was nothing to judge the target against, so it keeps the one it holds.
 
 It can also mean the identifiers disagree - the exercise *was* performed, under
 a name neither `garmin_name` nor `garmin_category` matches. Run
@@ -137,11 +139,9 @@ a name neither `garmin_name` nor `garmin_category` matches. Run
 [finding your exercise
 identifiers](configuration.md#finding-your-exercise-identifiers).
 
-An exercise in the Garmin workout that your config does not describe is no
-longer a warning: it is [removed](#an-exercise-disappeared-from-my-workout),
+An exercise in the Garmin workout that your config does not describe is not
+reported here at all: it is [removed](#an-exercise-disappeared-from-my-workout),
 because the config decides what the workout holds.
-
-Warnings never fail a run silently - a skipped exercise is always reported.
 
 ## An exercise disappeared from my workout
 

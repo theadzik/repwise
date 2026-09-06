@@ -153,10 +153,9 @@ Updating: Workout A -> workout 111111111
 * 1 Barbell Back Squat           advance 3 -> 4  8 x 30 kg  ->  9 x 30 kg  sets rest note add 1 rep
 * 2 Sit-up                       hold    3         11 reps  ==  11 reps    note           missed target, 10 on the worst set
 * 3 Weighted Standing Calf Raise advance 4      12 x 30 kg  ->  13 x 30 kg note           add 1 rep
-* 4 Plank                        hold    3                                 note           from workouts.yaml
+* 4 Plank                        hold    3            45 s  ==  45 s       note           not trained in this session
 + 5 Leg Press                    build   3                  ->  6 x 60 kg                 new in workouts.yaml
 -   FACE_PULL                    drop                                                     no longer in workouts.yaml
-! Plank: not found in the activity, skipped
 
 Dry run: 2 step(s) would change, 2 exercise(s) would be added, removed or moved, 1 set count(s) would change, 1 rest time(s) would change, 4 note(s) would be refreshed. Re-run with --apply.
 ```
@@ -185,6 +184,12 @@ workout of short names is not read across a gap of spaces.
 
 An `ACTION` of `hold` with nothing in `CONFIG` and a blank marker is the one row
 you can skip: read, judged, nothing to write.
+
+An exercise the session never touched - one you added to `workouts.yaml` after
+training the workout, or simply skipped on the day - is a `hold` too, and says
+`not trained in this session` in `WHY`. It keeps its place and its target: there
+was nothing to judge it against, so the numbers stand until a session that
+includes it says otherwise.
 
 The closing line counts everything else the run would touch:
 

@@ -285,5 +285,6 @@ The same order applies when looking up what was performed, which matters because
 Garmin auto-detects exercises while you lift and the name it logs need not match
 the one programmed. See [Garmin's API](garmin-api.md#names-drift-between-payloads).
 
-Unmatched exercises are reported as warnings and skipped - never silently
-ignored.
+An exercise the session logged nothing for keeps its target and says so in its
+own row of the table - never silently ignored, and not a warning either: a
+config entry added since the last session is the ordinary way to get one.
