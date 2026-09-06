@@ -169,9 +169,25 @@ repos:
 
       # On push rather than on commit: the suite is offline and takes under a
       # second, but a failing test should not block saving work in progress.
+      #
+      # Under `coverage run` so that the floors below cost nothing extra. The
+      # measurement is a side effect of a run that had to happen anyway, and a
+      # failing test still fails here, with pytest's own output.
       - id: pytest
         name: pytest
-        entry: python -m pytest -q
+        entry: python -m coverage run -m pytest -q
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Reads the data the hook above just wrote, so it runs no tests of its
+      # own. Separate from it because the two failures mean different things:
+      # one says the code is wrong, this one says a module arrived without
+      # tests. Both floors are alarms rather than targets - see the script.
+      - id: check-coverage
+        name: coverage floors
+        entry: python tools/check_coverage.py
         language: system
         types: [python]
         pass_filenames: false

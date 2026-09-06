@@ -51,7 +51,8 @@ the message format on `commit-msg`, and the test suite on push.
 | `check-structure` | `tools/check_structure.py`: refuses an import cycle, or an import crossing a boundary [architecture](architecture.md) forbids |
 | `check-docs` | `tools/check_docs.py`: refuses a document that has drifted from the code - the layout tree, the documented flags, the config keys, a broken link, the version |
 | `commitizen` | The commit message is conventional. See [releasing](releasing.md) |
-| `pytest` | On push only, so a failing test does not block saving work in progress |
+| `pytest` | On push only, so a failing test does not block saving work in progress. Runs under `coverage run`, so the floors below cost no second run |
+| `check-coverage` | `tools/check_coverage.py`: refuses a drop below 90% overall or 80% in any one module. On push, reading what `pytest` just measured |
 
 Every tool reads its settings from `pyproject.toml`, so a bare `ruff check`,
 `mypy` or `pytest` behaves exactly as the hook does - which is also how
@@ -95,6 +96,37 @@ shipped example fails the suite. It cannot validate anyone's real
 
 Adding a rule to `domain/progression.py` needs no Garmin access at all - it
 takes plain data and returns plain data, which is the point of keeping it pure.
+
+### Coverage
+
+```bash
+.venv/bin/coverage run -m pytest -q
+.venv/bin/coverage report --show-missing
+.venv/bin/python tools/check_coverage.py
+```
+
+Two floors, both enforced on push: **90% overall**, in `fail_under` under
+`[tool.coverage.report]`, and **80% for any single module**, in `FILE_FLOOR` in
+`tools/check_coverage.py`. `coverage report` has a `--fail-under` and it is
+global only, which is why the per-module half is a script.
+
+The per-module floor is the one that does the work. An audit of this tree found
+`app/listing.py` at 25% and `app/importing.py` at 39% - two shipped commands
+with no test between them - while the total sat at 94%, because twenty-eight
+well-tested modules averaged them away. A global floor alone would not have
+caught it.
+
+**Both are floors, not targets.** They are deliberately well below where the
+suite actually sits, and they exist to fire when a module arrives untested, not
+to be climbed towards. Coverage answers "was this line executed", never "would
+a test notice a wrong answer" - the same audit found three of its four bugs in
+covered code, one of them in a module at 100%. Raise a floor when the tree has
+risen on its own; never write a test to move a number.
+
+What does answer the other question is changing one constant or flipping one
+comparison in `domain/progression.py`, in a copy of the tree, and seeing
+whether the suite goes red. A test that executes a rule without asserting on it
+is invisible to coverage and obvious to that.
 
 ## Where to make a change
 

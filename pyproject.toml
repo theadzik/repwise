@@ -67,6 +67,7 @@ release = [
 ]
 dev = [
     { include-group = "release" },
+    "coverage==7.16.0",
     "mypy==2.3.1",
     "pre-commit==4.6.2",
     "pytest==9.1.1",
@@ -212,3 +213,24 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+# Coverage is a decay alarm, not a quality bar. It answers "was this line
+# executed", never "would a test notice a wrong answer" - the audit that added
+# these floors found three of its four bugs in covered code, one of them in a
+# module sitting at 100%. So the floors are set at a decent distance below
+# where the suite actually is, and are meant to fire when whole modules arrive
+# untested rather than to be climbed towards. Test strength is a separate
+# question, and mutation testing is what answers it.
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    # Three lines that call main() and exit. Reaching them means running the
+    # process, which is what tests/test_main.py does through main() itself.
+    "src/repwise/__main__.py",
+]
+
+[tool.coverage.report]
+#: The floor for the tree as a whole. Read by `tools/check_coverage.py` as well
+#: as by `coverage report`, so there is one number rather than two that can
+#: disagree.
+fail_under = 90
