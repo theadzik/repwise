@@ -41,13 +41,15 @@ the message format on `commit-msg`, and the test suite on push.
 | --- | --- |
 | `ruff-check --fix` | Lints and fixes what is mechanically fixable. Rules in `[tool.ruff.lint]` |
 | `ruff-format` | Formats. 88 columns, the same defaults as Black |
-| `mypy` | Type checks `src` and `tests`. Settings in `[tool.mypy]` |
+| `mypy` | Type checks `src`, `tests` and `tools`. Settings in `[tool.mypy]`, where `repwise.*` is held to a stricter standard than the tests that drive it |
 | `markdownlint --fix` | Markdown, using `.markdownlint.json` |
 | `codespell` | Typos, in prose and code alike |
 | `check-yaml`, `check-toml` | The config files parse |
 | `check-dependabot`, `check-github-workflows` | GitHub will actually accept `dependabot.yml` and the workflows |
 | `detect-private-key`, `check-added-large-files` | Accidents |
 | `forbid-private-files` | Refuses to commit `workouts.yaml` or a raw dump, which `.gitignore` covers but `git add -f` does not |
+| `check-structure` | `tools/check_structure.py`: refuses an import cycle, or an import crossing a boundary [architecture](architecture.md) forbids |
+| `check-docs` | `tools/check_docs.py`: refuses a document that has drifted from the code - the layout tree, the documented flags, the config keys, a broken link, the version |
 | `commitizen` | The commit message is conventional. See [releasing](releasing.md) |
 | `pytest` | On push only, so a failing test does not block saving work in progress |
 
@@ -106,7 +108,8 @@ takes plain data and returns plain data, which is the point of keeping it pure.
 | How the config file is read or written | `yamlio.py`, which every other module goes through |
 | A new setting | `workouts.yaml` under `settings`, the field on `GarminSettings` in `domain/models.py`, and reading it in `config.py`. Nothing should be hardcoded outside the config |
 | A new load type | A named entry under the top-level `load`, with its `min`, `step` and any `max`. An exercise's own `load` must name one of them, or loading rejects it |
-| A new command | A module in `app/` exposing `run_<name>()`, a subparser in `cli/parser.py`, and an entry in `HANDLERS` in `cli/__init__.py` |
+| A new command | A module in `app/` exposing `run_<name>()`, a subparser in `cli/parser.py`, an entry in `HANDLERS` in `cli/__init__.py`, and a section in [commands](commands.md), which `check-docs` requires |
+| A new module | The file, its entry in the layout tree in [architecture](architecture.md), and its layer in `RANKS` in `tools/check_structure.py` if it sits outside an existing package. Both are checked |
 | How an exercise is recognised | `domain/matching.py`, which the planner and the checker share |
 | A new failure the user should see | A class in `errors.py` carrying its `exit_code`. Raise it; `main()` already prints it and exits with it |
 | A new Garmin call | A method on `GarminSession` in `garmin/client.py`, so the `garminconnect` dependency stays in one place |

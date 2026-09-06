@@ -138,6 +138,35 @@ repos:
         # One line: a folded scalar would put a space inside the alternation.
         files: ^(workouts\.yaml|dumps/.*|workout-.*\.json|activity-.*\.json|sets-.*\.json|executed-.*\.json)$
 
+      # The two checks in tools/. They read the tree rather than the code, so
+      # neither needs the package importable except check-docs, which builds
+      # the real parser rather than reading parser.py - the point being that
+      # the help text and docs/commands.md cannot drift apart unnoticed.
+      #
+      # On commit rather than on push: both run in under half a second, and
+      # both fail on things that are cheaper to fix while the change is still
+      # in your head than after a push.
+      - id: check-structure
+        name: "import graph: no cycles, no boundary crossings"
+        entry: python tools/check_structure.py
+        language: system
+        # Only the cycle and boundary sections fail the run. The module sizes,
+        # the repeated literals and the missing test modules it also prints are
+        # for a person to weigh, and a hook that failed on those would be a
+        # hook people learn to pass with --no-verify.
+        types: [python]
+        pass_filenames: false
+
+      - id: check-docs
+        name: docs match the code
+        entry: python tools/check_docs.py
+        language: system
+        # Markdown and pyproject.toml as well as Python: the layout tree, the
+        # documented flags, the config keys and the two places the version is
+        # written are all things a non-Python change can invalidate.
+        types_or: [python, markdown, toml]
+        pass_filenames: false
+
       # On push rather than on commit: the suite is offline and takes under a
       # second, but a failing test should not block saving work in progress.
       - id: pytest

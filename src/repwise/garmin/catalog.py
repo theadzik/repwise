@@ -19,6 +19,7 @@ import os
 import urllib.request
 from dataclasses import dataclass
 from difflib import get_close_matches
+from typing import Any
 
 from .. import __version__
 from ..domain.models import GarminSettings
@@ -62,7 +63,7 @@ class ExerciseCatalog:
     categories: dict[str, frozenset[str]]
 
     @classmethod
-    def parse(cls, payload: dict) -> ExerciseCatalog:
+    def parse(cls, payload: dict[str, Any]) -> ExerciseCatalog:
         raw = payload.get("categories")
         if not isinstance(raw, dict) or not raw:
             # Refused rather than accepted as an empty catalog, which would
@@ -155,7 +156,7 @@ def cache_path(settings: GarminSettings) -> str:
     return os.path.join(os.path.expanduser(settings.token_store), CACHE_NAME)
 
 
-def download() -> dict:
+def download() -> dict[str, Any]:
     """Fetch the catalog from Garmin.
 
     Deliberately not a `GarminSession` method: the file is public, and going
@@ -176,7 +177,7 @@ def download() -> dict:
     return payload
 
 
-def save(settings: GarminSettings, payload: dict) -> str:
+def save(settings: GarminSettings, payload: dict[str, Any]) -> str:
     """Write the catalog to the cache, and say where it went.
 
     The token store is created if this runs before the first login, so that

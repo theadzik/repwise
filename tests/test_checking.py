@@ -35,7 +35,7 @@ def configured(*exercises, bodyweight=None) -> Config:
     return Config(workouts={"Workout A": workout}, bodyweight=bodyweight)
 
 
-def resolved(session: Any, config: Config) -> float | None:
+def resolved(session: Any, config: Config) -> float | None:  # noqa: ANN401
     """The use case takes its session as an argument, so nothing is patched."""
     return _bodyweight(session, config)
 

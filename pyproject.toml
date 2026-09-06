@@ -124,6 +124,23 @@ select = [
     "BLE",     # blind except - the existing noqa comments name this rule
     "PL",      # pylint subset
     "RUF",     # ruff's own
+    # Added as ratchets: each was already clean, so it costs nothing today and
+    # refuses the first regression. See [[tool.mypy.overrides]] below for the
+    # same reasoning applied to types.
+    "LOG",     # logging misuse: a logger built by hand, warn() on the root
+    "PGH",     # a bare `noqa` or `type: ignore` that names no rule
+    "FURB",    # constructs with a plainer spelling
+    "A",       # an argument or variable shadowing a builtin
+    # A boolean argument read at the call site as a bare True is a coin flip
+    # for the reader: `connect(settings, False)` says nothing about which of
+    # two flags it set. Keyword-only, so the call says what it means. The one
+    # exemption is `yamlio._Dumper.increase_indent`, whose signature is
+    # PyYAML's rather than ours, and which says so.
+    "FBT",     # boolean traps
+    # `Any` in a signature where a real type exists. Where it has none - a
+    # dump, a parsed document - the noqa says so rather than the annotation
+    # quietly meaning nothing.
+    "ANN401",  # dynamically typed signatures
 ]
 ignore = [
     # This is a CLI whose job is printing, and its errors carry the detail a
@@ -138,8 +155,53 @@ ignore = [
 ]
 
 [tool.mypy]
-files = ["src", "tests"]
+# tools/ as well: the checks in there are part of the repository and read the
+# same tree, so a wrong assumption about it should fail here rather than in a
+# hook that then reports nonsense.
+files = ["src", "tests", "tools"]
 python_version = "3.14"
+# A cast that is no longer needed is a leftover from a type that has since
+# improved, and it silently keeps the old shape. Global rather than per-module
+# because mypy offers it nowhere else.
+warn_redundant_casts = true
+
+# The shipped package is held to a stricter standard than the tests that drive
+# it. Every flag here was already clean when it was added, so this locks in
+# where the code got to rather than announcing a cleanup nobody is doing - a
+# rule that fails the day it lands teaches people to skip the hook.
+#
+# `disallow_untyped_defs` is the one that matters, and the reason a bare `mypy`
+# is not enough: without it the *bodies* of unannotated functions are never
+# checked, so an unannotated function is a hole rather than a looser check.
+# Deliberately not applied to tests, where 900-odd `def test_x():` signatures
+# would be noise for no safety - the code under test is what has to be right.
+[[tool.mypy.overrides]]
+module = "repwise.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_subclassing_any = true
+# Comparing two types that can never be equal is always a bug, and the shapes
+# this maps between - Garmin's strings against our enums and ints - are exactly
+# where that happens silently.
+strict_equality = true
+extra_checks = true
+warn_unreachable = true
+# An ignore that stopped being needed is an ignore that now hides something.
+warn_unused_ignores = true
+# A bare `dict` or `list` is Any wearing a container, and this reads YAML and
+# Garmin's JSON into both. Spelling the shape out is what stops Any spreading
+# from the two files that have a reason for it into the ones that do not.
+disallow_any_generics = true
+# The value garminconnect hands back is Any, so without this a function can
+# promise `dict[str, Any]` and return whatever came off the wire unchecked.
+# `garmin/client.py` casts at the boundary instead, which is what an adapter is.
+warn_return_any = true
+# A name is imported from where it is defined, not from the last module that
+# happened to import it - `ActivityNotFound` lives in `errors.py`, whoever else
+# passes it through.
+no_implicit_reexport = true
 
 # garminconnect ships no type information. garmin/client.py is the only module
 # that imports it, which is what keeping the adapter in one place buys.

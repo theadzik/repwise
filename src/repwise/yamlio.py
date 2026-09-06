@@ -31,11 +31,21 @@ class _Dumper(yaml.SafeDumper):
     read and edited by the user, so it comes out looking like the example.
     """
 
-    def increase_indent(self, flow: bool = False, indentless: bool = False) -> None:
-        super().increase_indent(flow, False)
+    # Positional booleans, and staying that way: this signature is PyYAML's,
+    # not ours. The emitter happens to call it by keyword today, but an
+    # override that only works while that stays true is a bug waiting for a
+    # dependency bump. FBT is right about new code and wrong about this.
+    def increase_indent(
+        self,
+        flow: bool = False,  # noqa: FBT001, FBT002
+        indentless: bool = False,  # noqa: FBT001, FBT002
+    ) -> None:
+        # `indentless=False` regardless of what we were asked: that is the
+        # whole point of the subclass.
+        super().increase_indent(flow, indentless=False)
 
 
-def dump(data: Any) -> str:
+def dump(data: object) -> str:
     """`data` as the YAML this tool writes.
 
     Keys keep the order they are in rather than being sorted, so a document
@@ -53,7 +63,7 @@ def dump(data: Any) -> str:
     )
 
 
-def read(path: str) -> Any:
+def read(path: str) -> Any:  # noqa: ANN401 - the document, as YAML read it
     """The parsed document at `path`.
 
     A file that cannot be read or parsed is a configuration problem like any

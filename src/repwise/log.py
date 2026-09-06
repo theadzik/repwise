@@ -50,7 +50,7 @@ class MaxLevel(logging.Filter):
         return record.levelno <= self.level
 
 
-def configure(verbose: bool = False) -> None:
+def configure(*, verbose: bool = False) -> None:
     """Install the handlers. Called once, before anything logs."""
     formatter = Formatter(DETAILED if verbose else PLAIN)
 

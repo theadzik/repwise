@@ -71,7 +71,7 @@ def path(directory: str, kind: str, name: str) -> str:
     return os.path.join(directory, filename)
 
 
-def write(payload: Any, directory: str, kind: str, name: str) -> str:
+def write(payload: object, directory: str, kind: str, name: str) -> str:
     """Save one payload, and say where it went."""
     destination = path(directory, kind, name)
     _writable(directory)
@@ -95,12 +95,17 @@ def _writable(directory: str) -> None:
         raise ConfigError(f"Could not write to dump_dir {directory}: {exc}") from exc
 
 
-def read(directory: str, kind: str, name: str) -> Any | None:
+# `Any` on the way out, deliberately, and ANN401 named on each: a dump is
+# whatever was dumped - an activity, a workout, the catalog - and the caller
+# asked for one kind and knows its shape. Narrowing here would only move the
+# guessing to every call site. What goes *in* is `object`, since writing a
+# payload needs to know nothing about it.
+def read(directory: str, kind: str, name: str) -> Any | None:  # noqa: ANN401
     """One saved payload, or None if it was never saved or cannot be read."""
     return _load(path(directory, kind, name))
 
 
-def _load(source: str) -> Any | None:
+def _load(source: str) -> Any | None:  # noqa: ANN401
     """The contents of one saved file, or None.
 
     A file that is missing and a file that is corrupt answer the same, because
@@ -225,7 +230,7 @@ class ActivityCache:
         """Whether the whole session is on disk, which is what `fetch` skips."""
         return all(self.has(kind, activity_id) for kind in SESSION)
 
-    def load(self, kind: str, activity_id: str) -> Any | None:
+    def load(self, kind: str, activity_id: str) -> Any | None:  # noqa: ANN401
         """A filed payload, or None to go and ask Garmin for it."""
         name = f"{kind}-{activity_id}.json"
         missing = self._missing(kind, activity_id)
@@ -242,7 +247,7 @@ class ActivityCache:
         logger.debug(f"Cache hit for {name}")
         return payload
 
-    def store(self, kind: str, activity_id: str, payload: Any) -> None:
+    def store(self, kind: str, activity_id: str, payload: object) -> None:
         """File one payload, and note that this session now holds it."""
         activity_id = str(activity_id)
         logger.debug(f"Filing {kind}-{activity_id}.json")

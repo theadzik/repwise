@@ -106,6 +106,11 @@ class GarminSession:
         return False
 
     # --- reads ---
+    #
+    # garminconnect ships no type information, so everything it returns arrives
+    # as Any and the cast is where it stops being. Declaring the shape here
+    # rather than letting Any spread is the whole point of the adapter: one file
+    # asserts what Garmin sends, and is the one file to correct when it changes.
 
     @_reporting("list your recent activities")
     def recent_activities(self, limit: int | None = None) -> list[dict[str, Any]]:
@@ -114,15 +119,15 @@ class GarminSession:
 
     @_reporting("fetch that activity")
     def activity(self, activity_id: str) -> dict[str, Any]:
-        return self._api.get_activity(activity_id)
+        return cast(dict[str, Any], self._api.get_activity(activity_id))
 
     @_reporting("fetch the activity's exercise sets")
     def exercise_sets(self, activity_id: str) -> dict[str, Any]:
-        return self._api.get_activity_exercise_sets(activity_id)
+        return cast(dict[str, Any], self._api.get_activity_exercise_sets(activity_id))
 
     @_reporting("fetch the workout")
     def workout(self, workout_id: str) -> dict[str, Any]:
-        return self._api.get_workout_by_id(workout_id)
+        return cast(dict[str, Any], self._api.get_workout_by_id(workout_id))
 
     @_reporting("fetch the workout that activity was performed against")
     def executed_workout(self, activity_id: str) -> list[dict[str, Any]]:
@@ -225,12 +230,12 @@ class GarminSession:
         return str(workout_id)
 
     @_reporting("save the workout")
-    def save_workout(self, workout_id: str, payload: dict[str, Any]) -> Any:
+    def save_workout(self, workout_id: str, payload: dict[str, Any]) -> object:
         """Replace a workout definition, keeping its id and any schedules."""
         return self._api.update_workout(workout_id, payload)
 
     @_reporting("queue the workout for your device")
-    def push_workout(self, workout_id: str) -> Any:
+    def push_workout(self, workout_id: str) -> object:
         """Queue a workout for the last-used device to collect on its next sync.
 
         Editing a workout does not reach the watch on its own; a message has to
@@ -429,7 +434,7 @@ class CachedSession(GarminSession):
 
 
 def connect(
-    settings: GarminSettings, prompt: bool = True, cache: bool = True
+    settings: GarminSettings, *, prompt: bool = True, cache: bool = True
 ) -> GarminSession:
     """Resume a cached session, falling back to an interactive login.
 

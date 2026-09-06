@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_list(
-    session: GarminSession, config: Config, every_sport: bool = False
+    session: GarminSession, config: Config, *, every_sport: bool = False
 ) -> ExitCode:
     workouts = session.list_workouts(sport_type=None if every_sport else STRENGTH)
 

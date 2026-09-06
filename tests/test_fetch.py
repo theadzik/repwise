@@ -68,7 +68,7 @@ class FakeSession:
         return {"workoutId": workout_id, "workoutName": f"Workout {workout_id}"}
 
 
-def account(activities=(), executed=None, failing=()) -> Any:
+def account(activities=(), executed=None, failing=()) -> Any:  # noqa: ANN401
     """A FakeSession, typed as what a use case will accept.
 
     `Any` rather than the class, so that a stand-in goes where a real session
@@ -256,7 +256,7 @@ class CachingSession(FakeSession):
         return str(activity_id) in self.held
 
 
-def holding(activities=(), holds=()) -> Any:
+def holding(activities=(), holds=()) -> Any:  # noqa: ANN401
     return CachingSession(activities, holds)
 
 

@@ -9,6 +9,7 @@ Pure: takes payloads, returns text. Nothing here talks to Garmin.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 from .garmin.payloads import (
     is_rest,
@@ -90,7 +91,7 @@ def guess_load(garmin_name: str, weight: float | None) -> tuple[str, bool]:
     return "machine", True
 
 
-def describe_workout(payload: dict) -> ImportedWorkout:
+def describe_workout(payload: dict[str, Any]) -> ImportedWorkout:
     """Read a Garmin workout definition into importable form."""
     name = payload.get("workoutName") or "Unnamed workout"
 
@@ -110,7 +111,9 @@ def describe_workout(payload: dict) -> ImportedWorkout:
         # the one to import as the bottom of the range.
         asked = [
             found
-            for found in (step_target(step, time_based) for step in block.steps)
+            for found in (
+                step_target(step, time_based=time_based) for step in block.steps
+            )
             if found is not None
         ]
         if not asked:
@@ -146,7 +149,7 @@ def describe_workout(payload: dict) -> ImportedWorkout:
     )
 
 
-def _rest_between(payload: dict) -> int | None:
+def _rest_between(payload: dict[str, Any]) -> int | None:
     """The rest between exercises, when the whole workout agrees on one.
 
     A single number is all the config can hold, so a workout whose gaps differ
@@ -185,7 +188,7 @@ HEADER = """\
 
 #: What a fresh config starts with. Every one of these can be edited afterwards;
 #: they are here so that an imported file is valid the moment it is written.
-DEFAULT_SETTINGS: dict = {
+DEFAULT_SETTINGS: dict[str, Any] = {
     # No token_store and no dump_dir: both default to a directory computed
     # from the environment, and writing either path out here would pin it to
     # ~/.config or ~/.local/share for someone whose $XDG_CONFIG_HOME or
@@ -200,7 +203,7 @@ DEFAULT_SETTINGS: dict = {
 #: user's to choose, and anyone lifting on more than one rack will want an
 #: entry for each - `home_dumbbell` and `gym_dumbbell` rather than `dumbbell` -
 #: with the exercises pointed at whichever they are performed on.
-DEFAULT_LOADS: dict = {
+DEFAULT_LOADS: dict[str, Any] = {
     "barbell": {"min": 12.0, "step": 2.5},
     "dumbbell": {"min": 1.0, "step": 1.0},
     "cable": {"min": 5.0, "step": 5.0},
@@ -224,14 +227,14 @@ def guesses(exercise: ImportedExercise) -> str:
     return ". ".join(todo)
 
 
-def render_exercise(exercise: ImportedExercise) -> dict:
+def render_exercise(exercise: ImportedExercise) -> dict[str, Any]:
     """One exercise as the mapping the config holds.
 
     Built key by key rather than from the dataclass, because the order here is
     the order it is read in, and the optional keys are left out entirely
     instead of written as null.
     """
-    entry: dict = {
+    entry: dict[str, Any] = {
         "name": exercise.name,
         "garmin_name": exercise.garmin_name,
     }
@@ -249,8 +252,8 @@ def render_exercise(exercise: ImportedExercise) -> dict:
     return entry
 
 
-def render_workout(workout: ImportedWorkout) -> dict:
-    entry: dict = {
+def render_workout(workout: ImportedWorkout) -> dict[str, Any]:
+    entry: dict[str, Any] = {
         "key": workout.key,
         "garmin_workout_id": workout.garmin_workout_id,
         "activity_prefixes": workout.activity_prefixes,

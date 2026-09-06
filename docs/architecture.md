@@ -16,6 +16,8 @@ src/repwise/
                            names are its own
         progression.py     the rules. No I/O, no Garmin types
         matching.py        which exercise a name or category refers to
+        effort.py          which loads a rack can express, and which of
+                           several increments a jump should use
     app/                   one module per command, plus the report they print
         update.py          advance targets from the sessions trained
         fetch.py           download definitions, sessions, or the catalog
@@ -35,6 +37,9 @@ src/repwise/
     checker.py             compare config against Garmin
     errors.py              why a run failed, and what it exits with
     log.py                 which stream a message lands on, and its level
+    yamlio.py              the only module that touches workouts.yaml: how it
+                           is parsed, how what we write is styled, and the
+                           atomic replace that puts it back
     dumps.py               the dump directory: how it is named, and - with
                            activity_caching on - when a copy of a session may
                            be believed rather than fetched again
@@ -47,11 +52,19 @@ src/repwise/
                            Also reads the workout an activity was run against
         catalog.py         every exercise Garmin knows, downloaded from a
                            static file and cached in the token store
+    __main__.py            `python -m repwise`, which calls main() and nothing
+                           else
+tools/                     checks that read the tree rather than the code
+    check_structure.py     the import graph: cycles, and the boundaries below
+    check_docs.py          this document and the rest of docs/, against what
+                           the code actually does
 tests/
     builders.py            the payloads and specs every test builds from
     conftest.py            fixtures
     test_progression.py    the rules, and how far a stall shortens a step
     test_matching.py       name and category lookup
+    test_effort.py         rack geometry, and which increment a jump takes
+    test_models.py         what a domain object computes about itself
     test_config.py         loading and validation
     test_payloads.py       schema mapping, using trimmed real payloads
     test_planner.py        matching and planning
@@ -65,6 +78,7 @@ tests/
     test_dumps.py          the dump layout, and when a copy is believed
     test_fetch.py          what each download writes, and what it skips
     test_logout.py         what signing out deletes, keeps and says
+    test_report.py         how a plan is turned into columns and lined up
     test_cli.py            argument parsing and help
     test_completion.py     the generated scripts, and what bash makes of them
     test_main.py           dispatch, exit codes, and which stream

@@ -102,7 +102,7 @@ class LoadType:
 _MOVED = ("weight_steps", "min_weights", "max_weights")
 
 
-def _reject_moved_settings(settings: dict, path: str) -> None:
+def _reject_moved_settings(settings: dict[str, Any], path: str) -> None:
     """Say what became of the three maps that the top-level `load` replaced.
 
     They were keyed by a fixed idea of equipment - one `dumbbell` entry for
@@ -168,7 +168,7 @@ def default_dump_dir() -> str:
     return os.path.join(_xdg_data_home(), APP_DIR, "dumps")
 
 
-def _flag(declared: Any, key: str, default: bool) -> bool:
+def _flag(declared: object, key: str, *, default: bool) -> bool:
     """A yes-or-no setting, read as one rather than coerced into one.
 
     `key` is the whole dotted path, since these live at more than one level of
@@ -283,14 +283,14 @@ def resolve_config(explicit: str | None = None) -> str:
     raise ConfigError(f"No {CONFIG_NAME} found. Looked in:\n{where}\n{hint}")
 
 
-def _identified(entry: dict, workout_id: str) -> dict:
+def _identified(entry: dict[str, Any], workout_id: str) -> dict[str, Any]:
     """The entry with its Garmin id set, and set where a reader expects it.
 
     Rebuilt rather than assigned into so that an id this tool has just learnt
     lands under `key`, where the hand-written ones are, rather than at the end
     of the entry underneath the exercises.
     """
-    rebuilt: dict = {}
+    rebuilt: dict[str, Any] = {}
     for name, value in entry.items():
         if name == "garmin_workout_id":
             continue  # dropped here, re-added under `key` or below
@@ -357,7 +357,7 @@ class Problems:
         raise ConfigError(f"{len(self.found)} problems:\n{listed}")
 
 
-def _steps(entry: dict, where: str, problems: Problems) -> tuple[float, ...]:
+def _steps(entry: dict[str, Any], where: str, problems: Problems) -> tuple[float, ...]:
     """The increments this equipment can express, ascending.
 
     `step` is the single-increment form and stays the whole story for barbells,
@@ -401,7 +401,9 @@ def _steps(entry: dict, where: str, problems: Problems) -> tuple[float, ...]:
     return tuple(sorted(set(sizes)))
 
 
-def _racks(entry: dict, where: str, problems: Problems) -> tuple[LoadTier, ...]:
+def _racks(
+    entry: dict[str, Any], where: str, problems: Problems
+) -> tuple[LoadTier, ...]:
     """The racks a group is made of, ascending and non-overlapping.
 
     A group with no `racks` is one rack, which is every load type written
@@ -464,7 +466,7 @@ def _racks(entry: dict, where: str, problems: Problems) -> tuple[LoadTier, ...]:
     return tuple(tiers)
 
 
-def _load_types(declared: Any, path: str, problems: Problems) -> dict[str, LoadType]:
+def _load_types(declared: object, path: str, problems: Problems) -> dict[str, LoadType]:
     """The named ways of loading an exercise, from the top-level `load`.
 
     Every name here is the user's own - `barbell`, `gym_dumbbell`,
@@ -567,7 +569,7 @@ def _load_types(declared: Any, path: str, problems: Problems) -> dict[str, LoadT
 
 
 def _bounds(
-    raw: dict, load_type: LoadType | None, where: str, problems: Problems
+    raw: dict[str, Any], load_type: LoadType | None, where: str, problems: Problems
 ) -> tuple[float, float | None]:
     """How light and how heavy this exercise may be loaded.
 
@@ -617,7 +619,7 @@ def _bounds(
     return minimum, maximum
 
 
-def _bodyweight_factor(raw: dict, where: str, problems: Problems) -> float:
+def _bodyweight_factor(raw: dict[str, Any], where: str, problems: Problems) -> float:
     """The share of the lifter this exercise carries, if it says.
 
     Opt-in and defaulting to none, so every config written before it existed
@@ -640,7 +642,7 @@ def _bodyweight_factor(raw: dict, where: str, problems: Problems) -> float:
 
 
 def _build_exercise(
-    raw: dict,
+    raw: dict[str, Any],
     types: dict[str, LoadType],
     where: str,
     problems: Problems,
@@ -749,7 +751,7 @@ def _build_exercise(
 
 
 def _build_workout(
-    entry: dict,
+    entry: dict[str, Any],
     types: dict[str, LoadType],
     path: str,
     problems: Problems,
@@ -868,7 +870,7 @@ def load_config(path: str | None = None) -> Config:
         activity_caching=_flag(
             garmin_raw.get("activity_caching"),
             "garmin.activity_caching",
-            defaults.activity_caching,
+            default=defaults.activity_caching,
         ),
     )
     _warn_if_wandering(garmin)
@@ -877,7 +879,7 @@ def load_config(path: str | None = None) -> Config:
     # every exercise, the way a weight step is: the rules read it
     # off the spec in hand rather than being handed the settings.
     partial_progression = _flag(
-        settings.get("partial_progression"), "partial_progression", True
+        settings.get("partial_progression"), "partial_progression", default=True
     )
 
     # Unset means "ask Garmin", which is the better answer for anyone who

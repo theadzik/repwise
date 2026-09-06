@@ -17,6 +17,7 @@ from builders import (
 
 from repwise.domain.models import Config, Workout
 from repwise.domain.progression import Target
+from repwise.errors import ActivityNotFound
 from repwise.garmin.payloads import (
     is_timed_rest,
     iter_exercise_blocks,
@@ -25,7 +26,6 @@ from repwise.garmin.payloads import (
     step_target,
 )
 from repwise.planner import (
-    ActivityNotFound,
     decided_targets,
     find_workout,
     index_specs,
@@ -458,7 +458,7 @@ def test_rests_reach_a_workout_that_only_receives_a_sync():
 # of them, so a group set to skip is put back.
 
 
-def skipping(built, skip=True):
+def skipping(built, *, skip=True):
     """Turn Connect's switch on for every repeat group in a workout."""
     for group in built["workoutSegments"][0]["workoutSteps"]:
         if group["type"] == "RepeatGroupDTO":

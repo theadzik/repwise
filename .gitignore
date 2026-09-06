@@ -23,3 +23,5 @@ executed-*.json
 .claude/
 
 build/
+
+.coverage
