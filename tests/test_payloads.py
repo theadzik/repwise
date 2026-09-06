@@ -20,6 +20,7 @@ from repwise.garmin.payloads import (
     apply_note,
     apply_rest,
     apply_target,
+    apply_workout_name,
     block_target,
     is_timed_rest,
     iter_exercise_blocks,
@@ -32,6 +33,7 @@ from repwise.garmin.payloads import (
     step_note,
     step_rest,
     step_target,
+    workout_name,
 )
 
 # --- walking the structure ------------------------------------------------
@@ -290,6 +292,27 @@ def test_a_hand_written_note_is_not_mistaken_for_a_generated_one():
         "keep 6-10 reps | +5 kg",
     ]:
         assert not GENERATED_NOTE.match(text), text
+
+
+def test_a_workout_name_is_read_and_written_through_one_key():
+    """Six modules used to spell `workoutName` out. A typo in any of them was
+    a silent write to a field nothing reads, which no hook would have caught.
+
+    The shell `new_workout` builds is the same field, so a name written into
+    one is found by the accessor that reads the other."""
+    stored = new_workout("Push Day")
+
+    assert workout_name(stored) == "Push Day"
+
+    apply_workout_name(stored, "Pull Day")
+    assert workout_name(stored) == "Pull Day"
+
+
+def test_a_workout_garmin_holds_no_name_for_reads_as_none():
+    """What to show instead is the caller's choice - `list` wants a column
+    placeholder, `import` wants something a config key can be made from - so
+    nothing is chosen here."""
+    assert workout_name({}) is None
 
 
 # --- building a workout ---------------------------------------------------

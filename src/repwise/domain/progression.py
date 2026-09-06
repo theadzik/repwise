@@ -242,7 +242,7 @@ def _achieved(spec: ExerciseSpec, weight: float, reps: list[int]) -> Target:
     return Target(floor, weight, min(beat, spec.sets - 1))
 
 
-def _missed(spec: ExerciseSpec, current: Target, floor: int) -> str:
+def _missed(floor: int) -> str:
     """Why a session that fell short leaves the target where it was.
 
     What was asked is not repeated here: the report shows it, unchanged, in
@@ -530,6 +530,6 @@ def next_target(
     if not rebased and not hit(spec, current, counted):
         if streak >= STALLED_AFTER:
             return _deload(spec, current, weight, counted, bodyweight=bodyweight)
-        return current, _missed(spec, current, floor)
+        return current, _missed(floor)
 
     return _advance(spec, current, weight, floor, streak, bodyweight=bodyweight)
