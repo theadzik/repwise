@@ -7,6 +7,7 @@ from repwise.domain.progression import PerformedSet as P
 from repwise.domain.progression import (
     Session,
     Target,
+    _ladder,
     hit,
     miss_streak,
     next_target,
@@ -943,3 +944,53 @@ def test_rule_three_never_resets_the_range_without_adding_load():
     target, why = next_target(stepping, Target(10, 33.0), [P(10, 33.0)] * 3)
     assert target.weight > 33.0, why
     assert target.reps == 6
+
+
+# --- a lead read back above the set count ----------------------------------
+#
+# `block_target` counts the ramp from the Garmin steps and caps it against
+# nothing, so cutting `sets` in workouts.yaml below what Garmin still holds
+# reads a target back with `lead` above the set count. Every reader of `lead`
+# has to agree on what that means.
+
+OVERFULL = spec(rep_low=6, rep_high=10, sets=2, load="dumbbell", weight_step=2.5)
+
+
+def test_a_lead_of_every_set_is_a_flat_target_one_step_up():
+    """Which is what `per_set` and `spread` have always said it is."""
+    stored = Target(6, 20.0, lead=3)
+
+    assert stored.per_set(OVERFULL.sets) == [7, 7]
+    assert stored.spread(OVERFULL.sets) == "7"
+    assert stored.leading(OVERFULL.sets) == 2
+
+
+def test_a_session_that_did_what_was_asked_counts_as_a_hit():
+    """`hit` judged against the raw lead, so it wanted three sets at the
+    higher figure from a target that only ever asked for two - and a session
+    doing exactly what the watch showed was recorded as a miss."""
+    assert hit(OVERFULL, Target(6, 20.0, lead=3), [7, 7])
+
+
+def test_doing_what_was_asked_advances_rather_than_deloads():
+    stored = Target(6, 20.0, lead=3)
+
+    moved, why = next_target(OVERFULL, stored, [P(7, 20.0)] * 2)
+
+    assert moved.per_set(OVERFULL.sets) == [8, 8], why
+    assert "miss" not in why
+
+
+def test_falling_short_of_it_is_still_a_miss():
+    """The cap must not turn every session into a hit."""
+    assert not hit(OVERFULL, Target(6, 20.0, lead=3), [7, 6])
+
+
+def test_an_overfull_ramp_ranks_where_a_full_one_does():
+    """`_ladder` caps at one below the set count, so a ramp read back above
+    it orders as the fullest ramp the exercise can hold rather than running
+    off past the flat rung above."""
+    full = _ladder(OVERFULL, Target(6, 20.0, lead=OVERFULL.sets - 1))
+
+    assert _ladder(OVERFULL, Target(6, 20.0, lead=3)) == full
+    assert _ladder(OVERFULL, Target(6, 20.0, lead=99)) == full

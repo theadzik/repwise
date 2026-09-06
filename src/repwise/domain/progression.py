@@ -46,9 +46,24 @@ class Target:
     weight: float
     lead: int = 0
 
+    def leading(self, sets: int) -> int:
+        """How many sets are really asked for the higher figure.
+
+        `lead` arrives above `sets` from a workout Garmin holds more sets of
+        than the config asks for - cut `sets` in workouts.yaml and the stored
+        ramp is read back against the smaller number. A lead of every set is a
+        flat target one step up, so there is nothing above that to ask for.
+
+        Every reader of `lead` goes through here, because they have to agree:
+        `per_set` deciding what to ask for and `hit` deciding whether it was
+        met once disagreed, and a session that did exactly what was written on
+        the watch was recorded as a miss.
+        """
+        return min(self.lead, sets)
+
     def per_set(self, sets: int, rep_step: int = 1) -> list[int]:
         """What each set is asked for, hardest first."""
-        higher = min(self.lead, sets)
+        higher = self.leading(sets)
         return [self.reps + rep_step] * higher + [self.reps] * (sets - higher)
 
     def spread(self, sets: int, rep_step: int = 1) -> str:
@@ -65,7 +80,7 @@ class Target:
         never build one, but a workout whose Garmin steps hold more sets than
         the config asks for reads back as one.
         """
-        ahead = min(self.lead, sets)
+        ahead = self.leading(sets)
         if not ahead:
             return str(self.reps)
         if ahead >= sets:
@@ -132,7 +147,11 @@ def hit(spec: ExerciseSpec, target: Target, reps: list[int]) -> bool:
     if min(reps) < target.reps:
         return False
     higher = target.reps + spec.rep_step
-    return sum(1 for done in reps if done >= higher) >= target.lead
+    # Against what was asked for, which is `lead` capped at the set count -
+    # not the raw figure. A workout Garmin holds more sets of than the config
+    # asks for reads back above it, and judging by the raw number demands more
+    # sets at the higher figure than the target ever prescribed.
+    return sum(1 for done in reps if done >= higher) >= target.leading(spec.sets)
 
 
 def miss_streak(spec: ExerciseSpec, history: list[Session], weight: float) -> int:
