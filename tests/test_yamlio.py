@@ -111,7 +111,7 @@ def test_a_dump_round_trips_through_read(tmp_path):
     assert read(str(path)) == original
 
 
-def test_a_dump_keeps_the_order_it_was_given(tmp_path):
+def test_a_dump_keeps_the_order_it_was_given():
     """Not sorted: the file is read by a person, and the order the keys were
     written in is the order they make sense in."""
     written = dump({"key": "Workout A", "activity_prefixes": ["a"], "exercises": []})
@@ -120,7 +120,7 @@ def test_a_dump_keeps_the_order_it_was_given(tmp_path):
     assert written.index("activity_prefixes:") < written.index("exercises:")
 
 
-def test_a_dump_keeps_non_ascii_readable(tmp_path):
+def test_a_dump_keeps_non_ascii_readable():
     """`allow_unicode`, so a Polish workout name stays a Polish workout name
     rather than becoming an escape sequence nobody can search for."""
     assert "Trening Ćwiczenia" in dump({"key": "Trening Ćwiczenia"})
