@@ -296,7 +296,17 @@ def _rungs_above(tier: LoadTier, weight: float, step: float) -> float | None:
         return None
     if weight < tier.minimum:
         return tier.minimum
-    rungs = int((weight - tier.minimum) / step) + 1
+    # Snapped before it is truncated. Float division makes an exact rung count
+    # read a hair low -- (33.0 - 0.0) / 2.2 is 14.999999999999998 -- and
+    # truncating that counts one rung too few, so the step lands back on the
+    # weight it started from. `next_weight_above` then reports a load increase
+    # that did not happen and rule 3 resets the range for nothing, every cycle,
+    # for good. Only steps that are exact in binary escape it: 2.5 and 1.25 are
+    # fine, 2.2 stalls at 33 kg and 0.1 at 4.3.
+    #
+    # A weight genuinely between two rungs is nowhere near a whole one, so
+    # nothing that should round up is rounded down by this.
+    rungs = int(round((weight - tier.minimum) / step, 9)) + 1
     landed = tier.minimum + rungs * step
     if tier.maximum is not None and landed > tier.maximum:
         # The last pair on the rack is still a pair: a step past the ceiling is
