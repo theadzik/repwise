@@ -25,6 +25,7 @@ Pure: takes a config and payloads, returns findings.
 """
 
 from dataclasses import dataclass, replace
+from typing import Any
 
 from .domain.effort import (
     chosen_step,
@@ -141,7 +142,7 @@ def check_catalog(workout: Workout, catalog: ExerciseCatalog) -> list[Finding]:
     return findings
 
 
-def check_workout(workout: Workout, payload: dict) -> list[Finding]:
+def check_workout(workout: Workout, payload: dict[str, Any]) -> list[Finding]:
     """Look for exercises the config cannot name properly."""
     findings: list[Finding] = []
 
@@ -240,7 +241,7 @@ def _suggestion(spec: ExerciseSpec, weight: float, bodyweight: float) -> str:
 
 
 def check_programming(
-    workout: Workout, payload: dict, bodyweight: float | None = None
+    workout: Workout, payload: dict[str, Any], bodyweight: float | None = None
 ) -> list[Finding]:
     """Look for rep ranges that do not fit what their weight step is worth.
 

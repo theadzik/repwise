@@ -127,7 +127,7 @@ HANDLERS: dict[str, Handler] = {
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    configure(args.verbose)
+    configure(verbose=args.verbose)
 
     # Answered here rather than through HANDLERS below, because the config is
     # loaded to reach those and this command must run without one: the way to

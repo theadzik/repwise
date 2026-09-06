@@ -3,12 +3,12 @@
 import logging
 import os
 import re
+import tempfile
 
 import pytest
 from builders import EXAMPLE_CONFIG, FIXTURE
 
 from repwise import config as config_module
-from repwise import yamlio
 from repwise.config import (
     ConfigError,
     default_dump_dir,
@@ -247,7 +247,7 @@ def test_a_write_that_fails_leaves_the_config_exactly_as_it_was(
     def full(*args, **kwargs):
         raise OSError("No space left on device")
 
-    monkeypatch.setattr(yamlio.tempfile, "NamedTemporaryFile", full)
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile", full)
 
     with pytest.raises(ConfigError, match="could not be written"):
         record_workout_id(path, "Workout A", "1234567")
@@ -970,7 +970,7 @@ def test_bodyweight_can_be_stated_instead(write_config):
 # --- a cache pointed at a directory that moves ----------------------------
 
 
-def caching_config(write_config, dump_dir, on=True):
+def caching_config(write_config, dump_dir, *, on=True):
     text = FIXTURE.replace(
         "settings:\n",
         f"settings:\n  garmin:\n    dump_dir: {dump_dir}\n"

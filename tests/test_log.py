@@ -20,8 +20,8 @@ def streams(capsys):
     handlers, level = root.handlers, root.level
     package_level = logging.getLogger(PACKAGE).level
 
-    def run(verbose: bool = False):
-        configure(verbose)
+    def run(*, verbose: bool = False):
+        configure(verbose=verbose)
         return capsys.readouterr
 
     yield run
@@ -73,7 +73,7 @@ def test_a_plain_run_shows_the_message_alone(streams):
 @pytest.mark.parametrize("verbose", [False, True], ids=["plain", "verbose"])
 def test_blank_lines_stay_blank(streams, verbose):
     """Reports group their output with blank lines; a prefix would fill them."""
-    read = streams(verbose)
+    read = streams(verbose=verbose)
     logger.info("")
     assert read().out == "\n"
 

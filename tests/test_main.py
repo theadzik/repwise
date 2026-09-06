@@ -179,7 +179,7 @@ def fetching(monkeypatch):
     monkeypatch.setattr(cli, "run_fetch_activities", activities)
     monkeypatch.setattr(cli, "run_fetch_exercises", exercises)
 
-    def connect(settings, cache=True):
+    def connect(settings, *, cache=True):
         reached["cache"] = cache
         return object()
 

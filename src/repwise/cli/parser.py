@@ -10,7 +10,6 @@ reads them and this parser to write its scripts.
 """
 
 import argparse
-from typing import Any
 
 from .. import __version__
 
@@ -28,7 +27,7 @@ SHELLS = ("bash", "zsh")
 
 
 def add_verbose(
-    parser: argparse.ArgumentParser, default: Any = argparse.SUPPRESS
+    parser: argparse.ArgumentParser, *, default: bool | str = argparse.SUPPRESS
 ) -> None:
     """Accept -v on this parser, so it reads either side of the command.
 

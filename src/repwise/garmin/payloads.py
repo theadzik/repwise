@@ -162,7 +162,8 @@ def is_timed_rest(step: dict[str, Any]) -> bool:
 
 def exercise_step(group: dict[str, Any]) -> dict[str, Any]:
     """The exercise inside a repeat group, or the step itself when it is bare."""
-    for inner in group.get("workoutSteps") or []:
+    inner_steps: list[dict[str, Any]] = group.get("workoutSteps") or []
+    for inner in inner_steps:
         if inner.get("exerciseName") or inner.get("category"):
             return inner
     return group
@@ -277,7 +278,7 @@ def step_weight_factor(step: dict[str, Any]) -> float:
     return float(unit.get("factor") or GRAMS_PER_KG)
 
 
-def step_target(step: dict[str, Any], time_based: bool = False) -> Target | None:
+def step_target(step: dict[str, Any], *, time_based: bool = False) -> Target | None:
     """Current prescription stored on a workout step.
 
     Timed holds end on `time` rather than `reps`, and their endConditionValue
@@ -308,7 +309,7 @@ def block_target(block: ExerciseBlock, spec: ExerciseSpec) -> Target | None:
     written, so it reads as its own base with no lead, and the next target
     written over it collapses the split.
     """
-    targets = [step_target(step, spec.time_based) for step in block.steps]
+    targets = [step_target(step, time_based=spec.time_based) for step in block.steps]
     if not targets or any(target is None for target in targets):
         return None
 

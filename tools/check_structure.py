@@ -124,7 +124,7 @@ def module_name(path: Path, root: Path) -> str:
     return ".".join(parts) or root.name
 
 
-def targets(node: ast.ImportFrom, owner: str, package: bool, root: str) -> set[str]:
+def targets(node: ast.ImportFrom, owner: str, *, package: bool, root: str) -> set[str]:
     """Every module `from ... import ...` could name, for the caller to filter.
 
     Two shapes to cover. `from ..config import load_config` names the module in
@@ -167,7 +167,7 @@ def gather_imports(tree: ast.Module, mod: Module, root: str) -> None:
             case ast.Import():
                 mod.external |= {a.name.split(".", 1)[0] for a in node.names}
             case ast.ImportFrom() if node.level:
-                mod.imports |= targets(node, mod.name, mod.package, root)
+                mod.imports |= targets(node, mod.name, package=mod.package, root=root)
             case ast.ImportFrom() if node.module:
                 mod.external.add(node.module.split(".", 1)[0])
             case ast.Constant(value=str() as text) if "\n" not in text:

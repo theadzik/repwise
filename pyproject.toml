@@ -131,6 +131,16 @@ select = [
     "PGH",     # a bare `noqa` or `type: ignore` that names no rule
     "FURB",    # constructs with a plainer spelling
     "A",       # an argument or variable shadowing a builtin
+    # A boolean argument read at the call site as a bare True is a coin flip
+    # for the reader: `connect(settings, False)` says nothing about which of
+    # two flags it set. Keyword-only, so the call says what it means. The one
+    # exemption is `yamlio._Dumper.increase_indent`, whose signature is
+    # PyYAML's rather than ours, and which says so.
+    "FBT",     # boolean traps
+    # `Any` in a signature where a real type exists. Where it has none - a
+    # dump, a parsed document - the noqa says so rather than the annotation
+    # quietly meaning nothing.
+    "ANN401",  # dynamically typed signatures
 ]
 ignore = [
     # This is a CLI whose job is printing, and its errors carry the detail a
@@ -165,11 +175,6 @@ warn_redundant_casts = true
 # checked, so an unannotated function is a hole rather than a looser check.
 # Deliberately not applied to tests, where 900-odd `def test_x():` signatures
 # would be noise for no safety - the code under test is what has to be right.
-#
-# What is not here, and why: `disallow_any_generics` (22 findings) and
-# `warn_return_any` (4) both want code changes first, and
-# `no_implicit_reexport` reports two tests that import a name through a module
-# that merely imported it. All three are worth doing, none is a config edit.
 [[tool.mypy.overrides]]
 module = "repwise.*"
 disallow_untyped_defs = true
@@ -185,6 +190,18 @@ extra_checks = true
 warn_unreachable = true
 # An ignore that stopped being needed is an ignore that now hides something.
 warn_unused_ignores = true
+# A bare `dict` or `list` is Any wearing a container, and this reads YAML and
+# Garmin's JSON into both. Spelling the shape out is what stops Any spreading
+# from the two files that have a reason for it into the ones that do not.
+disallow_any_generics = true
+# The value garminconnect hands back is Any, so without this a function can
+# promise `dict[str, Any]` and return whatever came off the wire unchecked.
+# `garmin/client.py` casts at the boundary instead, which is what an adapter is.
+warn_return_any = true
+# A name is imported from where it is defined, not from the last module that
+# happened to import it - `ActivityNotFound` lives in `errors.py`, whoever else
+# passes it through.
+no_implicit_reexport = true
 
 # garminconnect ships no type information. garmin/client.py is the only module
 # that imports it, which is what keeping the adapter in one place buys.
