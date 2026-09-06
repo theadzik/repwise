@@ -414,6 +414,16 @@ LEVELLED = "partial progression is off, levelled up"
 #: about the session, and it stops being true the moment the target moves.
 UP_TO_DATE = "up to date"
 
+#: What an exercise the session never touched reports. An exercise added to
+#: workouts.yaml since the last session is the ordinary way to arrive here, and
+#: it is not a fault: the target stands, and the row says so in its own place
+#: rather than as a warning under the table.
+NOT_TRAINED = "not trained in this session"
+
+#: Reasons that are statements about the session rather than about the target,
+#: and so have nothing to add beside a target the config has just moved.
+SAYS_NOTHING = (UP_TO_DATE, NOT_TRAINED)
+
 
 def _levelled(spec: ExerciseSpec, target: Target) -> Target:
     """A ramp evened out - upwards - once partial progression is turned off.
@@ -521,8 +531,9 @@ def _judge(  # noqa: PLR0913 - each argument is one independent input
 
     logged = _logged_for(spec, step, performed, specs)
     if not logged:
-        shaped.warnings.append(f"{spec.name}: not found in the activity, skipped")
-        return None
+        # Nothing to judge, but the exercise is still in the workout, so it
+        # gets its row like any other: the target it holds, and why it stands.
+        return Change(spec, current, current, NOT_TRAINED)
 
     if spec.time_based:
         # Garmin logs a hold as 1 rep; the duration is the real figure.
@@ -1104,7 +1115,7 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
                     spec,
                     change.old if change is not None else decided,
                     fixed,
-                    f"{said}; {label}" if said and said != UP_TO_DATE else label,
+                    f"{said}; {label}" if said and said not in SAYS_NOTHING else label,
                 )
 
         if change is None:

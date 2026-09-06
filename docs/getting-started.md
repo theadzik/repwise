@@ -119,11 +119,11 @@ Garmin, and prints what it would change:
 Activity: Workout B (1234567890)
 Updating: Workout B -> workout 111111111
 
-  # EXERCISE               ACTION  SETS     BEFORE      AFTER     CONFIG WHY
-* 1 Barbell Deadlift       advance 3    10 x 60 kg  ->  6 x 65 kg        hit 10 on every set, top of the range
-* 2 Dumbbell Lateral Raise advance 3     12 x 8 kg  ->  13 x 8 kg note   add 1 rep
-  3 Sit-up                 hold    3       11 reps  ==  11 reps          missed target, 10 on the worst set
-! Standing Calf Raise: not found in the activity, skipped
+  # EXERCISE               ACTION  SETS     BEFORE      AFTER      CONFIG WHY
+* 1 Barbell Deadlift       advance 3    10 x 60 kg  ->  6 x 65 kg         hit 10 on every set, top of the range
+* 2 Dumbbell Lateral Raise advance 3     12 x 8 kg  ->  13 x 8 kg  note   add 1 rep
+  3 Sit-up                 hold    3       11 reps  ==  11 reps           missed target, 10 on the worst set
+  4 Standing Calf Raise    hold    3    18 x 20 kg  ==  18 x 20 kg        not trained in this session
 
 Dry run: 2 step(s) would change. Re-run with --apply.
 ```
@@ -132,9 +132,10 @@ Dry run: 2 step(s) would change. Re-run with --apply.
 write without `--apply`.
 
 Read the WHY column. If a target moved in a way you did not expect,
-[progression](progression.md) explains every decision the tool can make. If an
-exercise was skipped, the name in your config probably does not match Garmin's;
-see [configuration](configuration.md#finding-your-exercise-identifiers).
+[progression](progression.md) explains every decision the tool can make. An
+exercise reading `not trained in this session` keeps its target: either you
+skipped it, or the name in your config does not match Garmin's; see
+[configuration](configuration.md#finding-your-exercise-identifiers).
 
 ## 6. Apply, and push to the watch
 
