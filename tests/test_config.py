@@ -236,6 +236,15 @@ def test_recording_refuses_a_workout_it_cannot_find(write_config):
         record_workout_id(path, "Workout C", "1234567")
 
 
+@pytest.mark.parametrize("text", ["[]", "workouts: not-a-list"])
+def test_recording_refuses_a_file_it_cannot_read_back(write_config, text):
+    """The id has just been issued by Garmin at this point, so failing to
+    write it is worth stopping for: `update` turns this into the message
+    telling you to add it by hand before the next run creates a second copy."""
+    with pytest.raises(ConfigError, match="workouts"):
+        record_workout_id(write_config(text), "Workout A", "1234567")
+
+
 def test_a_write_that_fails_leaves_the_config_exactly_as_it_was(
     write_config, monkeypatch
 ):
@@ -460,6 +469,134 @@ def test_zero_weight_step_is_rejected(write_config):
     )
     with pytest.raises(ConfigError, match="never progress"):
         load_config(write_config(bad))
+
+
+# --- malformed load types -------------------------------------------------
+#
+# Every branch below is a guard on the "parse, don't validate" edge: config.py
+# checks once and hands the rest of the tool domain objects it can trust. A
+# guard with no test is the one that turns out to be inverted, unreachable, or
+# to name the wrong field, and nothing downstream would notice.
+
+
+def test_a_negative_step_is_rejected(write_config):
+    bad = FIXTURE.replace("    step: 5.0", "    step: -5.0")
+    with pytest.raises(ConfigError, match="negative step"):
+        load_config(write_config(bad))
+
+
+def test_naming_both_step_and_steps_is_rejected(write_config):
+    """They say the same thing, and which one wins would be a coin toss."""
+    bad = FIXTURE.replace("    step: 5.0", "    step: 5.0\n    steps: [1.25, 5.0]")
+    with pytest.raises(ConfigError, match="both step and steps"):
+        load_config(write_config(bad))
+
+
+@pytest.mark.parametrize("written", ["[]", "5.0", "'1.25, 5.0'"])
+def test_steps_must_be_a_non_empty_list(write_config, written):
+    bad = FIXTURE.replace("    step: 5.0", f"    steps: {written}")
+    with pytest.raises(ConfigError, match="non-empty list of increments"):
+        load_config(write_config(bad))
+
+
+def test_a_steps_list_with_nothing_usable_in_it_is_rejected(write_config):
+    """Every declared increment was refused, so the list said nothing at all."""
+    bad = FIXTURE.replace("    step: 5.0", "    steps: [0]")
+    with pytest.raises(ConfigError, match="never progress"):
+        load_config(write_config(bad))
+
+
+def test_a_step_of_zero_among_several_is_rejected(write_config):
+    """One that would never progress is worth naming even beside good ones."""
+    bad = FIXTURE.replace("    step: 5.0", "    steps: [0, 5.0]")
+    with pytest.raises(ConfigError, match="never progress"):
+        load_config(write_config(bad))
+
+
+@pytest.mark.parametrize("written", ["[]", "5.0"])
+def test_racks_must_be_a_non_empty_list(write_config, written):
+    bad = FIXTURE.replace("    step: 5.0", f"    step: 5.0\n    racks: {written}")
+    with pytest.raises(ConfigError, match="non-empty list of min/max/step"):
+        load_config(write_config(bad))
+
+
+def test_a_rack_that_is_not_a_mapping_is_rejected(write_config):
+    bad = FIXTURE.replace("    step: 5.0", "    step: 5.0\n    racks: ['12 to 30']")
+    with pytest.raises(ConfigError, match="should state min, step"):
+        load_config(write_config(bad))
+
+
+def test_a_rack_missing_min_or_step_is_told_which(write_config):
+    bad = FIXTURE.replace(
+        "    step: 5.0", "    step: 5.0\n    racks:\n      - max: 30.0"
+    )
+    with pytest.raises(ConfigError, match="is missing min, step"):
+        load_config(write_config(bad))
+
+
+def test_a_rack_with_a_negative_min_is_rejected(write_config):
+    bad = FIXTURE.replace(
+        "    step: 5.0",
+        "    step: 5.0\n    racks:\n      - {min: -1.0, step: 2.0}",
+    )
+    with pytest.raises(ConfigError, match="negative min"):
+        load_config(write_config(bad))
+
+
+def test_a_rack_whose_max_is_below_its_min_is_rejected(write_config):
+    """No load fits between them, so the rack can express nothing at all."""
+    bad = FIXTURE.replace(
+        "    step: 5.0",
+        "    step: 5.0\n    racks:\n      - {min: 30.0, max: 12.0, step: 2.0}",
+    )
+    with pytest.raises(ConfigError, match="below its min"):
+        load_config(write_config(bad))
+
+
+def test_a_load_type_that_is_not_a_mapping_is_rejected(write_config):
+    bad = FIXTURE.replace("  barbell:\n    min: 12.0\n    step: 5.0", "  barbell: 5.0")
+    with pytest.raises(ConfigError, match="should state min, step"):
+        load_config(write_config(bad))
+
+
+def test_a_load_type_with_a_negative_min_is_rejected(write_config):
+    bad = FIXTURE.replace("    min: 12.0", "    min: -12.0")
+    with pytest.raises(ConfigError, match="negative min"):
+        load_config(write_config(bad))
+
+
+# --- malformed workouts and settings --------------------------------------
+
+
+def test_a_negative_start_weight_is_rejected(write_config):
+    bad = FIXTURE.replace(
+        "        load: barbell\n",
+        "        load: barbell\n        start_weight: -5\n",
+        1,
+    )
+    with pytest.raises(ConfigError, match="negative start_weight"):
+        load_config(write_config(bad))
+
+
+def test_a_workout_with_no_key_is_rejected(write_config):
+    """Without one there is nothing to label its exercises with, so this is
+    the only thing that can be said about that workout."""
+    bad = FIXTURE.replace("  - key: Workout A\n", '  - garmin_workout_id: "123"\n', 1)
+    with pytest.raises(ConfigError, match="missing its 'key'"):
+        load_config(write_config(bad))
+
+
+@pytest.mark.parametrize("bodyweight", ["0", "-80"])
+def test_a_bodyweight_that_is_not_a_weight_is_rejected(write_config, bodyweight):
+    bad = FIXTURE.replace("settings:\n", f"settings:\n  bodyweight: {bodyweight}\n", 1)
+    with pytest.raises(ConfigError, match=r"settings\.bodyweight"):
+        load_config(write_config(bad))
+
+
+@pytest.mark.parametrize("text", ["[]", "just: a mapping", "workouts: not-a-list"])
+def test_a_file_without_a_workouts_list_is_rejected(write_config, text):
+    with pytest.raises(ConfigError, match="workouts"):
+        load_config(write_config(text))
 
 
 # --- reporting every problem at once --------------------------------------

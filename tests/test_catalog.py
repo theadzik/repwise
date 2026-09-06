@@ -6,6 +6,7 @@ function, which is what keeps the suite runnable on a train.
 """
 
 import json
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -231,3 +232,94 @@ def test_the_cache_path_expands_a_home_relative_store():
 
     assert not path.startswith("~")
     assert path == str(Path.home() / ".config" / "repwise" / module.CACHE_NAME)
+
+
+# --- the one function that reaches the network ----------------------------
+#
+# `download` is the boundary with an untrusted file: Garmin serves it, it has
+# changed shape before, and the network under it fails in the ordinary ways.
+# None of that was exercised - the module sat at 86% with this function whole.
+
+
+class Response:
+    """What `urlopen` yields, as a context manager reading bytes."""
+
+    def __init__(self, body: bytes):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, *args):
+        return self.body
+
+
+def serving(monkeypatch, body):
+    """Answer the next `urlopen` with `body`, or raise it if it is an error."""
+
+    def opened(request, timeout=None):
+        if isinstance(body, Exception):
+            raise body
+        return Response(body)
+
+    monkeypatch.setattr(urllib.request, "urlopen", opened)
+
+
+def test_a_served_catalog_is_parsed(monkeypatch):
+    serving(monkeypatch, json.dumps(catalog_payload(SQUAT=("BACK_SQUAT",))).encode())
+
+    assert "categories" in module.download()
+
+
+def test_the_request_names_this_tool(monkeypatch):
+    """A bare urllib User-Agent is what a public file blocks first."""
+    seen = {}
+
+    def opened(request, timeout=None):
+        seen["agent"] = request.get_header("User-agent")
+        return Response(b"{}")
+
+    monkeypatch.setattr(urllib.request, "urlopen", opened)
+    module.download()
+
+    assert seen["agent"] == module.USER_AGENT
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [OSError("Network is unreachable"), TimeoutError("timed out")],
+)
+def test_a_network_failure_is_reported_rather_than_raised_raw(monkeypatch, failure):
+    serving(monkeypatch, failure)
+
+    with pytest.raises(GarminError, match="Could not download"):
+        module.download()
+
+
+def test_a_response_that_is_not_json_is_reported(monkeypatch):
+    """Garmin serving an error page instead of the file."""
+    serving(monkeypatch, b"<html>404</html>")
+
+    with pytest.raises(GarminError, match="Could not download"):
+        module.download()
+
+
+def test_a_response_that_is_not_an_object_is_refused(monkeypatch):
+    """Valid JSON, wrong shape. Parsing it would fail somewhere less obvious."""
+    serving(monkeypatch, b"[]")
+
+    with pytest.raises(GarminError, match="not the object we expected"):
+        module.download()
+
+
+def test_a_cache_that_cannot_be_written_says_where(tmp_path):
+    """The path is the only thing the user can act on."""
+    blocked = tmp_path / "file"
+    blocked.write_text("not a directory")
+    settings = GarminSettings(token_store=str(blocked / "store"))
+
+    with pytest.raises(GarminError, match="Could not write"):
+        module.save(settings, catalog_payload(SQUAT=("BACK_SQUAT",)))

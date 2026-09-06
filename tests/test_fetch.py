@@ -6,10 +6,17 @@ import os
 from typing import Any
 
 import pytest
+from builders import catalog_payload
 
-from repwise.app.fetch import cache_activities, run_fetch, run_fetch_activities
+from repwise.app.fetch import (
+    cache_activities,
+    run_fetch,
+    run_fetch_activities,
+    run_fetch_exercises,
+)
 from repwise.domain.models import Config, GarminSettings
 from repwise.errors import ExitCode, GarminError, UsageError
+from repwise.garmin import catalog
 
 STRENGTH_TYPE = {"typeId": 13, "typeKey": "strength_training"}
 RUNNING_TYPE = {"typeId": 1, "typeKey": "running"}
@@ -372,3 +379,44 @@ def test_one_session_that_cannot_be_filed_does_not_stop_the_rest(
         "sets-222.json",
         "executed-222.json",
     }
+
+
+# --- the catalog, which is a download rather than a session ----------------
+
+
+def test_fetching_the_catalog_saves_it_and_says_what_is_in_it(
+    tmp_path, monkeypatch, caplog
+):
+    """`test_main.py` reaches this command through a stub, so the body itself
+    - parse, save, report - had never run."""
+    monkeypatch.setattr(
+        catalog,
+        "download",
+        lambda: catalog_payload(SQUAT=("BACK_SQUAT", "FRONT_SQUAT")),
+    )
+    settings = GarminSettings(token_store=str(tmp_path))
+
+    with caplog.at_level(logging.INFO, logger="repwise.app.fetch"):
+        assert run_fetch_exercises(settings) == ExitCode.OK
+
+    said = "\n".join(caplog.messages)
+    assert "2 exercises" in said
+    assert "1 categories" in said
+    assert (tmp_path / catalog.CACHE_NAME).exists()
+
+
+def test_a_response_that_is_not_a_catalog_never_overwrites_a_good_cache(
+    tmp_path, monkeypatch
+):
+    """Parsed before it is saved, for exactly this: the cache on disk is worth
+    more than whatever Garmin just served."""
+    settings = GarminSettings(token_store=str(tmp_path))
+    catalog.save(settings, catalog_payload(SQUAT=("BACK_SQUAT",)))
+    good = (tmp_path / catalog.CACHE_NAME).read_text()
+
+    monkeypatch.setattr(catalog, "download", lambda: {"categories": "not a mapping"})
+
+    with pytest.raises((GarminError, AttributeError, TypeError)):
+        run_fetch_exercises(settings)
+
+    assert (tmp_path / catalog.CACHE_NAME).read_text() == good, "cache untouched"

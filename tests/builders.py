@@ -150,6 +150,22 @@ def rep_step(name, category, reps, weight, unit=KILOGRAM):
     }
 
 
+def hold_step(name, category, seconds):
+    """A timed hold, which ends on a duration rather than on a rep count.
+
+    Garmin puts the figure in the same `endConditionValue`; only the condition
+    says which unit it is in. A hold carries no weight - the exercises that
+    use one are held up by you.
+    """
+    return {
+        "type": "ExecutableStepDTO",
+        "exerciseName": name,
+        "category": category,
+        "endCondition": {"conditionTypeKey": "time"},
+        "endConditionValue": float(seconds),
+    }
+
+
 def rest_step(seconds=60.0):
     """The rest between exercises: a prompt to press the lap button.
 

@@ -77,6 +77,7 @@ tests/
     test_client.py         the session wrapper, the token store, and the one
                            that reads dump_dir before it asks
     test_dumps.py          the dump layout, and when a copy is believed
+    test_yamlio.py         reading and writing the one file this tool owns
     test_fetch.py          what each download writes, and what it skips
     test_listing.py        the ids `list` shows, and which are already known
     test_importing.py      what `import` selects, and what it will not overwrite
