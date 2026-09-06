@@ -79,7 +79,7 @@ def main() -> int:
     floor, total, scored = measured()
 
     print("# Coverage\n")
-    print(f"{total:.0f}% overall, floor {floor:.0f}%")
+    print(f"{total:.1f}% overall, floor {floor:.0f}%")
     print(f"per module, floor {FILE_FLOOR:.0f}%\n")
 
     low = [(name, pc) for name, pc in scored if pc < FILE_FLOOR]
@@ -90,10 +90,10 @@ def main() -> int:
     if low:
         print("## Below the per-module floor\n")
         for name, pc in low:
-            print(f"- {name} is at {pc:.0f}%, under the {FILE_FLOOR:.0f}% floor")
+            print(f"- {name} is at {pc:.1f}%, under the {FILE_FLOOR:.0f}% floor")
         print()
     if total < floor:
-        print(f"## Below the overall floor\n\n- {total:.0f}% against {floor:.0f}%\n")
+        print(f"## Below the overall floor\n\n- {total:.1f}% against {floor:.0f}%\n")
 
     return 1 if low or total < floor else 0
 
