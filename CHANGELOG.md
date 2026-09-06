@@ -1,3 +1,26 @@
+## 3.1.0 (2026-09-06)
+
+### Feat
+
+- report an untrained exercise in its own row, not as a warning (#92) ([d5b7548](https://github.com/theadzik/repwise/commit/d5b754843935d31044c8c10e5662a7e2f0cdb63b))
+- enforce coverage floors, overall and per module (#91) ([f6ad463](https://github.com/theadzik/repwise/commit/f6ad463af5af0b5bfa469b4f699d7f8f62e64286))
+- write an exercise's own notes to the watch (#83) ([e5f2a50](https://github.com/theadzik/repwise/commit/e5f2a508450d1c50e43dcd6e8b4c50b211590a91))
+- write the config key as the workout's name (#81) ([f32a7a7](https://github.com/theadzik/repwise/commit/f32a7a7bfebfeacfa6694b7f9066d41287d083b6))
+- split the effort tolerance into two evidence-based bounds (#80) ([54462b9](https://github.com/theadzik/repwise/commit/54462b928de07b318930d17be62861480fc3c9ad))
+- clamp targets after config change (#79) ([246de1e](https://github.com/theadzik/repwise/commit/246de1e4923fa3a747d8d4a3a64d1943f9d02c9c))
+- steps and racks (#77) ([f5e82ab](https://github.com/theadzik/repwise/commit/f5e82ab05558a81e3d1dea13550493126e293751))
+
+### Fix
+
+- judge a session against the lead that was really asked for (#89) ([c7076b3](https://github.com/theadzik/repwise/commit/c7076b39ea6d8c4a8c0e616e2094541f69e4557f))
+- stop quietly on Ctrl-C instead of printing a traceback (#87) ([81f0891](https://github.com/theadzik/repwise/commit/81f0891d41f3d81b6cde3b2e9a74b1903bc2a79f))
+- write a note this tool can still recognise next run (#86) ([f62fee8](https://github.com/theadzik/repwise/commit/f62fee826fc0ec99de53f91fe1b5a63c0817f538))
+- count rungs from a snapped quotient, not a truncated one (#85) ([5f537d8](https://github.com/theadzik/repwise/commit/5f537d8663f5bb2b8c65d58f355935946e3ef6ae))
+
+### Refactor
+
+- own the workout name key, and drop two unused arguments (#90) ([1ab589c](https://github.com/theadzik/repwise/commit/1ab589cb656b4c4dc592a7fdc00162543677fc0d))
+
 ## 3.0.0 (2026-09-05)
 
 ### BREAKING CHANGE
