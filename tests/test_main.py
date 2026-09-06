@@ -44,7 +44,10 @@ class Recorder:
 
     def __call__(self, args, config):
         self.calls.append((args, config))
-        if isinstance(self.outcome, Exception):
+        # BaseException rather than Exception, so a KeyboardInterrupt - which
+        # is not an Exception, and is the one main() has to handle without a
+        # traceback - can be asked for like any other outcome.
+        if isinstance(self.outcome, BaseException):
             raise self.outcome
         return self.outcome
 
@@ -302,6 +305,37 @@ def test_a_failure_with_no_advice_prints_only_the_message(config, dispatch, caps
 
     assert code == ExitCode.NOTHING_USABLE
     assert capsys.readouterr().err.strip() == "Could not fetch the workout: timed out"
+
+
+def test_ctrl_c_is_not_a_traceback(config, dispatch, capsys):
+    """A run is stopped from the keyboard most often while it waits on Garmin,
+    and a stack trace through the HTTP library says nothing useful."""
+    dispatch(KeyboardInterrupt())
+
+    code = main(["--config", config, "update"])
+
+    assert code == ExitCode.INTERRUPTED
+    assert "Stopped." in capsys.readouterr().err
+
+
+def test_a_stopped_run_says_re_running_is_safe(config, dispatch, capsys):
+    """Which it is: every plan is recomputed from what Garmin holds now, so a
+    workout written before the interrupt is simply found up to date."""
+    dispatch(KeyboardInterrupt())
+
+    main(["--config", config, "update"])
+
+    assert "re-running" in capsys.readouterr().err
+
+
+def test_a_stopped_run_says_nothing_on_stdout(config, dispatch, capsys):
+    """An interrupt is not the report, so a redirected run keeps its output
+    clean and the reason lands where a person is looking."""
+    dispatch(KeyboardInterrupt())
+
+    main(["--config", config, "update"])
+
+    assert capsys.readouterr().out == ""
 
 
 def test_problems_go_to_stderr_not_stdout(config, dispatch, capsys):

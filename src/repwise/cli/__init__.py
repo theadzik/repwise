@@ -148,6 +148,20 @@ def main(argv: list[str] | None = None) -> int:
         if exc.advice:
             logger.error(exc.advice)
         return exc.exit_code
+    except KeyboardInterrupt:
+        # Not a bug, so not a traceback. A run is stopped from the keyboard
+        # most often while it waits on Garmin, and a stack trace through the
+        # HTTP library says nothing about what happened or what to do next.
+        #
+        # Re-running is the answer, and it is a safe one: `update` recomputes
+        # every plan from what Garmin holds now, so the workouts that were
+        # already written are simply found up to date.
+        logger.warning("")
+        logger.warning(
+            "Stopped. Anything already written to Garmin is still there, and "
+            "re-running picks up from it."
+        )
+        return ExitCode.INTERRUPTED
 
 
 if __name__ == "__main__":
