@@ -58,6 +58,7 @@ tools/                     checks that read the tree rather than the code
     check_structure.py     the import graph: cycles, and the boundaries below
     check_docs.py          this document and the rest of docs/, against what
                            the code actually does
+    check_coverage.py      the coverage floors, per module as well as overall
 tests/
     builders.py            the payloads and specs every test builds from
     conftest.py            fixtures
