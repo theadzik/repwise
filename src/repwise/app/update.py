@@ -403,11 +403,10 @@ def shape_untrained(
     return plans
 
 
-def advance_trained(  # noqa: PLR0913 - each argument is one independent input
+def advance_trained(
     session: GarminSession,
     payloads: Payloads,
     config: Config,
-    options: UpdateOptions,
     sessions: list[Trained],
     *,
     trusted: Container[str] | None = None,
@@ -533,7 +532,7 @@ def run_update(
     )
 
     trained, usable = advance_trained(
-        session, payloads, config, options, sessions, trusted=trusted
+        session, payloads, config, sessions, trusted=trusted
     )
     plans.extend(trained)
 

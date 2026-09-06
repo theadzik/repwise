@@ -29,6 +29,7 @@ from .garmin.payloads import (
     apply_note,
     apply_rest,
     apply_sets,
+    apply_workout_name,
     block_target,
     executed_exercises,
     is_rest,
@@ -43,6 +44,7 @@ from .garmin.payloads import (
     step_note,
     step_rest,
     steps_between,
+    workout_name,
 )
 
 Performed = tuple[dict[str, list[PerformedSet]], dict[str, list[PerformedSet]]]
@@ -733,10 +735,10 @@ def _refresh_name(workout: Workout, payload: dict[str, Any]) -> NameChange | Non
     past session matched by the old prefix and every future one needing the new
     name to be listed too, which is why `check` reports a key no prefix claims.
     """
-    was = payload.get("workoutName")
+    was = workout_name(payload)
     if not was or was == workout.key:
         return None
-    payload["workoutName"] = workout.key
+    apply_workout_name(payload, workout.key)
     return NameChange(was, workout.key)
 
 

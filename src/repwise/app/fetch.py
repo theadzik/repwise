@@ -10,7 +10,7 @@ from ..domain.models import Config, GarminSettings
 from ..errors import ExitCode, GarminError
 from ..garmin import catalog
 from ..garmin.client import STRENGTH, GarminSession
-from ..garmin.payloads import activity_sport
+from ..garmin.payloads import activity_sport, workout_name
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def run_fetch(
             continue
 
         path = dumps.write(payload, config.garmin.dump_dir, dumps.WORKOUT, workout_id)
-        logger.info(f"Saved {payload.get('workoutName', '(unnamed)')} -> {path}")
+        logger.info(f"Saved {workout_name(payload) or '(unnamed)'} -> {path}")
 
     return ExitCode.NOTHING_USABLE if failed else ExitCode.OK
 

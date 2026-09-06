@@ -18,6 +18,7 @@ from .garmin.payloads import (
     step_rest,
     step_target,
     steps_between,
+    workout_name,
 )
 from .yamlio import dump
 
@@ -93,7 +94,7 @@ def guess_load(garmin_name: str, weight: float | None) -> tuple[str, bool]:
 
 def describe_workout(payload: dict[str, Any]) -> ImportedWorkout:
     """Read a Garmin workout definition into importable form."""
-    name = payload.get("workoutName") or "Unnamed workout"
+    name = workout_name(payload) or "Unnamed workout"
 
     exercises: list[ImportedExercise] = []
     for block in iter_exercise_blocks(payload):

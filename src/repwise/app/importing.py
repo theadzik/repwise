@@ -7,6 +7,7 @@ from typing import Any
 
 from ..errors import ActivityNotFound, ExitCode, UsageError
 from ..garmin.client import STRENGTH, GarminSession
+from ..garmin.payloads import workout_name
 from ..importer import describe_workout, render_config
 from ..yamlio import write
 
@@ -33,9 +34,9 @@ def select(session: GarminSession, options: ImportOptions) -> list[dict[str, Any
         return wanted
     if options.name:
         needle = options.name.lower()
-        wanted = [w for w in workouts if needle in (w.get("workoutName") or "").lower()]
+        wanted = [w for w in workouts if needle in (workout_name(w) or "").lower()]
         if not wanted:
-            names = ", ".join(repr(w.get("workoutName")) for w in workouts)
+            names = ", ".join(repr(workout_name(w)) for w in workouts)
             raise ActivityNotFound(
                 f"No strength workout matching {options.name!r}. Found: {names}"
             )

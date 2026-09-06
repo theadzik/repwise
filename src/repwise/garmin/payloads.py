@@ -35,6 +35,12 @@ KILOGRAM_UNIT = {"unitId": 8, "unitKey": "kilogram", "factor": GRAMS_PER_KG}
 #: per ExecutableStepDTO, null until something writes it.
 NOTE_FIELD = "description"
 
+#: What Garmin calls a workout. Spelled out in one place, like every other key
+#: here: it appears on a stored workout, on a summary from a listing, and on
+#: the shell `new_workout` builds, and a typo in any one of those is a silent
+#: write to a field nothing reads.
+NAME_FIELD = "workoutName"
+
 #: The shape ExerciseSpec.note renders. Used to tell a note this tool wrote
 #: from a cue the user typed, so that only the former is ever overwritten.
 #:
@@ -411,7 +417,7 @@ def new_workout(name: str) -> dict[str, Any]:
     workout to create from one to replace.
     """
     return {
-        "workoutName": name,
+        NAME_FIELD: name,
         "sportType": dict(SPORT_STRENGTH),
         "workoutSegments": [
             {
@@ -682,6 +688,21 @@ def executed_exercises(snapshot: list[dict[str, Any]]) -> list[ExecutedExercise]
 
 
 # --- logged activities -----------------------------------------------------
+
+
+def workout_name(payload: dict[str, Any]) -> str | None:
+    """The name Garmin holds a workout under, from a definition or a summary.
+
+    `None` where Garmin has none, which it allows. What to show instead is the
+    caller's to decide - a listing wants a placeholder in the column, an import
+    wants something a config key can be made from - so nothing is chosen here.
+    """
+    return payload.get(NAME_FIELD)
+
+
+def apply_workout_name(payload: dict[str, Any], name: str) -> None:
+    """Rename a workout in the payload about to be saved."""
+    payload[NAME_FIELD] = name
 
 
 def activity_sport(activity: dict[str, Any]) -> str | None:

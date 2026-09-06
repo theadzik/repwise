@@ -5,6 +5,7 @@ import logging
 from ..domain.models import Config
 from ..errors import ExitCode
 from ..garmin.client import STRENGTH, GarminSession
+from ..garmin.payloads import workout_name
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ def run_list(
         workout_id = str(entry.get("workoutId"))
         updated = (entry.get("updateDate") or "")[:10]
         mark = "*" if workout_id in known else " "
-        name = entry.get("workoutName") or "(unnamed)"
+        name = workout_name(entry) or "(unnamed)"
         if every_sport:
             kind = (entry.get("sportType") or {}).get("sportTypeKey", "?")
             name = f"{name}  [{kind}]"
