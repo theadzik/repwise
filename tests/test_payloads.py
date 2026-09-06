@@ -272,6 +272,11 @@ def test_every_rendered_note_is_recognised_as_generated():
             notes="stop when the hip drops",
         ),
         spec(load="cable", weight_step=2.5),
+        # a cue typed across lines, and one long enough to be cut: `note`
+        # flattens and truncates for exactly this reason, so both still have
+        # to come out looking like ours
+        spec(notes="brace before you unrack\nknees out"),
+        spec(notes="brace hard and " * 40),
     ]
     for each in cases:
         assert GENERATED_NOTE.match(each.note), each.note

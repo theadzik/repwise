@@ -19,6 +19,15 @@ BODYWEIGHT = "bodyweight"
 #: workout and reading them off the watch. Round down to the one that fits.
 READABLE_NOTE = 160
 
+#: The most of a note Garmin keeps. Past this it drops the rest on the way in,
+#: with no error and nothing to say it happened - so what was sent back and
+#: what is stored no longer agree, and every later run finds the note stale and
+#: writes it again. The note is cut to fit here for that reason: this tool has
+#: to be able to predict what comes back. `check` reports anything past
+#: `READABLE_NOTE`, which is well under this, so a note near the cut has been
+#: warned about long before it reaches one.
+STORED_NOTE = 512
+
 
 @dataclass(frozen=True)
 class LoadTier:
@@ -164,18 +173,27 @@ class ExerciseSpec:
         exercise's own `notes` - how to do it. Kept to one short line, because
         it is read on a watch mid-set.
 
-        Garmin stores 512 characters and silently drops the rest: no error, no
-        sign anything was lost. Watches run out well before that, at somewhere
-        around 160 on a Forerunner, so the real limit is what fits a screen
-        rather than what the API takes. Hence one line, and hence `check`
-        counting it.
+        One line, and cut to `STORED_NOTE`. Both are about what comes back
+        rather than about taste: Garmin silently drops a note past 512
+        characters, and `GENERATED_NOTE` cannot match one carrying a newline,
+        so either would leave this tool unable to recognise what it had just
+        written. Watches run out well before 512 anyway - around 160 on a
+        Forerunner - which is what `check` reports against.
         """
         span = f"{self.rep_low}-{self.rep_high} {'s' if self.time_based else 'reps'}"
         if self.rep_step != 1:
             span += f" by {self.rep_step}"
         load = "bodyweight" if self.bodyweight else f"+{self.weight_step:g} kg"
         written = f"{span} | {load}"
-        return f"{written} | {self.notes}" if self.notes else written
+        # One line, whatever the config was written across. A cue holding a
+        # newline renders a note that `GENERATED_NOTE` cannot match, and a note
+        # this tool wrote that does not look like one of ours is read as a cue
+        # typed into Connect: warned about, left alone, and never carrying a
+        # rep range or a step change again.
+        cue = " ".join(self.notes.split()) if self.notes else ""
+        if cue:
+            written = f"{written} | {cue}"
+        return written[:STORED_NOTE]
 
 
 @dataclass(frozen=True)

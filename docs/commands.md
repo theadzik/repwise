@@ -373,11 +373,16 @@ Connect *on the end of* a generated note is replaced rather than kept - the
 config decides cues now, as it decides everything else about a step. A note
 typed from scratch is still recognised as yours and left alone.
 
-**Keep it to one line.** Garmin stores 512 characters and silently drops the
-rest - no error, nothing to say anything was lost - but the screen runs out
-long before that. Measured on a real account and read off the watch: a
-160-character note displays whole and a 200-character one is cut. `check`
-reports anything past 160 for that reason.
+**Keep it short.** The screen is the binding limit: measured on a real account
+and read off the watch, a 160-character note displays whole and a 200-character
+one is cut, so `check` reports anything past 160.
+
+A cue written across several lines is joined onto one, and the whole note is
+cut at 512 characters, because neither survives the round trip otherwise -
+Garmin silently drops a note past 512, and a note carrying a newline is no
+longer recognisable as one this tool wrote. Either would leave every later run
+either rewriting the note or refusing to touch it. Nothing is lost that the
+watch would have shown, and `check` warns long before the cut.
 
 These are refreshed from `workouts.yaml` on every run, so editing a rep range
 or a `weight_step` updates them. That is a reason to write a workout in its own

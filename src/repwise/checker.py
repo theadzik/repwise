@@ -167,8 +167,8 @@ def check_workout(workout: Workout, payload: dict[str, Any]) -> list[Finding]:
         if len(spec.note) > READABLE_NOTE:
             note(
                 f"{spec.name}: its note comes to {len(spec.note)} characters, past "
-                f"the {READABLE_NOTE} a watch shows. Garmin stores 512 and drops the "
-                f"rest without saying so, so the end of it is simply never read"
+                f"the {READABLE_NOTE} a watch shows, so the end of it is simply "
+                f"never read"
             )
 
     index: ExerciseIndex[ExerciseBlock] = ExerciseIndex()

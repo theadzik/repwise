@@ -7,6 +7,8 @@ step, so the watch can show what you are working towards mid-set.
 
 from builders import spec
 
+from repwise.domain.models import STORED_NOTE
+
 
 def test_note_states_the_range_and_the_weight_step():
     assert spec().note == "6-10 reps | +5 kg"
@@ -57,6 +59,29 @@ def test_an_exercise_cue_is_written_on_the_end_of_it():
         rep_low=6, rep_high=10, weight_step=2.5, notes="2-3 RIR | brace, knees out"
     ).note
     assert written == "6-10 reps | +2.5 kg | 2-3 RIR | brace, knees out"
+
+
+def test_a_cue_written_across_lines_is_joined_onto_one():
+    """`GENERATED_NOTE` cannot match a note holding a newline, and a note this
+    tool wrote that it cannot match is read as one typed into Connect: warned
+    about, left alone, and never carrying a config change again."""
+    written = spec(
+        rep_low=6,
+        rep_high=10,
+        weight_step=2.5,
+        notes="brace before you unrack\nknees out\n",
+    ).note
+    assert written == "6-10 reps | +2.5 kg | brace before you unrack knees out"
+
+
+def test_a_note_is_cut_to_what_garmin_will_keep():
+    """Garmin drops the rest without saying so, and what it stored would then
+    never equal what we meant to write - so every run would find the note stale
+    and write it again, for good."""
+    written = spec(
+        rep_low=6, rep_high=10, weight_step=2.5, notes="brace hard and " * 40
+    ).note
+    assert len(written) == STORED_NOTE
 
 
 def test_no_cue_leaves_the_note_exactly_as_it_was():
