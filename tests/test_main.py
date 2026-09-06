@@ -376,3 +376,92 @@ def test_verbose_after_the_command_works_too(config, dispatch):
     main(["--config", config, "check", "--verbose"])
 
     assert logging.getLogger(PACKAGE).level == logging.DEBUG
+
+
+# --- what each handler makes of its arguments ------------------------------
+#
+# The tests above replace HANDLERS wholesale to check dispatch, so the real
+# handler bodies never ran. They are thin, but every one of them copies
+# argparse fields onto an options object or a keyword, and a pair swapped
+# there - `name=args.id` - is a bug no type checker sees and no other test
+# would notice.
+
+
+@pytest.fixture
+def commands(monkeypatch):
+    """Record what each use case was called with, without a session."""
+    seen = {}
+
+    def spy(name):
+        def record(*args, **kwargs):
+            seen[name] = (args, kwargs)
+            return ExitCode.OK
+
+        return record
+
+    monkeypatch.setattr(cli, "connect", lambda settings, **kw: "session")
+    for name in ("run_update", "run_list", "run_import", "run_check", "run_logout"):
+        monkeypatch.setattr(cli, name, spy(name))
+    return seen
+
+
+def test_update_passes_its_three_flags_through(config, commands):
+    main(["--config", config, "update", "--apply", "--push", "--activity", "42"])
+
+    options = commands["run_update"][0][2]
+    assert (options.apply, options.push, options.activity) == (True, True, "42")
+
+
+def test_update_defaults_to_a_dry_run(config, commands):
+    main(["--config", config, "update"])
+
+    options = commands["run_update"][0][2]
+    assert not options.apply and not options.push and options.activity is None
+
+
+def test_import_maps_a_name_onto_the_name_field(config, commands):
+    """`name` and `id` are both strings selecting one workout, which is
+    exactly where a swapped pair would go unnoticed."""
+    main(["--config", config, "import", "--name", "Push Day", "-o", "out.yaml"])
+
+    options = commands["run_import"][0][1]
+    assert options.name == "Push Day"
+    assert options.id is None
+    assert options.output == "out.yaml"
+    assert options.force is False
+
+
+def test_import_maps_an_id_onto_the_id_field(config, commands):
+    main(["--config", config, "import", "--id", "123", "--force"])
+
+    options = commands["run_import"][0][1]
+    assert options.id == "123"
+    assert options.name is None
+    assert options.force is True
+
+
+def test_list_passes_every_sport_through(config, commands):
+    main(["--config", config, "list", "--all"])
+
+    assert commands["run_list"][1] == {"every_sport": True}
+
+
+def test_list_asks_for_strength_only_by_default(config, commands):
+    main(["--config", config, "list"])
+
+    assert commands["run_list"][1] == {"every_sport": False}
+
+
+def test_check_is_given_a_session_and_the_config(config, commands):
+    main(["--config", config, "check"])
+
+    assert commands["run_check"][0][0] == "session"
+
+
+def test_logout_opens_no_session(config, commands):
+    """Opening one would prompt for the password of the account you are
+    asking to be signed out of."""
+    main(["--config", config, "logout"])
+
+    assert commands["run_logout"][0][0].token_store is not None
+    assert "run_check" not in commands

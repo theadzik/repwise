@@ -6,6 +6,7 @@ from dataclasses import replace
 import pytest
 from builders import (
     active,
+    hold_step,
     payload,
     rep_step,
     repeat,
@@ -1411,3 +1412,77 @@ def test_a_note_typed_from_scratch_is_still_left_alone():
 
     assert plan.notes == []
     assert any("has its own note" in w for w in plan.warnings)
+
+
+# --- a hold, which is planned in seconds -----------------------------------
+#
+# Nothing in this module planned a timed exercise at all, and the planner is
+# what decides the target that actually gets written to Garmin. A plank whose
+# logged sets were read as Garmin's single rep would be judged against a
+# target of 45 and deloaded after every session it actually held.
+
+PLANK = spec(
+    name="Plank",
+    garmin_name="PLANK",
+    garmin_category="PLANK",
+    rep_low=30,
+    rep_high=60,
+    sets=3,
+    load="bodyweight",
+    unit="seconds",
+    weight_step=0.0,
+)
+
+
+def held_for(seconds, sets=3):
+    """A hold as Garmin logs one: one rep, the real figure in the duration."""
+    return performed_sets(
+        {
+            "exerciseSets": [active("PLANK", "PLANK", 1, 0.0, duration=float(seconds))]
+            * sets
+        }
+    )
+
+
+def test_a_hold_that_met_its_target_advances_in_seconds():
+    """Not in reps: the step asks for 45 s and the next one asks for more of
+    them, which is the only unit a plank has."""
+    definition = payload(repeat(hold_step("PLANK", "PLANK", 45), sets=3))
+
+    plan = plan_workout(a_workout(exercises=[PLANK]), definition, held_for(45))
+
+    assert [c.new.reps for c in plan.changes] == [46]
+    assert plan.moved, "the step changed"
+    # The payload itself is rewritten, in seconds, ready to be written back.
+    written = next(iter(iter_exercise_blocks(definition)))
+    assert step_target(written.step, time_based=True) == Target(46, 0.0)
+
+
+def test_a_hold_that_fell_short_holds_its_target():
+    definition = payload(repeat(hold_step("PLANK", "PLANK", 45), sets=3))
+
+    plan = plan_workout(a_workout(exercises=[PLANK]), definition, held_for(40))
+
+    assert [c.new.reps for c in plan.changes] == [45], "unchanged"
+    assert not plan.moved
+
+
+def test_a_hold_at_the_top_of_its_range_has_nothing_to_add():
+    """Bodyweight, so rule 3 cannot add load; the range is all there is."""
+    definition = payload(repeat(hold_step("PLANK", "PLANK", 60), sets=3))
+
+    plan = plan_workout(a_workout(exercises=[PLANK]), definition, held_for(60))
+
+    assert [c.new.reps for c in plan.changes] == [60]
+    assert "nothing to add" in plan.changes[0].reason
+
+
+def test_a_hold_whose_step_counts_reps_is_skipped_with_a_warning():
+    """`unit: seconds` in the config against a step Garmin ends on a rep
+    count. Reading the figure anyway would progress 45 reps of plank."""
+    definition = payload(repeat(rep_step("PLANK", "PLANK", 45, 0.0), sets=3))
+
+    plan = plan_workout(a_workout(exercises=[PLANK]), definition, held_for(45))
+
+    assert plan.changes == []
+    assert any("no time target" in each for each in plan.warnings)

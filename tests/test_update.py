@@ -711,11 +711,13 @@ def test_a_push_that_worked_is_not_failed_by_an_unreadable_queue(account, caplog
 # only as far as one of them is still unsettled.
 
 
-def executed(*asked):
+def executed(*asked, kind="REPS"):
     """The workout an activity ran, as Garmin keeps it beside the activity.
 
     Sets are FIT's repeats rather than nesting: a repeat step *after* the run
     it repeats, naming the step to jump back to and how many times.
+
+    `kind` is "TIME" for a hold, where the figure is seconds rather than reps.
     """
     steps_out, index = [], 0
     for name, category, reps, sets in asked:
@@ -724,7 +726,7 @@ def executed(*asked):
             {
                 "stepIndex": index,
                 "intensity": "ACTIVE",
-                "durationType": "REPS",
+                "durationType": kind,
                 "durationValue": float(reps),
                 "exerciseName": name,
                 "exerciseCategory": category,
@@ -960,3 +962,102 @@ def test_the_rename_summary_says_the_same_thing_the_other_way_round(account, cap
         run(account, config, apply=True)
 
     assert "Renamed 1 workout(s)." in caplog.text
+
+
+# --- a hold, which is progressed in seconds --------------------------------
+#
+# Garmin logs a hold as one rep with the real figure in the duration, so
+# `as_time` moves the seconds into the reps the rules work in. That conversion
+# happens in three places and was asserted on in none of them: a plank's
+# history read back as 1,1,1 rather than 45,45,45 would read as a stall on
+# every session and deload a plank forever.
+
+PLANK = spec(
+    name="Plank",
+    garmin_name="PLANK",
+    garmin_category="PLANK",
+    rep_low=30,
+    rep_high=60,
+    sets=3,
+    load="bodyweight",
+    unit="seconds",
+    weight_step=0.0,
+)
+
+
+def holds(seconds, sets=3):
+    """A hold as Garmin logs one: one rep, and the figure in the duration."""
+    return [active("PLANK", "PLANK", 1, 0.0, duration=float(seconds))] * sets
+
+
+@pytest.fixture
+def planking():
+    """A plank held 45 s, after two sessions that managed only 40 s."""
+    return FakeSession(
+        activities=[an_activity(n, "Workout A") for n in (900, 800, 700)],
+        workouts={"111": steps(repeat(rep_step("PLANK", "PLANK", 45, 0.0)))},
+        sets={
+            "900": sets_of(*holds(45)),
+            "800": sets_of(*holds(40)),
+            "700": sets_of(*holds(40)),
+        },
+        executed={
+            str(n): executed(("PLANK", "PLANK", 45, 3), kind="TIME")
+            for n in (900, 800, 700)
+        },
+    )
+
+
+def only_plank():
+    return Config({"Workout A": Workout("Workout A", "111", ["workout a"], [PLANK])})
+
+
+def test_a_holds_history_is_read_back_in_seconds(planking):
+    """Not as the single rep Garmin counts. A history of 1,1,1 would compare
+    against a target of 45 and read as a miss every time."""
+    workout = only_plank()["Workout A"]
+    earlier = sessions_before(planking.activities, workout, "900")
+
+    history = gather_history(
+        planking, workout, earlier, performed_sets(planking.sets["900"])
+    )
+
+    assert [s.performed[0].reps for s in history["plank"]] == [40, 40]
+
+
+def test_the_latest_hold_is_measured_in_seconds_too(planking):
+    """The session being judged goes through the same conversion, and if only
+    the history did the two would be compared in different units."""
+    workout = only_plank()["Workout A"]
+    performed = performed_sets(planking.sets["900"])
+    earlier = sessions_before(planking.activities, workout, "900")
+
+    gather_history(planking, workout, earlier, performed)
+
+    # Two sessions back, which only happens because the latest was read as 45
+    # against a target of 45 - a hit that the walk then looks behind.
+    assert planking.read_back == ["800", "700"]
+
+
+# --- a run with nothing in it ----------------------------------------------
+
+
+def test_an_activity_with_no_working_sets_says_so_and_moves_on(account, caplog):
+    """A session that was started and abandoned, or logged as cardio. Not a
+    failure, and not something to advance a target from either."""
+    account.sets["900"] = {"exerciseSets": []}
+
+    with caplog.at_level(logging.WARNING, logger="repwise.app.update"):
+        run(account)
+
+    assert "No working sets found" in caplog.text
+
+
+def test_a_run_that_learned_nothing_and_shaped_nothing_exits_non_zero(account):
+    """Every activity empty and every workout already matching the config, so
+    there is genuinely nothing to do. The exit code is what a scheduler reads,
+    and commands.md documents 1 for it."""
+    for activity_id in list(account.sets):
+        account.sets[activity_id] = {"exerciseSets": []}
+
+    assert run(account) == ExitCode.NOTHING_USABLE

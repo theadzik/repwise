@@ -1,6 +1,6 @@
 """Finding the exercise a name or a category refers to."""
 
-from repwise.domain.matching import ExerciseIndex, normalise
+from repwise.domain.matching import ExerciseIndex, normalise, variants
 
 
 def test_normalise_bridges_the_two_naming_styles():
@@ -121,3 +121,12 @@ def test_a_trusted_name_that_does_match_is_still_found():
     index.add("squat", name="BARBELL_BACK_SQUAT", category="SQUAT")
     found = index.find("BARBELL_BACK_SQUAT", "SQUAT", trusted={"BARBELL_BACK_SQUAT"})
     assert found == "squat"
+
+
+def test_a_name_with_nothing_in_it_answers_to_nothing():
+    """Garmin allows a null exercise name on a step, and normalising one that
+    is only punctuation leaves nothing. An empty key would match every other
+    exercise whose name normalised away, so the answer is no variants at all."""
+    assert variants(None) == ()
+    assert variants("") == ()
+    assert variants("   -- ") == ()

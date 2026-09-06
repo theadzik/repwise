@@ -384,3 +384,27 @@ def test_a_spec_with_no_tiers_behaves_as_it_always_did():
     assert next_weight_above(plain, 45.0) == 47.5
     assert next_weight_below(plain, 22.5) == 20.0
     assert next_weight_below(plain, 20.0) is None
+
+
+# --- weights off the rack, and increments that cannot be scored ------------
+
+
+def test_a_weight_below_the_rack_climbs_onto_its_floor_first():
+    """A load lighter than anything the rack holds - typed into the watch by
+    hand, or left over from before the rack was declared. The next weight up
+    is the floor itself rather than a step above where you are."""
+    assert next_weight_above(_racked(), 0.5) == 1.0
+
+
+def test_an_increment_that_cannot_be_scored_is_skipped():
+    """`reset_drop` gives no answer for a timed or bodyweight exercise, and
+    `chosen_step` has to survive being asked anyway - it returns the least bad
+    increment rather than refusing, because rule 3 has to prescribe something."""
+    timed = spec(
+        load="bodyweight",
+        unit="seconds",
+        weight_step=0.0,
+        tiers=(LoadTier(0.0, None, (1.25, 5.0)),),
+    )
+
+    assert chosen_step(timed, 20.0) in (1.25, 5.0), "the least bad, not a crash"

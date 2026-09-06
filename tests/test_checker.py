@@ -3,10 +3,11 @@
 import pathlib
 from dataclasses import replace
 
+import pytest
 from builders import catalog, payload, rep_step, repeat, rest_step, spec
 
 from repwise.checker import check_catalog, check_programming, check_workout
-from repwise.domain.models import LoadTier, Workout
+from repwise.domain.models import READABLE_NOTE, ExerciseSpec, LoadTier, Workout
 
 SQUAT_GROUP = repeat(
     rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0), sets=4, rest=120.0
@@ -486,3 +487,30 @@ def test_a_note_past_what_a_watch_shows_is_reported():
 def test_a_note_that_fits_is_not_mentioned():
     brief = replace(SQUAT_SPEC, notes="2-3 RIR | brace, knees out, to parallel")
     assert check_workout(Workout("W", "1", ["w"], [brief]), payload(SQUAT_GROUP)) == []
+
+
+def sized(length: int) -> ExerciseSpec:
+    """A spec whose rendered note comes to exactly `length` characters."""
+    generated = len(replace(SQUAT_SPEC, notes=None).note) + len(" | ")
+    return replace(SQUAT_SPEC, notes="x" * (length - generated))
+
+
+@pytest.mark.parametrize("length", [READABLE_NOTE - 1, READABLE_NOTE])
+def test_a_note_up_to_what_a_watch_shows_is_left_alone(length):
+    """160 displays whole, which is why that is the figure. Reporting at
+    exactly 160 would be advising against a note that reads perfectly."""
+    spec_at = sized(length)
+    assert len(spec_at.note) == length
+
+    assert (
+        check_workout(Workout("W", "1", ["w"], [spec_at]), payload(SQUAT_GROUP)) == []
+    )
+
+
+def test_a_note_one_character_over_is_reported():
+    """The other side of the same boundary, which is the whole of the rule."""
+    spec_at = sized(READABLE_NOTE + 1)
+    findings = check_workout(Workout("W", "1", ["w"], [spec_at]), payload(SQUAT_GROUP))
+
+    assert len(findings) == 1
+    assert f"{READABLE_NOTE + 1} characters" in findings[0].detail

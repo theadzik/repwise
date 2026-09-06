@@ -233,3 +233,59 @@ def test_a_rename_is_announced_but_kept_out_of_the_table(caplog):
     assert caplog.records[1].message == "", "set apart from the table below it"
     assert not any(r.name == "Workout name" for r in built_rows(plan))
     assert built_rows(plan)[-1].name == "Between exercises", "the gap still last"
+
+
+# --- how each kind of exercise is measured --------------------------------
+#
+# A target is rendered in the unit the exercise is actually programmed in.
+# Both of the branches that are not "weight in kilograms" were running and
+# asserted on by nothing.
+
+
+def test_a_timed_hold_is_reported_in_seconds(caplog):
+    """A plank progresses in seconds, and "45 x 0 kg" would name a load it
+    does not have."""
+    plank = spec(
+        name="Plank",
+        garmin_name="PLANK",
+        load="bodyweight",
+        unit="seconds",
+        weight_step=0.0,
+        rep_low=30,
+        rep_high=60,
+    )
+    plan = a_plan(
+        changes=[Change(plank, Target(40, 0.0), Target(45, 0.0), "hit 40 on every set")]
+    )
+
+    report_plan(plan)
+
+    row = rows(caplog)[0]
+    assert "40 s -> 45 s" in row
+    assert "kg" not in row
+
+
+def test_a_bodyweight_exercise_is_reported_in_reps_with_no_load(caplog):
+    press_up = spec(
+        name="Push-up", garmin_name="PUSH_UP", load="bodyweight", weight_step=0.0
+    )
+    plan = a_plan(
+        changes=[Change(press_up, Target(8, 0.0), Target(9, 0.0), "hit 8 on every set")]
+    )
+
+    report_plan(plan)
+
+    row = rows(caplog)[0]
+    assert "8 reps -> 9 reps" in row
+    assert "kg" not in row
+
+
+def test_a_loaded_exercise_still_names_its_weight(caplog):
+    """The branch the other two are distinguished from."""
+    plan = a_plan(
+        changes=[Change(FIRST, Target(8, 30.0), Target(9, 30.0), "hit 8 on every set")]
+    )
+
+    report_plan(plan)
+
+    assert "8 x 30 kg -> 9 x 30 kg" in rows(caplog)[0]
