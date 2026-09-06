@@ -803,6 +803,7 @@ does not exist, or miss one that does.
 | `1` | Nothing usable in the activity, or a fetch failed |
 | `2` | Rate limited by Garmin |
 | `3` | Bad configuration, or `--push` without `--apply` |
+| `130` | Stopped from the keyboard (Ctrl-C) |
 
 `check` also exits non-zero when it finds real drift, which is what makes it
 usable from a scheduler.

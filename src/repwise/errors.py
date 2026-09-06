@@ -20,6 +20,12 @@ class ExitCode(IntEnum):
     NOTHING_USABLE = 1
     RATE_LIMITED = 2
     CONFIG = 3
+    #: Ctrl-C. The shell convention of 128 plus the signal, rather than a
+    #: number of this tool's own, so a script that already reads it that way
+    #: needs to know nothing about repwise. It carries no `WorkoutError`:
+    #: stopping the tool is not a failure it should explain, and there is
+    #: nothing for the user to fix.
+    INTERRUPTED = 130
 
 
 class WorkoutError(Exception):
