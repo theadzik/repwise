@@ -928,3 +928,18 @@ def test_the_increment_chosen_grows_with_the_load():
     heavy, _ = next_target(stack, Target(15, 45.0), [P(15, 45.0)] * 3)
     assert light == Target(10, 6.25)
     assert heavy == Target(10, 50.0)
+
+
+def test_rule_three_never_resets_the_range_without_adding_load():
+    """The whole reason the rung count is snapped before it is truncated.
+
+    Topping out at 33 kg with a 2.2 kg step used to return the same 33 kg as
+    the "next" load, so the target reset from 10 reps to 6 at an unchanged
+    weight - a pure regression, repeated every time the range was climbed.
+    """
+    stepping = spec(
+        rep_low=6, rep_high=10, sets=3, load="barbell", weight_step=2.2, min_weight=0.0
+    )
+    target, why = next_target(stepping, Target(10, 33.0), [P(10, 33.0)] * 3)
+    assert target.weight > 33.0, why
+    assert target.reps == 6

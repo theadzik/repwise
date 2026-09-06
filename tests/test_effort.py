@@ -318,6 +318,32 @@ def test_a_step_past_a_rack_ceiling_lands_on_it():
     assert next_weight_above(wide, 9.0) == 10.0
 
 
+def test_a_step_lands_above_the_weight_it_started_from():
+    """A step of 2.2 kg used to stall at 33 kg, and 0.1 kg at 4.3.
+
+    The rung count is a float division, and an exact count reads a hair low
+    for any step that is not exact in binary: (33.0 - 0.0) / 2.2 is
+    14.999999999999998. Truncating that counted one rung too few and landed
+    the step back where it started.
+    """
+    for step, weight in ((2.2, 33.0), (0.1, 4.3), (0.3, 9.3), (1.1, 16.5)):
+        stepping = spec(load="barbell", weight_step=step, min_weight=0.0)
+        above = next_weight_above(stepping, weight)
+        assert above is not None
+        assert above > weight, f"{step} kg step stalled at {weight} kg"
+
+
+def test_a_ragged_step_climbs_its_whole_rack_without_stalling():
+    """Every rung, not just the first: the miscount is a function of where it is."""
+    stepping = spec(load="barbell", weight_step=2.2, min_weight=0.0)
+    weight = 0.0
+    for _ in range(200):
+        above = next_weight_above(stepping, weight)
+        assert above is not None
+        assert above > weight
+        weight = above
+
+
 def test_a_deload_drops_back_onto_the_rack_below():
     """The boundary is crossable both ways, so a premature jump self-corrects."""
     assert next_weight_below(_racked(), 12.0) == 10.0
