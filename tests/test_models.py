@@ -12,6 +12,9 @@ from repwise.domain.models import (
     ExerciseSpec,
     LoadTier,
     Workout,
+    hold_marker,
+    marker_of,
+    with_marker,
 )
 
 
@@ -94,6 +97,77 @@ def test_no_cue_leaves_the_note_exactly_as_it_was():
     assert (
         spec(rep_low=6, rep_high=10, weight_step=2.5, notes=None).note.count("|") == 1
     )
+
+
+# --- the hold marker a note carries ---------------------------------------
+
+
+PLAIN = "6-10 reps | +5 kg"
+CUED = "6-10 reps | +5 kg | 0-1 RIR | knees out"
+
+
+def test_a_marker_goes_between_the_load_and_the_cue():
+    assert with_marker(CUED, "hold") == "6-10 reps | +5 kg | hold | 0-1 RIR | knees out"
+
+
+def test_a_marker_can_be_added_to_a_note_with_no_cue():
+    assert with_marker(PLAIN, "hold x2") == "6-10 reps | +5 kg | hold x2"
+
+
+def test_a_marker_round_trips():
+    assert marker_of(with_marker(CUED, "hold x3+")) == "hold x3+"
+
+
+def test_writing_the_same_marker_twice_changes_nothing():
+    """What makes a second `update` over one session a no-op."""
+    once = with_marker(CUED, "hold x2")
+    assert with_marker(once, "hold x2") == once
+
+
+def test_an_empty_marker_clears_one_that_was_there():
+    assert with_marker(with_marker(CUED, "hold"), "") == CUED
+
+
+def test_a_note_with_no_marker_reports_none():
+    assert marker_of(CUED) == ""
+    assert marker_of(PLAIN) == ""
+
+
+def test_a_cue_beginning_with_the_marker_word_is_not_one():
+    """A real cue starts "hold the chair, lean away". Reading it as a marker
+    would clear it, and the cue would be gone with nothing to say so."""
+    note = "6-10 reps | +5 kg | hold the chair, lean away"
+    assert marker_of(note) == ""
+    assert with_marker(note, "hold") == (
+        "6-10 reps | +5 kg | hold | hold the chair, lean away"
+    )
+
+
+def test_a_cue_carrying_pipes_of_its_own_is_read_whole():
+    """The cue is free text and every real one contains `|`, so the split has
+    to stop counting once it has passed the field a marker could be in - and
+    the rest, however many separators it holds, is cue."""
+    marked = with_marker(CUED, "hold x2")
+    assert marker_of(marked) == "hold x2"
+    assert marked.endswith("| 0-1 RIR | knees out"), "the cue arrived intact"
+
+
+def test_the_first_miss_needs_no_count():
+    assert hold_marker(0, 3) == "hold"
+
+
+def test_later_misses_count_the_session_being_judged_too():
+    """`miss_streak` counts the sessions *before* this one, and a reader
+    wants the total."""
+    assert hold_marker(1, 3) == "hold x2"
+
+
+def test_a_streak_at_the_limit_of_what_can_be_counted_is_marked():
+    """`miss_streak` stops at `sets - 1`, so 3 on a three-set exercise means
+    three or more and should not claim to be exact."""
+    assert hold_marker(2, 3) == "hold x3+"
+    assert hold_marker(3, 4) == "hold x4+"
+    assert hold_marker(2, 4) == "hold x3", "still below the limit, so exact"
 
 
 # --- which rack a weight is on --------------------------------------------

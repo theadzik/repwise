@@ -11,12 +11,20 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .domain.matching import ExerciseIndex, normalise, variants
-from .domain.models import Config, ExerciseSpec, Workout
+from .domain.models import (
+    Config,
+    ExerciseSpec,
+    Workout,
+    hold_marker,
+    marker_of,
+    with_marker,
+)
 from .domain.progression import (
     PerformedSet,
     Session,
     Target,
     miss_streak,
+    missed,
     next_target,
     working_weight,
 )
@@ -62,6 +70,12 @@ class Change:
     old: Target
     new: Target
     reason: str
+    #: What the step note should say about holding, or None to leave whatever
+    #: it already says alone. Three states rather than two, because "this
+    #: session had nothing to tell us" is not the same as "this session went
+    #: well": a run that judged no session must not clear a marker it never
+    #: looked at. See `_refresh_note`.
+    marker: str | None = None
 
     @property
     def moved(self) -> bool:
@@ -539,13 +553,20 @@ def _judge(  # noqa: PLR0913 - each argument is one independent input
         # Garmin logs a hold as 1 rep; the duration is the real figure.
         logged = [entry.as_time() for entry in logged]
 
-    new, why = next_target(spec, current, logged, _streak(spec, logged, history))
-    return Change(spec, current, new, why)
+    streak = _streak(spec, logged, history)
+    new, why = next_target(spec, current, logged, streak)
+    # A session that fell short leaves the number on the watch for you to try
+    # again, and the note says so - see `_refresh_note`. Anything else clears
+    # the marker rather than leaving it None: a session that advanced, or one
+    # that only banked a load, is evidence the hold is over.
+    marker = hold_marker(streak, spec.sets) if missed(why) else ""
+    return Change(spec, current, new, why, marker)
 
 
 def _refresh_note(
     block: ExerciseBlock,
     spec: ExerciseSpec,
+    marker: str | None,
     notes: list[NoteChange],
     warnings: list[str],
 ) -> None:
@@ -558,18 +579,26 @@ def _refresh_note(
     A ramped exercise has the same note on both of its halves - they are one
     exercise, programmed one way - so a cue typed onto either is enough to
     leave both alone.
+
+    `marker` is the one thing here the config does not decide, and None is
+    what keeps that honest: it means this run judged no session for this
+    exercise, so the note keeps whatever it was already saying. Deriving the
+    marker afresh every run instead would clear it on the three runs out of
+    four that have nothing to say - an `update` for another workout, a second
+    `--apply` over the same activity, a run that found no session at all -
+    and the marker would survive only until the next command.
     """
-    wanted = spec.note
-    own = [
-        note
-        for note in (step_note(step) for step in block.steps)
-        if note and not GENERATED_NOTE.match(note)
-    ]
+    existing = [step_note(step) for step in block.steps]
+    own = [note for note in existing if note and not GENERATED_NOTE.match(note)]
     if own:
         warnings.append(
-            f"{spec.name}: has its own note, left alone (wanted {wanted!r})"
+            f"{spec.name}: has its own note, left alone (wanted {spec.note!r})"
         )
         return
+
+    if marker is None:
+        marker = next((marker_of(note) for note in existing if note), "")
+    wanted = with_marker(spec.note, marker)
 
     stale = [step for step in block.steps if step_note(step) != wanted]
     if not stale:
@@ -674,18 +703,34 @@ def _refresh_block(
     block: ExerciseBlock,
     spec: ExerciseSpec,
     current: Target | None,
+    marker: str | None,
     shaped: _Shaping,
 ) -> list[dict[str, Any]] | None:
     """Write everything workouts.yaml decides about one exercise.
 
-    The note, the rest and the set count describe the programming rather than
-    the progress, so they are applied whether or not a session moved anything -
-    which is why both planners start an exercise here.
+    The rest and the set count describe the programming rather than the
+    progress, so they are applied whether or not a session moved anything.
+
+    The note is the exception, and `marker` is why. Almost all of it is
+    programming - the rep span, the load step, the cue - but it also carries
+    whether the last session missed, which nothing else stores: Garmin holds
+    the target, not the verdict that produced it, and this tool keeps no state
+    file of its own. So the note does for a miss what the stored target does
+    for a rep count, and that makes it the one field here that has to wait on
+    a verdict - which is the whole reason `marker` is a parameter rather than
+    something `spec` could answer. `plan_workout` judges the session first and
+    passes what it found; `plan_sync` passes what the session that decided it
+    found elsewhere.
 
     Returns what `_refresh_sets` returned: the steps the exercise now occupies
     when its count was rewritten, and None when it was not.
     """
-    _refresh_note(block, spec, shaped.notes, shaped.warnings)
+    # Before `_refresh_sets`, which may build a second group for a ramp: a
+    # group built there takes its note from `spec` alone and would carry no
+    # marker. Writing here puts the marker on every step that already exists,
+    # and a freshly built half is corrected on the next run - the same one-run
+    # lag a rep-range edit has always had.
+    _refresh_note(block, spec, marker, shaped.notes, shaped.warnings)
     _refresh_rest(block, spec, shaped.rests, shaped.skips, shaped.warnings)
     return _refresh_sets(block, spec, current, shaped.sets, shaped.warnings)
 
@@ -1082,12 +1127,10 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
 
         current = block_target(block, spec)
 
-        # Before the target checks below: what the config says about this
-        # exercise holds whether or not this session moved anything.
-        recounted = _refresh_block(block, spec, current, shaped)
-        if recounted is not None:
-            reshaped |= _relay(layout, position, recounted)
-
+        # Judged before the refresh below, which is the reverse of how this
+        # read until the note started carrying whether the last session
+        # missed. `_judge` only reads the block, so nothing it decides depends
+        # on the refresh; the refresh's note now depends on it.
         change = _judge(
             spec,
             block,
@@ -1099,6 +1142,15 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
             added=added,
             shaped=shaped,
         )
+
+        # What the config says about this exercise holds whether or not this
+        # session moved anything. The marker is the one part that does not:
+        # None where no session was judged, which leaves the note's alone.
+        recounted = _refresh_block(
+            block, spec, current, change.marker if change is not None else None, shaped
+        )
+        if recounted is not None:
+            reshaped |= _relay(layout, position, recounted)
 
         # The last word on the target, whether a session decided it or nobody
         # did: with partial progression off, a ramp is not a shape this workout
@@ -1116,6 +1168,10 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
                     change.old if change is not None else decided,
                     fixed,
                     f"{said}; {label}" if said and said not in SAYS_NOTHING else label,
+                    # Levelling a ramp is a change of shape, not a verdict on
+                    # the session, so it does not get a say in the marker. The
+                    # note has already been written by here either way.
+                    change.marker if change is not None else None,
                 )
 
         if change is None:
@@ -1148,6 +1204,7 @@ def plan_sync(
     workout: Workout,
     payload: dict[str, Any],
     targets: dict[str, Target],
+    markers: dict[str, str],
     source: str,
 ) -> Plan:
     """Force already-decided targets onto another workout's matching steps.
@@ -1155,6 +1212,13 @@ def plan_sync(
     An exercise can appear in more than one workout -- the calf raise is in
     both -- and a target earned in one session should hold everywhere it
     appears, otherwise the copies drift apart.
+
+    `markers` travels with them for the same reason. Missing a target is a
+    fact about the exercise rather than about the workout it was missed in, so
+    a copy that said nothing about it would be a copy that disagrees. An
+    exercise absent from `markers` was not decided by this session and keeps
+    whatever its note already says, which is what `None` means to
+    `_refresh_block`.
     """
     specs = index_specs(workout.exercises)
 
@@ -1174,7 +1238,9 @@ def plan_sync(
 
         current = block_target(block, spec)
 
-        recounted = _refresh_block(block, spec, current, shaped)
+        recounted = _refresh_block(
+            block, spec, current, markers.get(normalise(spec.garmin_name)), shaped
+        )
         if recounted is not None:
             reshaped |= _relay(layout, position, recounted)
 
@@ -1253,3 +1319,19 @@ def executed_targets(
 def decided_targets(plan: Plan) -> dict[str, Target]:
     """The targets that moved, keyed for lookup in another workout."""
     return {normalise(c.spec.garmin_name): c.new for c in plan.moved}
+
+
+def decided_markers(plan: Plan) -> dict[str, str]:
+    """What each judged exercise's note should say about holding.
+
+    Read from every change rather than from `plan.moved`, which is the whole
+    difference between this and `decided_targets`: a hold is a target that
+    stayed exactly where it was, so the sessions this most needs to propagate
+    are precisely the ones that moved nothing. A change carrying None judged
+    no session and is left out, so a copy elsewhere keeps its own note.
+    """
+    return {
+        normalise(c.spec.garmin_name): c.marker
+        for c in plan.changes
+        if c.marker is not None
+    }

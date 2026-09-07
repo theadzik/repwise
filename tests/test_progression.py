@@ -1,5 +1,6 @@
 """The double progression rules."""
 
+import pytest
 from builders import held, spec
 
 from repwise.domain.models import LoadTier
@@ -13,6 +14,7 @@ from repwise.domain.progression import (
     next_target,
     working_weight,
 )
+from repwise.domain.progression import missed as is_miss
 
 SQUAT = spec()
 LUNGE = spec(
@@ -700,6 +702,61 @@ def test_easing_steps_by_rep_step():
         LUNGE_DOUBLED, Target(20, 4.0), [P(20, 4.0)] * 3 + [P(18, 4.0)], streak=1
     )
     assert target.per_set(4, rep_step=2) == [20, 20, 20, 18]
+
+
+#: Every way a session can fall short, and what each is called. Written out
+#: rather than generated because the point is to notice a *new* one: a rule
+#: that fails a session in some way not listed here is a rule whose reason
+#: `missed` has never been shown, and the marker would quietly never appear
+#: for it.
+MISSES = [
+    ("first miss", BARBELL_SQUAT, Target(9, 20.0), [P(8, 20.0)] * 3, 0),
+    ("eased by one", BARBELL_SQUAT, Target(9, 20.0), [P(8, 20.0)] * 3, 1),
+    ("eased to the bottom", BARBELL_SQUAT, Target(7, 20.0), [P(3, 20.0)] * 3, 1),
+    ("eased to the session", BARBELL_SQUAT, Target(10, 20.0), [P(7, 20.0)] * 3, 1),
+    ("load comes off", BARBELL_SQUAT, Target(6, 20.0), [P(5, 20.0)] * 3, 1),
+    ("already at the minimum", LIGHT_RAISE, Target(12, 1.0), [P(10, 1.0)] * 3, 1),
+    ("nothing to take off", PLANK, Target(30, 0.0), held(28, 28, 28), 1),
+]
+
+
+@pytest.mark.parametrize(
+    ("label", "spec_", "current", "performed", "streak"),
+    MISSES,
+    ids=[case[0] for case in MISSES],
+)
+def test_every_miss_is_recognised(label, spec_, current, performed, streak):
+    """The guard on `MISS_REASONS`. It is a list of prefixes matched against
+    free text, so the way it rots is silently: a reason is reworded or added,
+    nothing raises, and the note simply stops saying `hold`."""
+    _, why = next_target(spec_, current, performed, streak=streak)
+    assert is_miss(why), f"{label}: {why!r} is a failed session and reads as one"
+
+
+@pytest.mark.parametrize(
+    ("label", "why"),
+    [
+        ("advanced", next_target(BARBELL_SQUAT, Target(8, 20.0), [P(8, 20.0)] * 3)[1]),
+        (
+            "topped out",
+            next_target(BARBELL_SQUAT, Target(10, 20.0), [P(10, 20.0)] * 3)[1],
+        ),
+        ("nothing logged", next_target(BARBELL_SQUAT, Target(9, 20.0), [])[1]),
+        (
+            "too few sets",
+            next_target(BARBELL_SQUAT, Target(9, 20.0), [P(9, 20.0)] * 2)[1],
+        ),
+        (
+            "a load nobody asked for",
+            next_target(LIGHT_RAISE, Target(13, 3.0), [P(8, 4.0)] * 3, streak=1)[1],
+        ),
+    ],
+)
+def test_what_is_not_a_miss(label, why):
+    """The other half. Telling someone to hold a number they never really
+    tried for - a half-logged session, a load nobody prescribed - would be
+    noise, so those leave the target alone without being called failures."""
+    assert not is_miss(why), f"{label}: {why!r}"
 
 
 def test_a_deload_and_the_climb_back_are_the_same_ladder():
