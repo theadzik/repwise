@@ -1,3 +1,9 @@
+## 3.2.0 (2026-09-07)
+
+### Feat
+
+- say on the watch when a target was missed last time (#94) ([e69d726](https://github.com/theadzik/repwise/commit/e69d726d47ae96b732a866a40cc7ec16442c1f3c))
+
 ## 3.1.0 (2026-09-06)
 
 ### Feat
