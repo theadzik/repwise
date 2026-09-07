@@ -195,6 +195,34 @@ def miss_streak(spec: ExerciseSpec, history: list[Session], weight: float) -> in
 #: they wait three failures because they have no rep range to give first.
 STALLED_AFTER = 1
 
+#: How every reason for a session that fell short of its target begins.
+#:
+#: The rules say what a session earned by returning a target; whether it
+#: *failed* is a second question, and only the reason string distinguishes a
+#: target that held because the session missed from one that held because
+#: there was nothing to learn. Matching on the reason is the cheap way to ask
+#: it - `next_target` has one caller in the application and around a hundred
+#: in the tests, so widening its return to carry a flag would churn all of
+#: them to answer a question only the note asks.
+#:
+#: The cost is a list that has to be kept in step with the reasons below it,
+#: which `test_every_miss_is_recognised` is there to enforce: it walks each
+#: failing path and asserts `missed` knows it. Add a reason without adding it
+#: here and that test fails rather than the marker quietly never appearing.
+MISS_REASONS = ("missed target", "missed twice", "stalled at the bottom")
+
+
+def missed(reason: str) -> bool:
+    """Whether a reason from `next_target` reports a session that fell short.
+
+    Deliberately narrower than "the target did not go up". A session that
+    logged too few sets to judge, or one that came in under `rep_low` at a
+    load nobody prescribed, also leaves the target where it was - but neither
+    is a failed attempt at the figure on the watch, and telling someone to
+    hold a number they never really tried for would be noise.
+    """
+    return reason.startswith(MISS_REASONS)
+
 
 def _ladder(spec: ExerciseSpec, target: Target) -> int:
     """Where a target sits on the ladder, so two of them can be compared.

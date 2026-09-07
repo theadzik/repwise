@@ -17,7 +17,7 @@ from builders import (
 )
 
 from repwise.domain.models import Config, Workout
-from repwise.domain.progression import Target
+from repwise.domain.progression import PerformedSet, Session, Target
 from repwise.errors import ActivityNotFound
 from repwise.garmin.payloads import (
     is_timed_rest,
@@ -28,6 +28,7 @@ from repwise.garmin.payloads import (
 )
 from repwise.planner import (
     NOT_TRAINED,
+    decided_markers,
     decided_targets,
     find_workout,
     index_specs,
@@ -358,8 +359,173 @@ def test_notes_reach_a_workout_that_only_receives_a_sync():
     payload = workout(rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 12, 0.0))
     targets = {"weightedstandingcalfraise": Target(12, 20.0)}
 
-    plan = plan_sync(a_workout("Workout B", "2", [CALF]), payload, targets, "Workout A")
+    plan = plan_sync(
+        a_workout("Workout B", "2", [CALF]), payload, targets, {}, "Workout A"
+    )
     assert noted(plan) == [("Weighted Standing Calf Raise", "", "12-20 reps | +5 kg")]
+
+
+# --- hold markers ---------------------------------------------------------
+
+
+def only_note(payload):
+    """What the one exercise step in this payload says."""
+    return step_note(next(iter(payload["workoutSegments"][0]["workoutSteps"])))
+
+
+def a_missed_squat(stored=8, did=7):
+    """A workout stored at `stored` reps, and a session that only did `did`."""
+    return workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", stored, 20.0)), (
+        a_squat_session(did)
+    )
+
+
+def test_a_missed_target_marks_the_note_to_hold():
+    """The whole point: the watch says the number was missed last time, so
+    this session is for matching it rather than beating it."""
+    payload, performed = a_missed_squat()
+    plan = plan_workout(a_workout(), payload, performed)
+
+    assert not plan.moved, "a miss holds the target where it was"
+    assert only_note(payload) == "6-10 reps | +2.5 kg | hold"
+    assert noted(plan) == [("Barbell Back Squat", "", "6-10 reps | +2.5 kg | hold")]
+
+
+def test_hitting_the_target_clears_the_marker():
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 20.0))
+    only_step = next(iter(payload["workoutSegments"][0]["workoutSteps"]))
+    only_step["description"] = "6-10 reps | +2.5 kg | hold"
+
+    plan_workout(a_workout(), payload, a_squat_session(8))
+
+    assert only_note(payload) == "6-10 reps | +2.5 kg", "the hold is over"
+
+
+def test_running_twice_over_one_session_writes_the_note_once():
+    """Idempotent: a second run must not re-save the workout for nothing."""
+    payload, performed = a_missed_squat()
+    plan_workout(a_workout(), payload, performed)
+
+    again = plan_workout(a_workout(), payload, performed)
+
+    assert again.notes == [], "the marker was already there"
+    assert only_note(payload) == "6-10 reps | +2.5 kg | hold", "and did not double up"
+
+
+def test_a_marker_survives_a_run_that_judged_no_session():
+    """The one that would bite daily: an `update` for another workout must not
+    clear a marker it never looked at."""
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 20.0))
+    only_step = next(iter(payload["workoutSegments"][0]["workoutSteps"]))
+    only_step["description"] = "6-10 reps | +2.5 kg | hold x2"
+
+    plan = plan_workout(a_workout(), payload, ({}, {}))
+
+    assert plan.changes[0].reason == NOT_TRAINED
+    assert plan.notes == [], "nothing was judged, so nothing about it changed"
+    assert only_note(payload) == "6-10 reps | +2.5 kg | hold x2"
+
+
+def test_a_marker_survives_a_session_the_target_has_moved_past():
+    """A deload moves the target, so the second run reads `up to date` and has
+    no verdict of its own - the marker has to come from the note."""
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0))
+    only_step = next(iter(payload["workoutSegments"][0]["workoutSteps"]))
+    only_step["description"] = "6-10 reps | +2.5 kg | hold x2"
+
+    plan = plan_workout(
+        a_workout(),
+        payload,
+        a_squat_session(7),
+        asked={"barbellbacksquat": Target(8, 0.0)},
+    )
+
+    assert plan.changes[0].reason == "up to date"
+    assert only_note(payload) == "6-10 reps | +2.5 kg | hold x2"
+
+
+def test_a_second_miss_in_a_row_is_counted():
+    payload, performed = a_missed_squat()
+    history = {
+        "barbellbacksquat": [
+            Session(Target(8, 20.0), [PerformedSet(7, 20.0)] * 3),
+        ]
+    }
+    plan_workout(a_workout(), payload, performed, history)
+
+    assert only_note(payload) == "6-10 reps | +2.5 kg | hold x2"
+
+
+def test_a_saturated_streak_says_so_rather_than_understating_it():
+    """`miss_streak` stops counting at `sets - 1`, so three on a three-set
+    exercise is the most it can ever report. The `+` is that admission."""
+    payload, performed = a_missed_squat()
+    history = {
+        "barbellbacksquat": [Session(Target(8, 20.0), [PerformedSet(7, 20.0)] * 3)] * 5
+    }
+    plan_workout(a_workout(), payload, performed, history)
+
+    assert only_note(payload) == "6-10 reps | +2.5 kg | hold x3+"
+
+
+def test_a_cue_beginning_with_hold_is_not_read_as_a_marker():
+    """One of the real cues starts "hold the chair", and clearing it as if it
+    were a marker would delete it."""
+    cued = replace(SQUAT, notes="hold the chair, lean away")
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 20.0))
+    only_step = next(iter(payload["workoutSegments"][0]["workoutSteps"]))
+    only_step["description"] = "6-10 reps | +2.5 kg | hold the chair, lean away"
+
+    plan = plan_workout(a_workout(exercises=[cued]), payload, a_squat_session(8))
+
+    assert plan.notes == [], "the cue was already right, and is not a marker"
+    assert only_note(payload) == "6-10 reps | +2.5 kg | hold the chair, lean away"
+
+
+def test_a_marker_sits_between_the_load_and_the_cue():
+    cued = replace(SQUAT, notes="knees out")
+    payload, performed = a_missed_squat()
+
+    plan_workout(a_workout(exercises=[cued]), payload, performed)
+
+    assert only_note(payload) == "6-10 reps | +2.5 kg | hold | knees out"
+
+
+def test_sync_carries_a_marker_into_another_workout():
+    """A miss is about the exercise, not about which workout it happened in."""
+    payload = workout(rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 12, 0.0))
+    plan = plan_sync(
+        a_workout("Workout B", "2", [CALF]),
+        payload,
+        {},
+        {"weightedstandingcalfraise": "hold x2"},
+        "Workout A",
+    )
+
+    assert noted(plan) == [
+        ("Weighted Standing Calf Raise", "", "12-20 reps | +5 kg | hold x2")
+    ]
+
+
+def test_sync_leaves_the_note_of_an_exercise_it_was_told_nothing_about():
+    payload = workout(rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 12, 0.0))
+    only_step = next(iter(payload["workoutSegments"][0]["workoutSteps"]))
+    only_step["description"] = "12-20 reps | +5 kg | hold"
+
+    plan = plan_sync(a_workout("Workout B", "2", [CALF]), payload, {}, {}, "Workout A")
+
+    assert plan.notes == []
+    assert only_note(payload) == "12-20 reps | +5 kg | hold"
+
+
+def test_a_hold_is_collected_for_syncing_even_though_it_moved_nothing():
+    """`decided_targets` reads `plan.moved` and would miss every hold, which
+    is exactly the case a marker exists for."""
+    payload, performed = a_missed_squat()
+    plan = plan_workout(a_workout(), payload, performed)
+
+    assert decided_targets(plan) == {}, "a hold moves no target"
+    assert decided_markers(plan) == {"barbellbacksquat": "hold"}
 
 
 # --- rest between sets ----------------------------------------------------
@@ -453,7 +619,7 @@ def test_rests_reach_a_workout_that_only_receives_a_sync():
     targets = {"weightedstandingcalfraise": Target(12, 20.0)}
 
     plan = plan_sync(
-        a_workout("Workout B", "2", [rested_calf]), built, targets, "Workout A"
+        a_workout("Workout B", "2", [rested_calf]), built, targets, {}, "Workout A"
     )
 
     assert [(c.old, c.new) for c in plan.rests] == [(60, 90)]
@@ -536,7 +702,9 @@ def test_the_last_rest_is_restored_in_a_workout_that_only_receives_a_sync():
     built = skipping(workout(repeat(step, sets=3, rest=60.0)))
     targets = {"weightedstandingcalfraise": Target(12, 20.0)}
 
-    plan = plan_sync(a_workout("Workout B", "2", [CALF]), built, targets, "Workout A")
+    plan = plan_sync(
+        a_workout("Workout B", "2", [CALF]), built, targets, {}, "Workout A"
+    )
 
     assert skips_of(built) == [False]
     assert [c.spec.name for c in plan.skips] == [CALF.name]
@@ -965,7 +1133,9 @@ def test_sync_pushes_a_decided_target_into_another_workout():
     payload = workout(rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 12, 0.0))
     targets = {"weightedstandingcalfraise": Target(12, 20.0)}
 
-    plan = plan_sync(a_workout("Workout B", "2", [CALF]), payload, targets, "Workout A")
+    plan = plan_sync(
+        a_workout("Workout B", "2", [CALF]), payload, targets, {}, "Workout A"
+    )
 
     assert plan.moved
     assert plan.changes[0].new == Target(12, 20.0)
@@ -974,7 +1144,7 @@ def test_sync_pushes_a_decided_target_into_another_workout():
 
 def test_sync_ignores_exercises_that_did_not_move():
     payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0))
-    plan = plan_sync(a_workout(), payload, {"somethingelse": Target(9, 9.0)}, "A")
+    plan = plan_sync(a_workout(), payload, {"somethingelse": Target(9, 9.0)}, {}, "A")
     assert plan.changes == []
 
 
@@ -982,7 +1152,9 @@ def test_sync_warns_when_a_target_leaves_the_range():
     payload = workout(group_of(CALF, 12, 0.0))
     targets = {"weightedstandingcalfraise": Target(30, 20.0)}  # above rep_high 20
 
-    plan = plan_sync(a_workout("Workout B", "2", [CALF]), payload, targets, "Workout A")
+    plan = plan_sync(
+        a_workout("Workout B", "2", [CALF]), payload, targets, {}, "Workout A"
+    )
     assert "outside this workout's 12-20 range" in plan.warnings[0]
 
 

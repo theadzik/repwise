@@ -29,6 +29,7 @@ from ..planner import (
     History,
     Performed,
     Plan,
+    decided_markers,
     decided_targets,
     executed_targets,
     find_workout,
@@ -316,6 +317,7 @@ def sync_other_workouts(
     config: Config,
     source: Workout,
     targets: dict[str, Target],
+    markers: dict[str, str],
 ) -> list[Plan]:
     """Propagate decided targets into every other workout that shares them.
 
@@ -324,6 +326,10 @@ def sync_other_workouts(
     name, and the weight one of them earned is not a weight the other can be
     asked for: 20 kg of gym machine says nothing about a pair of dumbbells.
     Such an entry is left where it is, to be moved by its own sessions.
+
+    `markers` is carried on the same terms and gated the same way. A miss is
+    about the exercise as it was actually loaded, so a miss on the gym cable
+    says nothing about the same movement done on a band at home.
     """
     loads = {normalise(spec.garmin_name): spec.load for spec in source.exercises}
 
@@ -333,15 +339,22 @@ def sync_other_workouts(
             continue
 
         carried: dict[str, Target] = {}
+        held: dict[str, str] = {}
         for spec in other.exercises:
             name = normalise(spec.garmin_name)
-            if name in targets and spec.load == loads.get(name):
+            if spec.load != loads.get(name):
+                continue
+            if name in targets:
                 carried[name] = targets[name]
-        if not carried:
+            if name in markers:
+                held[name] = markers[name]
+        # A hold moves no target, so a workout worth visiting for its notes
+        # alone is the ordinary case rather than an edge one.
+        if not carried and not held:
             continue
 
         payload = payloads[garmin_id(other)]
-        plan = plan_sync(other, payload, carried, source.key)
+        plan = plan_sync(other, payload, carried, held, source.key)
         if not plan.writable:
             continue
 
@@ -454,10 +467,16 @@ def advance_trained(
         report_plan(plan)
         plans.append(plan)
 
-        # Anything that moved must move everywhere that exercise appears.
+        # Anything that moved must move everywhere that exercise appears, and
+        # so must a hold - which moves nothing, so it has to be asked for
+        # separately or a stalled exercise would carry its marker in one
+        # workout and not in the others.
         targets = decided_targets(plan)
-        if targets:
-            plans.extend(sync_other_workouts(payloads, config, workout, targets))
+        markers = decided_markers(plan)
+        if targets or markers:
+            plans.extend(
+                sync_other_workouts(payloads, config, workout, targets, markers)
+            )
 
     return plans, usable
 

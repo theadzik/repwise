@@ -5,6 +5,7 @@ lives in, and the settings that govern progression. Nothing here reads a file
 or talks to Garmin.
 """
 
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
@@ -27,6 +28,78 @@ READABLE_NOTE = 160
 #: `READABLE_NOTE`, which is well under this, so a note near the cut has been
 #: warned about long before it reaches one.
 STORED_NOTE = 512
+
+#: The word a note carries while an exercise is holding after a missed target.
+#: Short because it is read on a watch mid-set, and because every character
+#: here is one the cue behind it does not get.
+HOLD = "hold"
+
+#: What a hold marker looks like, matched against a whole `|`-separated field
+#: rather than searched for.
+#:
+#: Anchored on purpose. A cue is free text that a user typed, and one of them
+#: begins "hold the chair, lean away" - searching for the word would read that
+#: as a marker, and clearing it would delete the cue. Only a field that is
+#: exactly `hold`, `hold x3` or `hold x3+` and nothing else counts.
+HOLD_MARKER = re.compile(rf"^{HOLD}(?: x\d+\+?)?$")
+
+
+def hold_marker(streak: int, sets: int) -> str:
+    """The marker for a session that just missed, `streak` misses behind it.
+
+    `streak` comes from `miss_streak`, which counts the sessions before the
+    latest one, so the figure shown is one more than it: the session that has
+    just been judged missed too, and a lifter reading "x2" wants the total
+    rather than the history behind it.
+
+    `miss_streak` stops counting at `sets - 1` because past there the advance
+    is already pinned at its minimum and no further history could change the
+    target. That bound is invisible to the rules and would be a lie to a
+    reader, so a saturated count is marked with a `+`: `hold x3+` on a
+    three-set exercise means three *or more*, which is all this can honestly
+    say.
+    """
+    misses = streak + 1
+    if misses == 1:
+        return HOLD
+    saturated = "+" if streak >= max(sets - 1, 0) else ""
+    return f"{HOLD} x{misses}{saturated}"
+
+
+def _split_note(note: str) -> tuple[str, str, str]:
+    """A note as its fixed head, its marker, and everything after.
+
+    The head is the two fields `ExerciseSpec.note` always writes - the rep span
+    and the load - and the tail is the cue, which is free text and may hold
+    `|` of its own. So the split is bounded rather than greedy: exactly two
+    separators to reach the field a marker could occupy, and one more to step
+    over it. Anything the cue contains after that is carried whole.
+    """
+    parts = note.split(" | ", 2)
+    if len(parts) < 3:
+        return note, "", ""
+    head = " | ".join(parts[:2])
+    field, _, rest = parts[2].partition(" | ")
+    if HOLD_MARKER.match(field):
+        return head, field, rest
+    return head, "", parts[2]
+
+
+def marker_of(note: str) -> str:
+    """The hold marker a note is carrying, or empty where it has none."""
+    return _split_note(note)[1]
+
+
+def with_marker(note: str, marker: str) -> str:
+    """The same note carrying exactly `marker`, which empty clears.
+
+    Idempotent by construction: a note already carrying the marker asked for
+    comes back unchanged, which is what lets `update` run twice over one
+    session and write nothing the second time.
+    """
+    head, _, rest = _split_note(note)
+    written = " | ".join(part for part in (head, marker, rest) if part)
+    return written[:STORED_NOTE]
 
 
 @dataclass(frozen=True)

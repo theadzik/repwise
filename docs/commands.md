@@ -378,6 +378,37 @@ Connect *on the end of* a generated note is replaced rather than kept - the
 config decides cues now, as it decides everything else about a step. A note
 typed from scratch is still recognised as yours and left alone.
 
+#### Holding after a miss
+
+Everything above describes the programming, and is decided by `workouts.yaml`
+alone. One field is not: when a session falls short of its target, the note
+says so, between the load and the cue.
+
+```text
+10-14 reps | +1 kg | hold | 0-1 RIR | elbows soft, stretch not depth
+10-14 reps | +1 kg | hold x2 | 0-1 RIR | elbows soft, stretch not depth
+10-14 reps | +1 kg | hold x3+ | 0-1 RIR | elbows soft, stretch not depth
+```
+
+It is there to be read before the first set. Taking a set past the prescribed
+number is how you find the load you can actually carry for the whole range,
+but repeating that on an exercise you have *already* failed just buys a
+heavier first set at the cost of the ones behind it. `hold` means the number
+on the screen is the number to match, not to beat.
+
+The count is how many sessions in a row have now missed, this one included. It
+stops at the set count, because that is as far back as the rules ever read - so
+`hold x3+` on a three-set exercise means three **or more**, and the `+` is
+there rather than a figure that would stop growing without saying so.
+
+The marker clears itself the moment a session hits its target. Nothing else
+clears it: a run that judged no session for the exercise - an `update` for a
+different workout, a second `--apply` over the same activity - leaves whatever
+the note already says, so the note is where the fact lives rather than
+something recomputed each run. An exercise that appears in more than one
+workout carries the same marker in all of them, on the same terms as its
+target: same movement, same equipment.
+
 **Keep it short.** The screen is the binding limit: measured on a real account
 and read off the watch, a 160-character note displays whole and a 200-character
 one is cut, so `check` reports anything past 160.
