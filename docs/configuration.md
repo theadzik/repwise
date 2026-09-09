@@ -278,7 +278,7 @@ they are not part of the document. Keep anything worth saying in an exercise's
 | `garmin_name` | yes | | Exercise identifier as stored in the Garmin workout |
 | `garmin_category` | no | none | Garmin's category, used when the name does not match |
 | `rep_low` | yes | | Bottom of the range; where each new weight starts |
-| `rep_high` | yes | | Top of the range; clearing it on every set earns a weight jump |
+| `rep_high` | yes | | Top of the range; clearing it on every set twice in a row earns a weight jump |
 | `sets` | yes | | Working sets, written to the Garmin workout by `update --apply` |
 | `rep_step` | no | `1` | Reps added when a target is met. Use `2` for exercises counted per side |
 | `load` | yes | | Which of your [load types](#load-types) this is performed on, or `bodyweight` |

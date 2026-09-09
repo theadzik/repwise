@@ -26,6 +26,7 @@ from .domain.progression import (
     miss_streak,
     missed,
     next_target,
+    top_streak,
     working_weight,
 )
 from .errors import ActivityNotFound
@@ -418,6 +419,23 @@ def _streak(
     return miss_streak(spec, past, working_weight(logged))
 
 
+def _topped(
+    spec: ExerciseSpec, logged: list[PerformedSet], history: History | None
+) -> int:
+    """How many sessions in a row already cleared the top of this range.
+
+    Read the same way as `_streak`, and no history means the same thing here:
+    nothing has been confirmed yet, so a first top-out is held once and the
+    session after it earns the load.
+    """
+    if not history:
+        return 0
+    past = history.get(normalise(spec.garmin_name))
+    if not past:
+        return 0
+    return top_streak(spec, past, working_weight(logged))
+
+
 #: Why a target that was part-way up a ramp is evened out. Worth saying in the
 #: report because nothing else in the run accounts for it: no session earned
 #: it, and the figure in workouts.yaml did not move.
@@ -554,7 +572,9 @@ def _judge(  # noqa: PLR0913 - each argument is one independent input
         logged = [entry.as_time() for entry in logged]
 
     streak = _streak(spec, logged, history)
-    new, why = next_target(spec, current, logged, streak)
+    new, why = next_target(
+        spec, current, logged, streak, topped=_topped(spec, logged, history)
+    )
     # A session that fell short leaves the number on the watch for you to try
     # again, and the note says so - see `_refresh_note`. Anything else clears
     # the marker rather than leaving it None: a session that advanced, or one
@@ -1080,10 +1100,12 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
     only for the exercises it actually contains: pass no `performed` at all for
     a workout with no session behind it, and only the first kind happens.
 
-    `history` is the sessions before this one, newest first, from which how
-    badly each exercise had been stalling is read. Without it every exercise is
-    treated as having hit last time, which is the smooth case and the behaviour
-    this tool had before granular progression existed.
+    `history` is the sessions before this one, newest first, and answers two
+    questions: how badly each exercise had been stalling, and whether one at the
+    top of its range has already been there once. Without it every exercise is
+    treated as having hit last time - the smooth case, and the behaviour this
+    tool had before granular progression existed - and as having nothing behind
+    it to confirm a load increase, so a first top-out is held rather than taken.
 
     `asked` is what this session itself was performed against. Without it the
     stored target is assumed to be that, which is only true until something

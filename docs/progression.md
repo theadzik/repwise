@@ -4,6 +4,7 @@ How the next target is decided, in full. If a run changed something you did not
 expect, the answer is here.
 
 - [The five rules](#the-five-rules)
+- [Confirming the top of the range](#confirming-the-top-of-the-range)
 - [Coming back from a stall](#coming-back-from-a-stall)
 - [Deloading](#deloading)
 - [Progress is judged by the weakest set](#progress-is-judged-by-the-weakest-set)
@@ -23,12 +24,77 @@ Double progression: reps go up first, weight second.
 1. Start at the lower end of the range, e.g. `6-6-6` for a range of 6-10.
 2. Each workout, add a rep to every set: `7-7-7`, then `8-8-8` - or to only
    some of them, when you are coming back from a stall.
-3. Once every set reaches the upper end, add weight and reset to the lower end.
+3. Once every set reaches the upper end, hold it there for a second session,
+   then add weight and reset to the lower end.
 4. If you didn't match the previous result, repeat it unchanged - and if you
    miss the same target twice, give something back.
 5. A load is only adopted once it can be carried for `rep_low`. Lift something
    other than what was prescribed and fall short of the range and the previous
    target stands.
+
+## Confirming the top of the range
+
+Rule 3 does not add weight the first time you clear the top of the range. It
+asks for it **twice at the same load**, and only the second one earns the jump:
+
+| Session | Target | Performed | Next | Why |
+| --- | --- | --- | --- | --- |
+| 1 | `9` x 20 | 9,9,9 | `10` x 20 | Advanced into the top of the range |
+| 2 | `10` x 20 | 10,10,10 | `10` x 20 | Topped out once - hold it |
+| 3 | `10` x 20 | 10,10,10 | `6` x 22.5 | Topped out twice, so the load moves |
+
+That is [ACSM's own condition for adding load][acsm], which asks for the rep
+surplus on **two consecutive training sessions**:
+
+> a 2-10% (lower percent for small muscle mass exercises, higher percent
+> increase for large muscle mass exercises) increase in load be applied when the
+> individual can perform the current workload for one to two repetitions over
+> the desired number **on two consecutive training sessions**
+
+The size of the step is `weight_step`, and the asymmetry ACSM asks for there is
+[a question of its own](configuration.md#does-the-range-fit-the-step). What this
+section is about is the *two consecutive sessions*, which is the other half of
+the same sentence.
+
+**Why it is worth a session.** One session at `rep_high` can be a good day
+rather than a new capacity - better sleep, a longer rest between sets, a kinder
+rep judgement on the last one. Rule 3 spending that day on a load increase is
+what sets up the stall [rule 4](#deloading) then has to unwind, and unwinding it
+costs three sessions at minimum: a miss, a second miss, and the ease that
+follows. Asking for the top of the range twice costs one session, only ever at
+the top of the range, and only ever immediately before a jump.
+
+**It belongs to the load, not to the exercise.** Clearing the top at 20 kg says
+nothing about whether 22.5 kg is earned, so the count restarts whenever the
+working weight changes - including when a session [rebases onto a heavier
+load](#working-weight) and tops the range on it at the same time. That session
+banks the load and holds; the one after it adds to it.
+
+**A hold is not a miss.** The session did everything asked of it, so nothing
+marks the watch, no [hold marker](#coming-back-from-a-stall) appears, and the
+report says what happened rather than calling it a failure:
+
+```text
+  # EXERCISE           ACTION SETS       BEFORE        AFTER    WHY
+  1 Barbell Back Squat hold   3    10 x 20 kg  ==  10 x 20 kg  hit 10 on every set, top of the range, hold it once more before the load goes up
+```
+
+**Nothing is asked to confirm a jump that cannot happen.** A bodyweight
+exercise, or one that has run out of rack, already settles at `rep_high` and
+holds - so it reports that ending rather than promising a load increase forever.
+See [topping out](#topping-out).
+
+**It cannot trap an exercise at the top.** The held target is `rep_high` at an
+unchanged load, which is the same target that was just met. Miss it and rule 4
+repeats it; miss it twice and the [deload](#deloading) eases it, exactly as
+anywhere else in the range.
+
+Like the miss streak, this is read from history rather than stored: what
+confirms a jump is the session before the one being judged. Running out of
+history reads as *not yet confirmed*, which costs one held session on an
+exercise trained for the first time and settles itself on the next one.
+
+[acsm]: https://pubmed.ncbi.nlm.nih.gov/19204579/
 
 ## Coming back from a stall
 
@@ -84,7 +150,9 @@ workout Garmin keeps beside each activity - what the watch actually ran. See
 
 Only sessions that could still change the answer are fetched. A smoothly
 progressing exercise settles after one, and the walk stops at `sets - 1` misses
-because the advance is pinned at its minimum from there on.
+because the advance is pinned at its minimum from there on. One session back is
+always read, whatever the set count, because that is the session rule 3's
+[confirmation](#confirming-the-top-of-the-range) asks about.
 
 ### Turning partial progression off
 
@@ -168,9 +236,11 @@ eases below `rep_low`, since that is the bottom of what you programmed.
 The tempting mirror of rule 3 - drop a weight step, reset to `rep_high` - reads
 as symmetric and behaves badly:
 
-- **It bounces.** One good session at `rep_high` tops out the range, so rule 3
-  hands the weight straight back and puts you at `rep_low` on the load that
-  just failed. Fail, deload, succeed, fail, deload.
+- **It bounces.** Two sessions at `rep_high` top out the range, so rule 3 hands
+  the weight straight back and puts you at `rep_low` on the load that just
+  failed. Fail, deload, succeed, succeed, fail, deload - the
+  [confirmation](#confirming-the-top-of-the-range) lengthens the loop without
+  breaking it.
 - **It is often harder than what it replaces.** `rep_high` at one step down
   only beats `rep_low` at the old weight when the step is larger than the whole
   rep range is worth, roughly `step/weight > (rep_high - rep_low)/(30 +
@@ -194,9 +264,10 @@ Bodyweight exercises have no load to take off, so a stall there says so.
 
 ## Topping out
 
-Rule 3 adds a step every time the top of the range is cleared, which sooner or
-later asks for a weight that does not exist. `max_weight` is where it stops:
-the heaviest pair of dumbbells you own, the bottom plate of a stack. Declared
+Rule 3 adds a step every time the top of the range is cleared twice, which
+sooner or later asks for a weight that does not exist. `max_weight` is where it
+stops: the heaviest pair of dumbbells you own, the bottom plate of a stack.
+Declared
 as the `max` of the [load type](configuration.md#load-types) the exercise
 names, or per exercise, and unset means no ceiling - which is the right
 default for a gym, where the rack outlasts you.
@@ -317,7 +388,8 @@ actually performed:
 | 3 | Fewer than `sets` counted (see [a harder set still counts](#a-harder-set-still-counts)) | Bank the weight, consolidate reps |
 | 4 | Same weight, any set short, first miss | Repeat unchanged (rule 4) |
 | 4b | Same weight, any set short, missed before | Ease the target, or take weight off at the bottom of the range |
-| 5 | Floor at or above `rep_high` | `rep_low` at weight + step (rule 3) |
+| 5 | Floor at or above `rep_high`, first time at this load | `rep_high` at the same weight, held (rule 3) |
+| 5a | Floor at or above `rep_high`, second time at this load | `rep_low` at weight + step (rule 3) |
 | 5b | Floor at or above `rep_high`, step past `max_weight` | `rep_low` at `max_weight` |
 | 5c | Floor at or above `rep_high`, already at `max_weight` | `rep_high` at the same weight, held |
 | 6 | Otherwise | Advance `sets - misses` of the sets (rule 2) |
@@ -329,7 +401,12 @@ eights,
 which is what was asked - because the watch logs what you did, not which set
 was meant to be the hard one.
 
-Bodyweight exercises never reach case 5's weight increase; they target
+Case 5 is the [confirmation](#confirming-the-top-of-the-range), and 5b and 5c
+are ahead of it deliberately: both leave the target exactly where 5 would, so an
+exercise with no load left to add reports that rather than being told to confirm
+a jump that is never coming.
+
+Bodyweight exercises never reach case 5a's weight increase; they target
 `rep_high` and hold. Case 5c is the same ending reached from the other
 direction: an exercise that has run out of weight rather than one that never
 had any. Case 5b is the single shortened step that gets it there. See [topping
@@ -352,7 +429,8 @@ A squat, range 6-10, 4 sets, 2.5 kg step, stored target 7 x 20 kg:
 | 7,7,7,7 @ 20 | 8 x 20 | Matched, add a rep |
 | 7,7,10,10 @ 20 | 8 x 20 | Weakest set still 7 |
 | 8,8,8,8 @ 20 | 9 x 20 | Beat it everywhere |
-| 10,10,10,10 @ 20 | 6 x 22.5 | Topped the range |
+| 10,10,10,10 @ 20 | 10 x 20 | Topped the range once, hold to [confirm](#confirming-the-top-of-the-range) |
+| 10,10,10,10 @ 20, having topped it last session | 6 x 22.5 | Confirmed, so the load moves |
 | 7,7,7,5 @ 20 | 7 x 20 | Missed, repeat |
 | 10 @ 20, then 8,8,8 @ 22.5 | 8 x 22.5 | Only 3 of 4 sets at 22.5, consolidate |
 | 8,8,8,8 @ 22.5 | 9 x 22.5 | Rebased onto the heavier load |
@@ -372,7 +450,7 @@ The same squat, coming back from a stall rather than progressing smoothly:
 | `8+2` x 20 | 9,9,8,8 @ 20 | none | 9 x 20 | Levelled up, flat again |
 | `8+2` x 20 | 9,9,8,8 @ 20 | three times | `8+3` x 20 | One more set levelled |
 | `8+2` x 20 | 8,8,8,8 @ 20 | - | `8+2` x 20 | The two nines were missed |
-| `8+2` x 20 | 10,10,10,10 @ 20 | - | 6 x 22.5 | Topped the range regardless |
+| `8+2` x 20 | 10,10,10,10 @ 20 | - | 10 x 20 | Tops the range regardless, and holds to confirm |
 
 ## Timed holds
 
@@ -441,7 +519,10 @@ their own business as well, so they may differ freely.
 ## No state file
 
 Nothing is stored between runs. The Garmin workout holds the current target and
-the activity holds what was performed - together they answer everything.
+the activity holds what was performed - together with the sessions before it,
+which is where both the miss streak and rule 3's
+[confirmation](#confirming-the-top-of-the-range) are read from, they answer
+everything.
 
 That is why you can edit a target by hand in Garmin Connect and the next run
 simply picks up from there.

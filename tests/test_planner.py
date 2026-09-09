@@ -1508,9 +1508,17 @@ def test_a_session_that_tops_the_new_range_earns_the_load_and_needs_no_clamp():
     earned in the ordinary way. Resetting to `rep_low` lands inside the range
     on its own, leaving the clamp - which never touches a weight - nothing to
     do. The clamp is for the workout no session has anything to say about.
+
+    The history is the session that confirms it: rule 3 wants the top of the
+    range twice, so without one behind it this would hold rather than step.
     """
     built = a_stored_squat(12)
-    plan = plan_workout(a_workout(exercises=[NARROWED]), built, a_squat_session(12))
+    plan = plan_workout(
+        a_workout(exercises=[NARROWED]),
+        built,
+        a_squat_session(12),
+        {"barbellbacksquat": [Session(Target(12, 20.0), [PerformedSet(12, 20.0)] * 3)]},
+    )
 
     assert plan.moved[0].new == Target(6, 22.5)
     assert plan.changes[0].reason == "hit 12 on every set, top of the range"

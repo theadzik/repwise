@@ -806,6 +806,24 @@ def test_a_smooth_session_reads_back_one_activity_and_stops(stalling):
     assert stalling.read_back == ["800"]
 
 
+def test_a_single_set_exercise_still_reads_one_session_back(stalling):
+    """`sets - 1` is no history at all at one set, which used to mean none was
+    fetched. Rule 3's confirmation needs the session before this one, so an
+    exercise at the top of its range would otherwise hold there forever with
+    nothing to confirm against."""
+    one_set = Config(
+        {
+            "Workout A": Workout(
+                "Workout A", "111", ["workout a"], [replace(SQUAT, sets=1)]
+            )
+        }
+    )["Workout A"]
+    earlier = sessions_before(stalling.activities, one_set, "900")
+    gather_history(stalling, one_set, earlier, performed_sets(stalling.sets["900"]))
+
+    assert stalling.read_back == ["800"]
+
+
 def test_a_change_of_load_ends_the_walk(stalling):
     """A different weight is a different ladder, so its misses do not count."""
     stalling.sets["800"] = sets_of(*squats(7, weight=27500.0))

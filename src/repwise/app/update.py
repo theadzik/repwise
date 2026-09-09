@@ -15,6 +15,7 @@ from ..config import ConfigError, record_workout_id
 from ..domain.matching import normalise
 from ..domain.models import Config, ExerciseSpec, Workout
 from ..domain.progression import (
+    CONFIRMED_AFTER,
     PerformedSet,
     Session,
     Target,
@@ -187,7 +188,7 @@ def sessions_before(
 def wants_more(
     spec: ExerciseSpec, logged: list[PerformedSet], earlier: list[Session]
 ) -> bool:
-    """Whether one more session back could still change this exercise's streak.
+    """Whether one more session back could still change this exercise's answer.
 
     The walk that counts a streak stops of its own accord at a session that
     hit, at a change of load, or at `sets - 1` misses. If instead it ran off
@@ -195,8 +196,15 @@ def wants_more(
     back is worth fetching; anything else is already settled. So one activity
     answers a smoothly progressing exercise, and only a genuine stall reads
     deeper.
+
+    The floor of `CONFIRMED_AFTER` is what rule 3's two-session confirmation
+    needs, and it only ever binds on a single-set exercise. Everything else
+    already reads at least one session back for the miss streak, which is the
+    same session the confirmation asks about; at one set `sets - 1` is none at
+    all, and without the floor a single-set exercise would arrive at the top of
+    its range with no history to confirm against and hold there forever.
     """
-    limit = max(spec.sets - 1, 0)
+    limit = max(spec.sets - 1, CONFIRMED_AFTER)
     if not logged or len(earlier) >= limit:
         # Not trained in the session being judged, so there is nothing for a
         # streak to explain -- or already as deep as the rules can read.
