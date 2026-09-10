@@ -401,16 +401,19 @@ eights,
 which is what was asked - because the watch logs what you did, not which set
 was meant to be the hard one.
 
-Case 5 is the [confirmation](#confirming-the-top-of-the-range), and 5b and 5c
-are ahead of it deliberately: both leave the target exactly where 5 would, so an
-exercise with no load left to add reports that rather than being told to confirm
-a jump that is never coming.
+Case 5 is the [confirmation](#confirming-the-top-of-the-range). Only 5c is
+ahead of it: an exercise already at `max_weight` has no load left to add, so
+it reports that ending rather than being told to confirm a jump that is never
+coming - the same reason bodyweight exercises never reach 5 at all. 5a and 5b
+both sit behind the gate, since both are the load actually moving: a shortened
+step is still a step, so it waits for the second session exactly as a full one
+does.
 
 Bodyweight exercises never reach case 5a's weight increase; they target
 `rep_high` and hold. Case 5c is the same ending reached from the other
 direction: an exercise that has run out of weight rather than one that never
-had any. Case 5b is the single shortened step that gets it there. See [topping
-out](#topping-out).
+had any. Case 5b is the single shortened step that gets it there, taken only
+once the confirmation has cleared. See [topping out](#topping-out).
 
 Case 6 caps at `rep_high`, so an off-step target cannot overshoot the range.
 Together with case 2, a target can never leave the programmed range.
