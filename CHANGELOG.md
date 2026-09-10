@@ -1,3 +1,9 @@
+## 3.3.0 (2026-09-10)
+
+### Feat
+
+- confirm the top of the range before adding load (#95) ([d1e4a03](https://github.com/theadzik/repwise/commit/d1e4a03e486ab8ef9f92ea57061dcce62736996d))
+
 ## 3.2.0 (2026-09-07)
 
 ### Feat
