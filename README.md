@@ -54,8 +54,8 @@ session, so training A and then B and running once brings both up to date:
 
 1. Start at the bottom of the rep range.
 2. Add a rep to every set each session.
-3. Once every set reaches the top of the range, add weight and reset to the
-   bottom.
+3. Once every set reaches the top of the range twice, add weight and reset to
+   the bottom.
 4. If you missed the target, repeat it unchanged.
 5. A load only counts once you can carry it for the bottom of the range.
 

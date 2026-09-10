@@ -11,8 +11,8 @@ The rules, as written in README.md:
 2. Each workout, add a rep to every set, e.g. 7-7-7, then 8-8-8 -- but after a
    stall, to only some of them, so that the way back up is gentler than the way
    that failed.
-3. Once all sets reach the upper end, increase the weight and reset to the
-   lower end.
+3. Once all sets reach the upper end, hold it there for a second session, then
+   increase the weight and reset to the lower end.
 4. If you didn't match the previous result, stay at the same weight and reps.
 5. A load is only adopted once it can be carried for the bottom of the range.
    Lift something other than what was prescribed and come up short of rep_low
@@ -131,6 +131,37 @@ def working_weight(performed: list[PerformedSet]) -> float:
     return max(counts, key=lambda weight: (counts[weight], weight))
 
 
+def _counted_reps(performed: list[PerformedSet], weight: float) -> list[int]:
+    """The reps a session at `weight` is judged on, hardest sets included.
+
+    The sets at the working weight, plus any carried at a *heavier* load for at
+    least the reps those managed: harder than asked is not worse than asked,
+    and a session split across two loads is still a whole session. Without this
+    the set count is taken from one load alone, and three sets done as two at
+    20 kg and one at 30 kg read as an abandoned session rather than a finished
+    one.
+
+    What a heavier set contributes is its own rep count, which is a lower bound
+    on what it would have managed at the lighter load, so this can only ever
+    add sets to the tally - never flatter the reps, since every set it adds is
+    at or above the floor and `min` is left where it was. A set that came up
+    *short* at the heavier load counts for nothing, which is what keeps a
+    failed top set from reading as a completed session.
+
+    Empty when nothing was done at `weight`, which only a caller inventing a
+    load can produce: `working_weight` always names one of the loads used.
+    """
+    at_weight = [entry.reps for entry in performed if entry.weight == weight]
+    if not at_weight:
+        return []
+    floor = min(at_weight)
+    return at_weight + [
+        entry.reps
+        for entry in performed
+        if entry.weight > weight and entry.reps >= floor
+    ]
+
+
 def hit(spec: ExerciseSpec, target: Target, reps: list[int]) -> bool:
     """Whether a session met what was asked of it.
 
@@ -181,6 +212,62 @@ def miss_streak(spec: ExerciseSpec, history: list[Session], weight: float) -> in
             entry.reps for entry in session.performed if entry.weight == weight
         ]
         if hit(spec, session.target, at_weight):
+            break
+        streak += 1
+
+    return streak
+
+
+#: How many sessions must already have cleared the top of the range for this
+#: one to earn the load. One, so the weight moves on the *second* session at
+#: `rep_high` rather than on the first.
+#:
+#: This is ACSM's own condition for adding load, which asks for the surplus on
+#: "two consecutive training sessions" - see `top_streak` for the quote and
+#: `docs/progression.md` for the reference. A single session at the top of the
+#: range can be a good day rather than a new capacity: better sleep, a longer
+#: rest, a kinder rep judgement. Rule 3 spending that day on a load increase is
+#: what sets up the stall rule 4 then has to unwind, and asking for it twice is
+#: the cheapest filter there is - one extra session, only ever at the top of
+#: the range, and only ever immediately before a jump.
+CONFIRMED_AFTER = 1
+
+
+def top_streak(spec: ExerciseSpec, history: list[Session], weight: float) -> int:
+    """How many sessions in a row cleared the top of the range, before the latest.
+
+    ACSM's 2009 position stand asks for a "2-10% increase in load [...] when the
+    individual can perform the current workload for one to two repetitions over
+    the desired number on two consecutive training sessions". This counts the
+    consecutive sessions; `CONFIRMED_AFTER` says how many rule 3 wants.
+
+    `history` is the sessions before the one being judged, newest first, and
+    `weight` the load that one was worked at - the same arguments `miss_streak`
+    takes, because this is its mirror: not how long an exercise has been
+    failing its target, but how long it has been clearing the top of its range
+    at one load. The walk stops at:
+
+    - the first session that did not clear it, which is what ends a run;
+    - a change of load, because clearing the top at 20 kg says nothing about
+      whether 22.5 kg has been earned - the confirmation belongs to the load
+      being confirmed;
+    - `CONFIRMED_AFTER`, past which nothing could change the answer: the load
+      moves on that session and the next one restarts at `rep_low`, so a longer
+      run does not exist to be found.
+
+    A session too short to judge does not clear anything. That is rule 3's own
+    set count, applied to history for the same reason: a session that would
+    have consolidated rather than advanced cannot confirm a jump either.
+    """
+    streak = 0
+
+    for session in history:
+        if streak >= CONFIRMED_AFTER:
+            break
+        if not session.performed or working_weight(session.performed) != weight:
+            break
+        counted = _counted_reps(session.performed, weight)
+        if len(counted) < spec.sets or min(counted) < spec.rep_high:
             break
         streak += 1
 
@@ -356,6 +443,7 @@ def _advance(  # noqa: PLR0913 - each argument is one independent input
     streak: int,
     *,
     bodyweight: float = 0.0,
+    topped: int = 0,
 ) -> tuple[Target, str]:
     """Move a session that counted, by an amount the streak behind it decides.
 
@@ -414,6 +502,21 @@ def _advance(  # noqa: PLR0913 - each argument is one independent input
                 Target(spec.rep_high, weight),
                 f"top of the range, {sits} the {shown:g} kg maximum",
             )
+        # ACSM's two-session confirmation: the top of the range has to be
+        # cleared twice at one load before the load moves.
+        #
+        # Placed *after* the two endings above rather than before them, because
+        # both of those leave the target exactly where this would. There is
+        # nothing to confirm when there is nothing to add, and an exercise that
+        # is bodyweight or out of rack would otherwise be told, every run, to
+        # hold once more for a jump that is never coming.
+        if topped < CONFIRMED_AFTER:
+            return (
+                Target(spec.rep_high, weight),
+                f"hit {floor} on every set{lifted}, top of the range, "
+                "hold it once more before the load goes up",
+            )
+
         # Three shapes of the same move, and the report is the only place they
         # differ: a plain step, a step shortened to land on the rack's own
         # ceiling, and a step that ran off the end of one rack onto the next.
@@ -474,12 +577,14 @@ def _advance(  # noqa: PLR0913 - each argument is one independent input
     )
 
 
-def next_target(
+def next_target(  # noqa: PLR0913 - each argument is one independent input
     spec: ExerciseSpec,
     current: Target,
     performed: list[PerformedSet],
     streak: int = 0,
+    *,
     bodyweight: float = 0.0,
+    topped: int = 0,
 ) -> tuple[Target, str]:
     """Decide the next prescription for one exercise.
 
@@ -495,6 +600,13 @@ def next_target(
     most of any routine and harmless for the rest, because a step chosen a size
     small still progresses.
 
+    `topped` is how many sessions in a row already cleared the top of the range
+    at this load, from `top_streak`, and gates rule 3's load increase alone.
+    Like `streak` it defaults to none, which is the reading to give when there
+    is no history to consult - a first-ever session, or one too old to look
+    behind - and costs a single held session at the top of the range, which the
+    session after it then confirms.
+
     Returns the new target plus a short human-readable reason.
     """
     if not performed:
@@ -503,32 +615,15 @@ def next_target(
     # Judge everything at the load actually used, which may not be the load the
     # workout still has stored.
     weight = working_weight(performed)
-    at_weight = [entry.reps for entry in performed if entry.weight == weight]
     rebased = weight != current.weight
+    counted = _counted_reps(performed, weight)
 
     # Progress from the weakest set, not from the stored target. The next
     # target has to be achievable on every set, so extra reps on the easy sets
     # earn nothing while the floor stays put -- but beating the target on all
-    # of them does count.
-    floor = min(at_weight)
-
-    # A set carried at a *heavier* load, for at least the reps the working sets
-    # managed, counts as one of them: harder than asked is not worse than
-    # asked, and a session split across two loads is still a whole session.
-    # Without this the set count is taken from one load alone, and three sets
-    # done as two at 20 kg and one at 30 kg read as an abandoned session rather
-    # than a finished one.
-    #
-    # What it contributes is its own rep count, which is a lower bound on what
-    # it would have managed at the lighter load, so this can only ever add sets
-    # to the tally - never flatter the reps. A set that came up short at the
-    # heavier load counts for nothing, which is what keeps a failed top set
-    # from reading as a completed session.
-    counted = at_weight + [
-        entry.reps
-        for entry in performed
-        if entry.weight > weight and entry.reps >= floor
-    ]
+    # of them does count. The heavier sets `_counted_reps` folds in never sit
+    # below this, so taking it from the whole tally is the same figure.
+    floor = min(counted)
 
     # Rule 5: a load is only worth keeping once it can be carried for at least
     # the bottom of the range. Falling short of rep_low means the jump was too
@@ -560,4 +655,6 @@ def next_target(
             return _deload(spec, current, weight, counted, bodyweight=bodyweight)
         return current, _missed(floor)
 
-    return _advance(spec, current, weight, floor, streak, bodyweight=bodyweight)
+    return _advance(
+        spec, current, weight, floor, streak, bodyweight=bodyweight, topped=topped
+    )

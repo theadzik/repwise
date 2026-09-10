@@ -214,6 +214,7 @@ flowchart TD
     ACT["Garmin activity"] -->|performed_sets| PERF["PerformedSet list"]
     OLD["earlier activities"] -->|"executed_targets + performed_sets"| HIST["Session list"]
     HIST -->|miss_streak| STREAK["misses in a row"]
+    HIST -->|top_streak| TOPS["tops of the range in a row"]
     WKT["Garmin workout"] -->|block_target| CUR["current Target"]
 
     SPEC --> SHAPE{{"_reconcile()"}}
@@ -224,6 +225,7 @@ flowchart TD
     PERF --> RULES
     CUR --> RULES
     STREAK --> RULES
+    TOPS --> RULES
 
     RULES --> NEW["new Target"]
     NEW -->|apply_block| MUT["mutated workout payload"]

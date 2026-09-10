@@ -4,16 +4,18 @@ import pytest
 from builders import held, spec
 
 from repwise.domain.models import LoadTier
-from repwise.domain.progression import PerformedSet as P
 from repwise.domain.progression import (
+    CONFIRMED_AFTER,
     Session,
     Target,
     _ladder,
     hit,
     miss_streak,
     next_target,
+    top_streak,
     working_weight,
 )
+from repwise.domain.progression import PerformedSet as P
 from repwise.domain.progression import missed as is_miss
 
 SQUAT = spec()
@@ -75,12 +77,12 @@ def test_exceeding_target_still_counts_as_met():
 
 
 def test_top_of_range_adds_weight_and_resets():
-    target, why = next_target(SQUAT, Target(10, 20.0), [P(10, 20.0)] * 3)
+    target, why = next_target(SQUAT, Target(10, 20.0), [P(10, 20.0)] * 3, topped=1)
     assert target == Target(6, 25.0), why
 
 
 def test_dumbbell_uses_its_own_step():
-    target, _ = next_target(LUNGE, Target(12, 4.0), [P(12, 4.0)] * 5)
+    target, _ = next_target(LUNGE, Target(12, 4.0), [P(12, 4.0)] * 5, topped=1)
     assert target == Target(8, 5.0)
 
 
@@ -127,14 +129,17 @@ def test_matching_the_target_exactly_does_not_mention_beating_it():
 
 def test_reaching_top_of_range_adds_weight_even_if_target_was_lower():
     """Performing 10s on every set tops out the range, whatever was asked."""
-    target, why = next_target(SQUAT, Target(7, 20.0), [P(10, 20.0)] * 4)
+    target, why = next_target(SQUAT, Target(7, 20.0), [P(10, 20.0)] * 4, topped=1)
     assert target == Target(6, 25.0), why
 
 
 def test_overshoot_is_capped_at_top_of_range():
     """A set above rep_high still resets rather than targeting 11+."""
     target, _ = next_target(
-        SQUAT, Target(9, 20.0), [P(12, 20.0), P(11, 20.0), P(10, 20.0), P(10, 20.0)]
+        SQUAT,
+        Target(9, 20.0),
+        [P(12, 20.0), P(11, 20.0), P(10, 20.0), P(10, 20.0)],
+        topped=1,
     )
     assert target == Target(6, 25.0)
 
@@ -172,26 +177,32 @@ def test_full_sets_at_new_weight_progress_from_there():
 
 
 def test_new_weight_at_top_of_range_still_adds_load():
-    target, why = next_target(FOUR_SET_SQUAT, Target(7, 20.0), [P(10, 22.5)] * 4)
+    target, why = next_target(
+        FOUR_SET_SQUAT, Target(7, 20.0), [P(10, 22.5)] * 4, topped=1
+    )
     assert target == Target(6, 25.0), why
 
 
 def test_bottom_of_range_to_top_at_a_heavier_load_adds_load_again():
     """Planned 6 x 20, did 10 x 22.5: the session's load is the new baseline."""
-    target, why = next_target(FOUR_SET_SQUAT, Target(6, 20.0), [P(10, 22.5)] * 4)
+    target, why = next_target(
+        FOUR_SET_SQUAT, Target(6, 20.0), [P(10, 22.5)] * 4, topped=1
+    )
     assert target == Target(6, 25.0), why
     assert why == "hit 10 on every set at 22.5 kg, top of the range"
 
 
 def test_top_of_range_at_a_heavier_load_adds_load_from_what_was_lifted():
     """Planned 10 x 20, did 10 x 22.5: step up from 22.5, not from 20."""
-    target, why = next_target(FOUR_SET_SQUAT, Target(10, 20.0), [P(10, 22.5)] * 4)
+    target, why = next_target(
+        FOUR_SET_SQUAT, Target(10, 20.0), [P(10, 22.5)] * 4, topped=1
+    )
     assert target == Target(6, 25.0), why
     assert why == "hit 10 on every set at 22.5 kg, top of the range"
 
 
 def test_top_of_range_at_the_planned_load_does_not_mention_the_load():
-    _, why = next_target(FOUR_SET_SQUAT, Target(10, 20.0), [P(10, 20.0)] * 4)
+    _, why = next_target(FOUR_SET_SQUAT, Target(10, 20.0), [P(10, 20.0)] * 4, topped=1)
     assert why == "hit 10 on every set, top of the range"
 
 
@@ -254,7 +265,9 @@ def test_same_load_below_the_range_still_reads_as_a_missed_target():
 
 def test_heavier_load_can_still_top_out_the_range():
     """Rule 5 gates rule 3 rather than replacing it."""
-    target, why = next_target(LATERAL_RAISE, Target(13, 3.0), [P(15, 4.0)] * 3)
+    target, why = next_target(
+        LATERAL_RAISE, Target(13, 3.0), [P(15, 4.0)] * 3, topped=1
+    )
     assert target == Target(12, 5.0), why
 
 
@@ -311,7 +324,9 @@ def test_rep_step_does_not_overshoot_the_range():
 
 
 def test_rep_step_still_earns_the_weight_jump_at_the_top():
-    target, why = next_target(LUNGE_DOUBLED, Target(24, 4.0), [P(24, 4.0)] * 4)
+    target, why = next_target(
+        LUNGE_DOUBLED, Target(24, 4.0), [P(24, 4.0)] * 4, topped=1
+    )
     assert target == Target(16, 5.0), why
 
 
@@ -399,7 +414,7 @@ def test_missing_the_high_sets_of_a_ramp_is_a_miss():
 def test_beating_a_ramp_everywhere_levels_it_and_advances_from_there():
     """10 on every set tops the range, ramp or no ramp."""
     target, why = next_target(
-        FOUR_SET_SQUAT, Target(8, 20.0, lead=2), [P(10, 20.0)] * 4
+        FOUR_SET_SQUAT, Target(8, 20.0, lead=2), [P(10, 20.0)] * 4, topped=1
     )
     assert target == Target(6, 22.5), why
 
@@ -420,7 +435,7 @@ def test_a_ramp_does_not_survive_a_short_session():
 def test_the_streak_cannot_push_a_target_past_the_top_of_the_range():
     """At the top it is still a weight jump, whatever the streak was."""
     target, why = next_target(
-        FOUR_SET_SQUAT, Target(10, 20.0), [P(10, 20.0)] * 4, streak=3
+        FOUR_SET_SQUAT, Target(10, 20.0), [P(10, 20.0)] * 4, streak=3, topped=1
     )
     assert target == Target(6, 22.5), why
 
@@ -592,6 +607,129 @@ def test_a_ramped_target_is_judged_as_a_ramp_when_counting_the_streak():
     """8,8,8,8 against 9,9,8,8 is a miss, and has to read as one here too."""
     history = [Session(Target(8, 20.0, lead=2), [P(8, 20.0)] * 4)]
     assert miss_streak(FOUR_SET_SQUAT, history, 20.0) == 1
+
+
+# --- confirming the top of the range ---------------------------------------
+#
+# Rule 3 wants the top of the range cleared twice at one load before it adds
+# weight, which is ACSM's "two consecutive training sessions". `top_streak`
+# counts what is behind the session being judged; the gate is in `_advance`.
+
+
+def topped_out(reps=10, weight=20.0, sets=4):
+    return Session(Target(reps, weight), [P(reps, weight)] * sets)
+
+
+def test_no_history_confirms_nothing():
+    assert top_streak(FOUR_SET_SQUAT, [], 20.0) == 0
+
+
+def test_a_session_at_the_top_confirms():
+    assert top_streak(FOUR_SET_SQUAT, [topped_out()], 20.0) == 1
+
+
+def test_the_count_stops_at_a_session_that_did_not_reach_the_top():
+    assert top_streak(FOUR_SET_SQUAT, [topped_out(9)], 20.0) == 0
+
+
+def test_a_session_past_the_top_still_confirms():
+    """Rule 3 fires at `rep_high` or above, and so does the confirmation."""
+    assert top_streak(FOUR_SET_SQUAT, [topped_out(12)], 20.0) == 1
+
+
+def test_the_count_stops_at_a_change_of_load():
+    """Clearing the top at 17.5 says nothing about whether 22.5 is earned."""
+    assert top_streak(FOUR_SET_SQUAT, [topped_out(weight=17.5)], 20.0) == 0
+
+
+def test_the_count_stops_at_a_session_with_nothing_logged():
+    assert top_streak(FOUR_SET_SQUAT, [Session(Target(10, 20.0), [])], 20.0) == 0
+
+
+def test_a_session_too_short_to_judge_confirms_nothing():
+    """Rule 3's own set count: a session that would have consolidated cannot
+    confirm a jump either."""
+    short = Session(Target(10, 20.0), [P(10, 20.0)] * 2)
+    assert top_streak(FOUR_SET_SQUAT, [short], 20.0) == 0
+
+
+def test_the_count_is_bounded_at_what_the_rule_asks_for():
+    """Nothing above CONFIRMED_AFTER exists to find - the load moves there and
+    the next session restarts at rep_low - so the walk stops rather than
+    reading history it cannot use."""
+    assert top_streak(FOUR_SET_SQUAT, [topped_out()] * 9, 20.0) == CONFIRMED_AFTER
+
+
+def test_a_heavier_set_counts_towards_confirming_too():
+    """The same credit rule 3 gives the session it is judging."""
+    mixed = Session(Target(10, 20.0), [P(10, 20.0)] * 3 + [P(10, 22.5)])
+    assert top_streak(FOUR_SET_SQUAT, [mixed], 20.0) == 1
+
+
+def test_the_first_top_of_the_range_holds_instead_of_adding_load():
+    target, why = next_target(FOUR_SET_SQUAT, Target(10, 20.0), [P(10, 20.0)] * 4)
+    assert target == Target(10, 20.0), why
+    assert why == (
+        "hit 10 on every set, top of the range, hold it once more "
+        "before the load goes up"
+    )
+
+
+def test_holding_at_the_top_is_not_a_miss():
+    """It is a session that did everything asked of it, so nothing marks the
+    watch and nothing in the report calls it a failure."""
+    _, why = next_target(FOUR_SET_SQUAT, Target(10, 20.0), [P(10, 20.0)] * 4)
+    assert not is_miss(why)
+
+
+def test_the_second_top_of_the_range_adds_the_load():
+    target, why = next_target(
+        FOUR_SET_SQUAT, Target(10, 20.0), [P(10, 20.0)] * 4, topped=1
+    )
+    assert target == Target(6, 22.5), why
+
+
+def test_the_hold_lands_on_the_top_of_the_range_from_below_it():
+    """A session that beat a lower target still ends up at rep_high, so the
+    confirming session is asked for what it just did rather than for less."""
+    target, why = next_target(FOUR_SET_SQUAT, Target(7, 20.0), [P(10, 20.0)] * 4)
+    assert target == Target(10, 20.0), why
+
+
+def test_an_overshoot_is_still_capped_at_the_top_while_it_holds():
+    target, _ = next_target(FOUR_SET_SQUAT, Target(9, 20.0), [P(12, 20.0)] * 4)
+    assert target == Target(10, 20.0)
+
+
+def test_a_rebased_load_needs_confirming_at_that_load():
+    """Rule 5 admits 22.5 and the session tops the range on it, but the top of
+    the range at 22.5 has still only been reached once."""
+    target, why = next_target(FOUR_SET_SQUAT, Target(7, 20.0), [P(10, 22.5)] * 4)
+    assert target == Target(10, 22.5), why
+    assert "at 22.5 kg" in why
+
+
+def test_bodyweight_is_not_asked_to_confirm():
+    """There is no load to add, so a confirmation would buy nothing and the
+    report would promise a jump that is never coming."""
+    _, why = next_target(PLANK, Target(60, 0.0), [P(60, 0.0)] * 3)
+    assert why == "top of the range, and bodyweight, so nothing to add"
+
+
+def test_an_exercise_out_of_rack_is_not_asked_to_confirm():
+    """The same ending reached from the other side."""
+    _, why = next_target(HOME_PRESS, Target(18, 10.0), [P(18, 10.0)] * 3)
+    assert "already at the 10 kg maximum" in why
+
+
+def test_a_stall_at_the_top_is_still_a_stall():
+    """The hold repeats rep_high; missing it twice deloads as it always did,
+    so the confirmation cannot trap an exercise at the top of its range."""
+    target, why = next_target(
+        FOUR_SET_SQUAT, Target(10, 20.0), [P(9, 20.0)] * 4, streak=1
+    )
+    assert target.reps < 10, why
+    assert is_miss(why)
 
 
 # --- deloading ------------------------------------------------------------
@@ -807,14 +945,14 @@ def test_a_capped_exercise_holds_at_the_top_of_the_range():
 
 def test_the_last_step_is_shortened_to_land_on_the_maximum():
     """9 + 2.5 is 11.5, which does not exist - but the 10 kg pair does."""
-    target, why = next_target(HOME_PRESS, Target(16, 9.0), [P(16, 9.0)] * 3)
+    target, why = next_target(HOME_PRESS, Target(16, 9.0), [P(16, 9.0)] * 3, topped=1)
     assert target == Target(HOME_PRESS.rep_low, 10.0), why
     assert "up to the 10 kg maximum" in why
 
 
 def test_the_shortened_step_is_taken_once_and_then_holds():
     """Reaching the ceiling is a rung to climb, not a place to hover below."""
-    stepped, why = next_target(HOME_PRESS, Target(16, 9.0), [P(16, 9.0)] * 3)
+    stepped, why = next_target(HOME_PRESS, Target(16, 9.0), [P(16, 9.0)] * 3, topped=1)
     assert stepped == Target(10, 10.0), why
 
     held, why = next_target(HOME_PRESS, stepped, [P(16, 10.0)] * 3)
@@ -830,14 +968,14 @@ def test_a_load_already_past_the_maximum_is_not_pulled_down():
 
 def test_below_the_maximum_the_weight_still_climbs():
     """The ceiling is a stop, not a brake: every step under it is taken."""
-    target, why = next_target(HOME_PRESS, Target(16, 7.5), [P(16, 7.5)] * 3)
+    target, why = next_target(HOME_PRESS, Target(16, 7.5), [P(16, 7.5)] * 3, topped=1)
     assert target == Target(HOME_PRESS.rep_low, 10.0), why
 
 
 def test_no_maximum_means_the_weight_keeps_climbing():
     """The default, and what every config written before ceilings did."""
     assert SQUAT.max_weight is None
-    target, _ = next_target(SQUAT, Target(10, 20.0), [P(10, 20.0)] * 3)
+    target, _ = next_target(SQUAT, Target(10, 20.0), [P(10, 20.0)] * 3, topped=1)
     assert target == Target(SQUAT.rep_low, 25.0)
 
 
@@ -943,13 +1081,13 @@ FLYE = spec(
 
 def test_topping_out_a_rack_graduates_to_the_next_one():
     """10 kg is the heaviest pair on the small rack, so rule 3 crosses over."""
-    target, why = next_target(FLYE, Target(14, 10.0), [P(14, 10.0)] * 3)
+    target, why = next_target(FLYE, Target(14, 10.0), [P(14, 10.0)] * 3, topped=1)
     assert target == Target(10, 12.0), why
     assert "onto the next rack at 12 kg" in why
 
 
 def test_climbing_within_a_rack_says_nothing_about_racks():
-    target, why = next_target(FLYE, Target(14, 12.0), [P(14, 12.0)] * 3)
+    target, why = next_target(FLYE, Target(14, 12.0), [P(14, 12.0)] * 3, topped=1)
     assert target == Target(10, 14.0), why
     assert "rack" not in why
 
@@ -982,8 +1120,8 @@ def test_the_increment_chosen_grows_with_the_load():
         min_weight=5.0,
         tiers=(LoadTier(5.0, None, (1.25, 2.5, 5.0)),),
     )
-    light, _ = next_target(stack, Target(15, 5.0), [P(15, 5.0)] * 3)
-    heavy, _ = next_target(stack, Target(15, 45.0), [P(15, 45.0)] * 3)
+    light, _ = next_target(stack, Target(15, 5.0), [P(15, 5.0)] * 3, topped=1)
+    heavy, _ = next_target(stack, Target(15, 45.0), [P(15, 45.0)] * 3, topped=1)
     assert light == Target(10, 6.25)
     assert heavy == Target(10, 50.0)
 
@@ -998,7 +1136,7 @@ def test_rule_three_never_resets_the_range_without_adding_load():
     stepping = spec(
         rep_low=6, rep_high=10, sets=3, load="barbell", weight_step=2.2, min_weight=0.0
     )
-    target, why = next_target(stepping, Target(10, 33.0), [P(10, 33.0)] * 3)
+    target, why = next_target(stepping, Target(10, 33.0), [P(10, 33.0)] * 3, topped=1)
     assert target.weight > 33.0, why
     assert target.reps == 6
 
