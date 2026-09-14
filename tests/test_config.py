@@ -17,7 +17,7 @@ from repwise.config import (
     record_workout_id,
     resolve_config,
 )
-from repwise.domain.models import GarminSettings
+from repwise.domain.models import STORED_NOTE, GarminSettings
 
 SHARED = """
 load:
@@ -1102,6 +1102,27 @@ def test_bodyweight_is_unset_so_that_garmin_is_asked(write_config):
 def test_bodyweight_can_be_stated_instead(write_config):
     text = FIXTURE.replace("settings:\n", "settings:\n  bodyweight: 81.5\n")
     assert load_config(write_config(text)).bodyweight == 81.5
+
+
+def test_watch_note_limit_defaults_to_everything_garmin_stores(write_config):
+    """Unset means the note is judged against the cut it already gets, which
+    reports nothing: the screen it was measured on shows all of it."""
+    assert load_config(write_config(FIXTURE)).watch_note_limit == STORED_NOTE
+
+
+def test_watch_note_limit_can_be_lowered_for_a_watch_that_shows_less(write_config):
+    text = FIXTURE.replace("settings:\n", "settings:\n  watch_note_limit: 160\n")
+    assert load_config(write_config(text)).watch_note_limit == 160
+
+
+@pytest.mark.parametrize("length", [0, -160, STORED_NOTE + 1])
+def test_a_watch_note_limit_outside_what_garmin_keeps_is_rejected(write_config, length):
+    """It only ever lowers the cap. Past the stored one it is a promise nothing
+    can keep: Garmin drops the rest of the note whatever the screen shows."""
+    declared = f"settings:\n  watch_note_limit: {length}\n"
+    bad = FIXTURE.replace("settings:\n", declared, 1)
+    with pytest.raises(ConfigError, match=r"settings\.watch_note_limit"):
+        load_config(write_config(bad))
 
 
 # --- a cache pointed at a directory that moves ----------------------------

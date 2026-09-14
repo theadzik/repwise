@@ -92,7 +92,7 @@ def run_check(session: GarminSession, config: Config) -> ExitCode:
                     )
                 )
             else:
-                found += check_workout(workout, payload)
+                found += check_workout(workout, payload, config.watch_note_limit)
                 found += check_programming(workout, payload, bodyweight)
 
         if not found:

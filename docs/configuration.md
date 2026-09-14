@@ -52,6 +52,7 @@ settings:
 
   # partial_progression: true   # may a hit after a stall move only some sets
   # bodyweight: 81.0   # normally read from your Garmin weigh-ins
+  # watch_note_limit: 160   # only if your watch shows less than Garmin stores
 ```
 
 | Setting | Default | Meaning |
@@ -62,6 +63,7 @@ settings:
 | `garmin.activity_caching` | `false` | Answer for a performed session from `dump_dir` instead of asking Garmin again, and file every session a run sees. See [reusing what is on disk](#reusing-what-is-on-disk) |
 | `partial_progression` | `true` | Whether a hit after a stall may move only some of the sets, which is what writes an uneven target such as `8+2`. Off, every set moves together in both directions, and an uneven target Garmin still holds is [levelled up](progression.md#turning-partial-progression-off) on the next run |
 | `bodyweight` | your Garmin weigh-ins | Your weight in kg, when you would rather state it than have it read. Only ever an input to [`check`](#does-the-range-fit-the-step); no target depends on it |
+| `watch_note_limit` | `512`, all Garmin keeps | How many characters of a step's note your watch shows before it cuts the rest, which [`check`](#how-much-of-a-note-your-watch-shows) reports against. Only ever lowered: the default is the stored cap, so nothing is reported until you name a screen that shows less. `160` for a Forerunner 945 |
 
 ## Load types
 
@@ -543,6 +545,37 @@ instead.
 Nothing here changes a target. It is a fact about how you wrote the range, and
 the fix is to edit the range.
 
+### How much of a note your watch shows
+
+Not what Garmin accepts, which is 512 characters - it stores that many, drops
+the rest in silence, and says nothing to either side about what was lost. The
+binding limit is the screen, and the screen is per-device. Measured by writing
+notes of graduated length to a real workout and reading them back off the
+watch:
+
+| Watch | Shows whole |
+| --- | --- |
+| Forerunner 945 | 160 characters; cut from 165 |
+| Fenix 9 Pro | all 512 - every character Garmin keeps |
+
+So there is no one figure to check against. `watch_note_limit` is that figure.
+It defaults to 512 - everything Garmin keeps - which reports nothing, because
+the note was [cut to 512](commands.md#step-notes) before `check` ever saw it.
+That is the right answer for a screen like the Fenix's, which shows the lot:
+there is nothing it could warn you about.
+
+Name your own screen to be warned before it cuts:
+
+```yaml
+settings:
+  watch_note_limit: 160   # a Forerunner 945 cuts from 165
+```
+
+It only ever lowers the cap; above 512 is rejected, since no screen can show a
+character that was never stored. Nothing is written to Garmin differently
+because of it - this decides when `check` calls a note too long to read, and
+nothing else.
+
 ### Where your bodyweight comes from
 
 Your Garmin weigh-ins, averaged over the last 30 days - so it stays current
@@ -570,6 +603,7 @@ than half-applied. You get an error naming the file and workout for:
 - a duplicate workout `key`
 - a negative `rest_between_exercises` or `start_weight`
 - a `bodyweight_factor` outside 0 to 1
+- a `watch_note_limit` outside 1 to 512, the most of a note Garmin keeps
 - a workout with neither a `garmin_workout_id` nor any exercises, which is
   nothing to find in Garmin and nothing to build there either
 - a [shared exercise](progression.md#shared-exercises) programmed with

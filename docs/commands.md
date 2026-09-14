@@ -409,16 +409,22 @@ something recomputed each run. An exercise that appears in more than one
 workout carries the same marker in all of them, on the same terms as its
 target: same movement, same equipment.
 
-**Keep it short.** The screen is the binding limit: measured on a real account
-and read off the watch, a 160-character note displays whole and a 200-character
-one is cut, so `check` reports anything past 160.
+**Keep it short.** The screen is the binding limit, and it differs by watch:
+measured on a real account and read off the watch, a Forerunner 945 displays a
+160-character note whole and cuts from 165, while a Fenix 9 Pro shows all 512.
+`check` reports anything past
+[`settings.watch_note_limit`](configuration.md#how-much-of-a-note-your-watch-shows).
+That defaults to 512, the most Garmin keeps, so nothing is reported until you
+name a screen that shows less.
 
 A cue written across several lines is joined onto one, and the whole note is
 cut at 512 characters, because neither survives the round trip otherwise -
 Garmin silently drops a note past 512, and a note carrying a newline is no
 longer recognisable as one this tool wrote. Either would leave every later run
 either rewriting the note or refusing to touch it. Nothing is lost that the
-watch would have shown, and `check` warns long before the cut.
+watch would have shown. Set `watch_note_limit` to what your screen shows and
+`check` warns you long before the cut; left at 512 the cut is the only limit,
+and a cue written past it loses its end in silence.
 
 These are refreshed from `workouts.yaml` on every run, so editing a rep range
 or a `weight_step` updates them. That is a reason to write a workout in its own

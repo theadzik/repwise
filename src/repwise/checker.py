@@ -35,7 +35,7 @@ from .domain.effort import (
     within_tolerance,
 )
 from .domain.matching import ExerciseIndex
-from .domain.models import READABLE_NOTE, ExerciseSpec, Workout
+from .domain.models import STORED_NOTE, ExerciseSpec, Workout
 from .garmin.catalog import ExerciseCatalog
 from .garmin.payloads import (
     ExerciseBlock,
@@ -142,8 +142,15 @@ def check_catalog(workout: Workout, catalog: ExerciseCatalog) -> list[Finding]:
     return findings
 
 
-def check_workout(workout: Workout, payload: dict[str, Any]) -> list[Finding]:
-    """Look for exercises the config cannot name properly."""
+def check_workout(
+    workout: Workout, payload: dict[str, Any], watch_note_limit: int = STORED_NOTE
+) -> list[Finding]:
+    """Look for exercises the config cannot name properly.
+
+    `watch_note_limit` is how much of a note the watch in hand shows, which is a
+    per-device figure - see `settings.watch_note_limit`. Left at the stored cap it
+    reports nothing, since a longer note was cut before it ever got here.
+    """
     findings: list[Finding] = []
 
     def note(detail: str, severity: str = "warning") -> None:
@@ -164,10 +171,10 @@ def check_workout(workout: Workout, payload: dict[str, Any]) -> list[Finding]:
         )
 
     for spec in workout.exercises:
-        if len(spec.note) > READABLE_NOTE:
+        if len(spec.note) > watch_note_limit:
             note(
                 f"{spec.name}: its note comes to {len(spec.note)} characters, past "
-                f"the {READABLE_NOTE} a watch shows, so the end of it is simply "
+                f"the {watch_note_limit} your watch shows, so the end of it is simply "
                 f"never read"
             )
 
