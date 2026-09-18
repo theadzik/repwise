@@ -369,13 +369,13 @@ def skips_last_rest(group: dict[str, Any]) -> bool:
     return bool(group.get("skipLastRestStep"))
 
 
-def apply_last_rest(group: dict[str, Any]) -> None:
-    """Make a repeat group rest after its final set, in place.
+def apply_skip_last_rest(group: dict[str, Any], *, skip: bool) -> None:
+    """Set whether a repeat group drops the rest after its final set, in place.
 
     Written as a value rather than by removing the key, so that a group Garmin
     returned without one says what it means once it comes back.
     """
-    group["skipLastRestStep"] = False
+    group["skipLastRestStep"] = skip
 
 
 def apply_rest(step: dict[str, Any], seconds: int) -> None:
@@ -456,7 +456,8 @@ def new_group(spec: ExerciseSpec, target: Target) -> dict[str, Any]:
     Sets are the group's iterations, so the exercise appears once however many
     times it is performed. An exercise with no `rest` configured gets a
     lap-button rest rather than no rest step at all: Connect builds one either
-    way, and a step that is there can be given a duration later.
+    way, and a step that is there can be given a duration later. Whether the
+    last set is followed by that rest is the workout's `skip_last_rest`.
     """
     step: dict[str, Any] = {
         "type": "ExecutableStepDTO",
@@ -477,7 +478,7 @@ def new_group(spec: ExerciseSpec, target: Target) -> dict[str, Any]:
         "endCondition": dict(END_ITERATIONS),
         "endConditionValue": float(spec.sets),
         "smartRepeat": False,
-        "skipLastRestStep": False,
+        "skipLastRestStep": spec.skip_last_rest,
         "workoutSteps": [step, new_rest(spec.rest or None)],
     }
 

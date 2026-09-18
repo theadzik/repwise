@@ -588,6 +588,27 @@ def test_a_dry_run_only_says_the_last_rest_would_come_back(rested, caplog):
     assert "1 step(s) would stop skipping their last rest" in caplog.text
 
 
+def test_a_workout_that_skips_has_its_last_rest_dropped(rested, caplog):
+    config = config_ab(a_exercises=(replace(SQUAT, skip_last_rest=True), CALF))
+
+    with caplog.at_level(logging.INFO, logger="repwise.app.update"):
+        code = run(rested, config, apply=True)
+
+    assert code == ExitCode.OK
+    assert saved_skip(rested.saved, "111") is True
+    assert "Dropped the last rest on 1 step(s)." in caplog.text
+
+
+def test_a_dry_run_only_says_the_last_rest_would_go(rested, caplog):
+    config = config_ab(a_exercises=(replace(SQUAT, skip_last_rest=True), CALF))
+
+    with caplog.at_level(logging.INFO, logger="repwise.app.update"):
+        run(rested, config)
+
+    assert rested.saved == []
+    assert "1 step(s) would skip their last rest" in caplog.text
+
+
 # --- step notes -----------------------------------------------------------
 
 

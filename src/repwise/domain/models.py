@@ -192,6 +192,13 @@ class ExerciseSpec:
     #: Declared once as settings.partial_progression and resolved onto every
     #: exercise, the way a weight step is.
     partial_progression: bool = True
+    #: Whether the exercise's repeat groups drop the rest after the final set -
+    #: Connect's "skip last rest". Declared once per workout as
+    #: `skip_last_rest` and resolved onto each of its exercises, the way
+    #: `partial_progression` is: it is a choice about how the session runs,
+    #: most useful where a lap-button wait already follows every exercise and
+    #: a timed rest in front of it would only be waited out twice.
+    skip_last_rest: bool = False
     #: The equipment this exercise is loaded on, ascending. Empty means the
     #: load type said nothing a single `weight_step`, `min_weight` and
     #: `max_weight` could not, which is every config written before groups

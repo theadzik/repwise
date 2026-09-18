@@ -710,6 +710,43 @@ def test_the_last_rest_is_restored_in_a_workout_that_only_receives_a_sync():
     assert [c.spec.name for c in plan.skips] == [CALF.name]
 
 
+def test_a_workout_that_skips_turns_the_switch_on():
+    """The other direction, which only the workout's `skip_last_rest` asks for."""
+    skips = replace(RESTED, skip_last_rest=True)
+    built = squat_group(rest=150.0)
+
+    plan = plan_workout(a_workout(exercises=[skips]), built, ({}, {}))
+
+    assert skips_of(built) == [True]
+    assert [(c.spec.name, c.skip) for c in plan.skips] == [(skips.name, True)]
+    assert plan.writable, "the last rest alone is worth writing"
+
+
+def test_a_workout_that_skips_leaves_a_skipping_group_alone():
+    skips = replace(RESTED, skip_last_rest=True)
+    step = rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0)
+    step["description"] = skips.note  # so only the last rest could be a reason
+    built = skipping(workout(repeat(step, sets=3, rest=150.0)))
+
+    plan = plan_workout(a_workout(exercises=[skips]), built, ({}, {}))
+
+    assert plan.skips == []
+    assert not plan.writable
+
+
+def test_both_halves_of_a_ramp_start_skipping_but_count_once():
+    ramped = replace(RESTED, sets=4, skip_last_rest=True)
+    built = payload(
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 20.0), 2, 150.0),
+        repeat(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 20.0), 2, 150.0),
+    )
+
+    plan = plan_workout(a_workout(exercises=[ramped]), built, ({}, {}))
+
+    assert skips_of(built) == [True, True]
+    assert [c.spec.name for c in plan.skips] == [ramped.name]
+
+
 # --- the shape of the workout ---------------------------------------------
 #
 # The config decides which exercises a workout holds and in what order. Garmin

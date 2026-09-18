@@ -172,8 +172,9 @@ def default_dump_dir() -> str:
 def _flag(declared: object, key: str, *, default: bool) -> bool:
     """A yes-or-no setting, read as one rather than coerced into one.
 
-    `key` is the whole dotted path, since these live at more than one level of
-    the file and a message naming the wrong one is worse than no message.
+    `key` is the whole path to the setting, as the message should name it,
+    since these live at more than one level of the file and a message naming
+    the wrong one is worse than no message.
 
     YAML has booleans, so a setting that wants one should insist: `bool()`
     would read the string `"false"` as true and turn a feature on for someone
@@ -188,7 +189,7 @@ def _flag(declared: object, key: str, *, default: bool) -> bool:
         return default
     if not isinstance(declared, bool):
         raise ConfigError(
-            f"settings.{key} should be true or false, not "
+            f"{key} should be true or false, not "
             f"{declared!r}. Unquoted, so that YAML reads it as a boolean."
         )
     return declared
@@ -642,13 +643,14 @@ def _bodyweight_factor(raw: dict[str, Any], where: str, problems: Problems) -> f
     return factor
 
 
-def _build_exercise(
+def _build_exercise(  # noqa: PLR0913 - the flags are settings resolved onto it
     raw: dict[str, Any],
     types: dict[str, LoadType],
     where: str,
     problems: Problems,
     *,
     partial_progression: bool = True,
+    skip_last_rest: bool = False,
 ) -> ExerciseSpec | None:
     missing = [key for key in _REQUIRED if raw.get(key) is None]
     if missing:
@@ -747,6 +749,7 @@ def _build_exercise(
         max_weight=max_weight,
         bodyweight_factor=bodyweight_factor,
         partial_progression=partial_progression,
+        skip_last_rest=skip_last_rest,
         tiers=tiers,
     )
 
@@ -768,6 +771,12 @@ def _build_workout(
 
     workout_id = entry.get("garmin_workout_id")
 
+    # A property of the workout, written to every repeat group in it, so it is
+    # resolved onto each exercise rather than consulted from the workout.
+    skip_last_rest = _flag(
+        entry.get("skip_last_rest"), f"{path}:{key}: skip_last_rest", default=False
+    )
+
     exercises = []
     for raw in entry.get("exercises") or []:
         spec = _build_exercise(
@@ -776,6 +785,7 @@ def _build_workout(
             f"{path}:{key}",
             problems,
             partial_progression=partial_progression,
+            skip_last_rest=skip_last_rest,
         )
         if spec is not None:
             exercises.append(spec)
@@ -870,7 +880,7 @@ def load_config(path: str | None = None) -> Config:
         ),
         activity_caching=_flag(
             garmin_raw.get("activity_caching"),
-            "garmin.activity_caching",
+            "settings.garmin.activity_caching",
             default=defaults.activity_caching,
         ),
     )
@@ -880,7 +890,9 @@ def load_config(path: str | None = None) -> Config:
     # every exercise, the way a weight step is: the rules read it
     # off the spec in hand rather than being handed the settings.
     partial_progression = _flag(
-        settings.get("partial_progression"), "partial_progression", default=True
+        settings.get("partial_progression"),
+        "settings.partial_progression",
+        default=True,
     )
 
     # Unset means "ask Garmin", which is the better answer for anyone who
