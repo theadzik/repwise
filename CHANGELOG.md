@@ -1,3 +1,13 @@
+## 3.4.0 (2026-09-18)
+
+### Feat
+
+- **garmin**: ask Garmin for strength sessions only (#105) ([7a9835f](https://github.com/theadzik/repwise/commit/7a9835f6c47ebda01cc8b4b49b18a66573497310))
+- freeze (#104) ([50787aa](https://github.com/theadzik/repwise/commit/50787aaccc2e997fd2fe98d65f329f429fed0832))
+- **config**: add skip_last_rest to drop the rest after each exercise's last set (#103) ([95eb574](https://github.com/theadzik/repwise/commit/95eb574945d9ca3ad4cd862e8163f8657d443ec8))
+- **config**: add watch_note_limit; the note length check is off unless you set one (#102) ([09c67e7](https://github.com/theadzik/repwise/commit/09c67e7b6a6c17caef3066999675ca0043492010))
+- judge a note against the watch you actually read it on ([09c67e7](https://github.com/theadzik/repwise/commit/09c67e7b6a6c17caef3066999675ca0043492010))
+
 ## 3.3.0 (2026-09-10)
 
 ### Feat
