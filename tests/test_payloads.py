@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 
+import pytest
 from builders import (
     GARMIN_GROUP_KEYS,
     GARMIN_STEP_KEYS,
@@ -362,6 +363,14 @@ def test_a_built_workout_reads_back_as_the_exercises_it_was_built_from():
     assert [b.rest for b in blocks] == [120, None]
     assert step_target(blocks[0].step) == Target(6, 0.0)
     assert step_target(blocks[1].step, time_based=True) == Target(30, 0.0)
+
+
+@pytest.mark.parametrize("skip", [False, True])
+def test_a_built_exercise_skips_its_last_rest_only_when_its_workout_does(skip):
+    """Built right the first time, so a new exercise needs no correcting on
+    the run after it was created."""
+    group = new_group(replace(SQUAT, skip_last_rest=skip), Target(8, 20.0))
+    assert group["skipLastRestStep"] is skip
 
 
 def test_a_built_exercise_carries_its_note():

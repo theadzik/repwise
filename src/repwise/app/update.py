@@ -579,7 +579,12 @@ def run_update(
     noted = counted(plans, lambda plan: (c.spec.garmin_name for c in plan.notes))
     rested = counted(plans, lambda plan: (c.spec.garmin_name for c in plan.rests))
     recounted = counted(plans, lambda plan: (c.spec.garmin_name for c in plan.sets))
-    unskipped = counted(plans, lambda plan: (c.spec.garmin_name for c in plan.skips))
+    unskipped = counted(
+        plans, lambda plan: (c.spec.garmin_name for c in plan.skips if not c.skip)
+    )
+    skipped = counted(
+        plans, lambda plan: (c.spec.garmin_name for c in plan.skips if c.skip)
+    )
     # One per workout however many gap steps it touched: the config says it once.
     regaps = len({counted_as(plan.workout) for plan in plans if plan.gaps})
     renames = len({counted_as(plan.workout) for plan in plans if plan.name})
@@ -600,7 +605,7 @@ def run_update(
         f", {unskipped} step(s) would stop skipping their last rest"
         if unskipped
         else ""
-    )
+    ) + (f", {skipped} step(s) would skip their last rest" if skipped else "")
 
     if not options.apply:
         logger.info("")
@@ -612,7 +617,14 @@ def run_update(
         return ExitCode.OK
 
     moved_anything = (
-        updated or noted or rested or recounted or unskipped or regaps or renames
+        updated
+        or noted
+        or rested
+        or recounted
+        or unskipped
+        or skipped
+        or regaps
+        or renames
     )
     if not (moved_anything or shaped):
         logger.info("")
@@ -628,6 +640,7 @@ def run_update(
         + (f" Set {recounted} set count(s)." if recounted else "")
         + (f" Set {rested} rest time(s)." if rested else "")
         + (f" Restored the last rest on {unskipped} step(s)." if unskipped else "")
+        + (f" Dropped the last rest on {skipped} step(s)." if skipped else "")
         + (f" Set the rest between exercises in {regaps} workout(s)." if regaps else "")
         + (f" Renamed {renames} workout(s)." if renames else "")
         + (f" Refreshed {noted} note(s)." if noted else "")

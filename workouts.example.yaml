@@ -29,6 +29,10 @@
 #   activity_prefixes       how a logged activity is matched to this workout
 #   rest_between_exercises  seconds between exercises; leave it out to keep
 #                           Garmin's own wait for the lap button
+#   skip_last_rest          true to drop the rest after each exercise's final
+#                           set, for a workout that waits for the lap button
+#                           between exercises anyway; left out, every set
+#                           gets its rest
 #
 # Per-exercise fields, in the order they are performed:
 #   name            label used in this tool's output

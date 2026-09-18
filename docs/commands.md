@@ -44,7 +44,7 @@ run, trained or not:
 | Which workouts exist, creating any Garmin lacks | The target: reps and weight |
 | The workout's name, from its `key` | |
 | Which exercises each holds, and in what order | |
-| `sets`, `rest`, and `rest_between_exercises` | |
+| `sets`, `rest`, `rest_between_exercises` and `skip_last_rest` | |
 | The note on each step | |
 
 ### Renaming a workout
@@ -336,19 +336,25 @@ Set that step to a timed rest in Garmin Connect if you want the config to drive
 it. The rest *between exercises* is a separate step, driven by
 [`rest_between_exercises`](#rest-between-exercises) and otherwise left alone.
 
-**Every set gets its rest, including the last.** Connect can be told to drop
-the rest that follows a repeat group's final set, which leaves one exercise
-behaving unlike the others in the same workout. An exercise's `rest` means
-every set of it, so a group set to skip is put back:
+**Whether the last set gets its rest is the workout's call.** Connect can be
+told to drop the rest that follows a repeat group's final set, and
+`skip_last_rest` on a workout decides it for every group in it. Left out or
+`false`, every set gets its rest and a group Connect was told to skip is put
+back; `true`, every group drops it and one still resting is switched off:
 
 ```text
 * 3 Weighted Standing Calf Raise hold   4                      last-rest from workouts.yaml
 ```
 
-Applied to every exercise, whether or not it declares a `rest`: how long to
-rest is the config's to say, but whether the last set gets one at all is not a
-setting this tool offers. Turn it back on in Connect and the next run undoes
-it.
+Applied to every exercise, whether or not it declares a `rest`, so one workout
+never runs two ways depending on which exercises were last edited in Connect.
+Change it there and the next run puts it back; change it in `workouts.yaml`
+instead.
+
+What it is for is a workout whose exercises are already separated by a wait
+for the lap button - `rest_between_exercises` left out. Without it the last set
+of each exercise is followed by its timed rest and *then* the wait, and the
+countdown in front of the button is only time spent standing still.
 
 ### Step notes
 

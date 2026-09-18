@@ -1104,6 +1104,33 @@ def test_bodyweight_can_be_stated_instead(write_config):
     assert load_config(write_config(text)).bodyweight == 81.5
 
 
+def test_the_last_rest_is_kept_by_default(write_config):
+    """Off unless asked, which is what this tool has always built."""
+    config = load_config(write_config(FIXTURE))
+    assert not any(spec.skip_last_rest for spec in config["Workout A"].exercises)
+
+
+def test_skip_last_rest_reaches_every_exercise_in_its_workout(write_config):
+    """Declared once on the workout, because it is written to every group."""
+    text = FIXTURE.replace(
+        '    garmin_workout_id: "123"\n',
+        '    garmin_workout_id: "123"\n    skip_last_rest: true\n',
+    )
+    config = load_config(write_config(text))
+    assert all(spec.skip_last_rest for spec in config["Workout A"].exercises)
+
+
+def test_a_skip_last_rest_that_is_not_a_boolean_is_rejected(write_config):
+    """A quoted "false" would read as true if coerced, so it is refused, and
+    the message names the workout it was found in."""
+    text = FIXTURE.replace(
+        '    garmin_workout_id: "123"\n',
+        '    garmin_workout_id: "123"\n    skip_last_rest: "false"\n',
+    )
+    with pytest.raises(ConfigError, match=r"Workout A: skip_last_rest should be"):
+        load_config(write_config(text))
+
+
 def test_watch_note_limit_defaults_to_everything_garmin_stores(write_config):
     """Unset means the note is judged against the cut it already gets, which
     reports nothing: the screen it was measured on shows all of it."""

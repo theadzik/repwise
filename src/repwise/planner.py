@@ -34,10 +34,10 @@ from .garmin.payloads import (
     GENERATED_NOTE,
     ExerciseBlock,
     apply_block,
-    apply_last_rest,
     apply_note,
     apply_rest,
     apply_sets,
+    apply_skip_last_rest,
     apply_workout_name,
     block_target,
     executed_exercises,
@@ -126,13 +126,14 @@ class SetChange:
 
 @dataclass(frozen=True)
 class SkipChange:
-    """One exercise that was dropping the rest after its final set.
+    """One exercise whose rest after the final set was switched on or off.
 
-    Only ever recorded in one direction: every set gets its rest, so there is
-    no old and new value to hold, just which exercise had been the exception.
+    Only the new value is held: the switch has two positions, so the old one is
+    whatever this is not.
     """
 
     spec: ExerciseSpec
+    skip: bool
 
 
 @dataclass(frozen=True)
@@ -652,9 +653,9 @@ def _refresh_rest(
     correct a value, so it is reported and left alone.
 
     Whether the last set gets its rest at all is settled first, and for every
-    exercise: that is a property of the group rather than of the step, and an
-    exercise declaring no `rest` still means the one Garmin holds to be the
-    rest after each of its sets.
+    exercise: that is a property of the group rather than of the step, and it
+    is the workout's `skip_last_rest` that decides it, whether or not the
+    exercise declares a `rest` of its own.
     """
     _refresh_skips(block, spec, skips)
 
@@ -683,24 +684,25 @@ def _refresh_rest(
 def _refresh_skips(
     block: ExerciseBlock, spec: ExerciseSpec, skips: list[SkipChange]
 ) -> None:
-    """Keep the rest after the final set, which Connect can be told to drop.
+    """Keep the rest after the final set where the workout's `skip_last_rest` says.
 
-    `skipLastRestStep` is a switch on the repeat group, and the one place a set
-    can end without the rest the config prescribes for it. An exercise's `rest`
-    means every set, so a group set to skip is put back rather than reported:
-    this tool builds groups that do not skip, and leaving one that does would
-    make the same exercise behave differently in two workouts.
+    `skipLastRestStep` is a switch on the repeat group, the one place a set can
+    end without the rest the config prescribes for it. It is the workout's to
+    decide, in both directions, and a group Connect was told otherwise is put
+    back rather than reported: leaving one that differs would make one workout
+    run two ways depending on which exercises happened to be edited by hand.
 
-    A ramped exercise is cleared on both of its groups but recorded once, since
-    above this module it is one exercise with one rest.
+    A ramped exercise is switched on both of its groups but recorded once,
+    since above this module it is one exercise with one rest.
     """
-    skipping = [group for group in block.groups if skips_last_rest(group)]
-    if not skipping:
+    wanted = spec.skip_last_rest
+    stale = [group for group in block.groups if skips_last_rest(group) != wanted]
+    if not stale:
         return
 
-    for group in skipping:
-        apply_last_rest(group)
-    skips.append(SkipChange(spec))
+    for group in stale:
+        apply_skip_last_rest(group, skip=wanted)
+    skips.append(SkipChange(spec, wanted))
 
 
 @dataclass

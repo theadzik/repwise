@@ -188,7 +188,8 @@ whose id is in the file.
 - `notes` is yours alone; it is not written back to Garmin, and not to be
   confused with the step note the watch shows, which this tool composes from
   the rep range and weight step. Rep, time and weight targets, that step note,
-  `sets`, `rest` and `rest_between_exercises` are all written to Garmin.
+  `sets`, `rest`, `rest_between_exercises` and `skip_last_rest` are all
+  written to Garmin.
 - Recording a workout id rewrites the config file, so comments and blank lines
   in it are lost the first time a workout is created. Values, ordering and
   unrecognised keys all survive; put anything worth keeping in `notes`.
@@ -197,8 +198,8 @@ whose id is in the file.
   `rest_between_exercises` does convert one, that being the point of the key -
   see [rest between exercises](commands.md#rest-between-exercises).
 - Connect's switch for dropping the rest after a repeat group's last set is
-  turned back off on every run, and there is no config key to keep it on: an
-  exercise's `rest` is meant for every set of it. See [rest between
+  set for a whole workout by `skip_last_rest`, not per exercise, and put back
+  to that on every run: one workout does not run two ways. See [rest between
   sets](commands.md#rest-between-sets).
 - An exercise Garmin holds outside a repeat group has nowhere to keep a set
   count, so a `sets` above 1 is reported and left alone. Connect builds a group

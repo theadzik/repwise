@@ -119,7 +119,8 @@ rather than on either step: `skipLastRestStep`. Connect sets it per group, and
 Garmin returns it as `true`, `false` or `null` - the last two both meaning the
 rest is performed. A workout can therefore hold one exercise that skips and
 seven that do not, with nothing in the steps to show for it, which is why
-`update` writes it back to `false` everywhere.
+`update` writes every group from the workout's `skip_last_rest` - `false`
+unless the config says otherwise.
 
 ### One exercise can need two groups
 

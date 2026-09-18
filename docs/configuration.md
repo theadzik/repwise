@@ -222,6 +222,7 @@ workouts:
 | `garmin_workout_id` | no | Garmin workout to update; the id in the Connect URL. Leave it out and the workout is created, then the id is written back here |
 | `activity_prefixes` | yes | Prefixes that match an activity name to this workout, compared case-insensitively |
 | `rest_between_exercises` | no | Seconds to rest between exercises. Left out, Garmin's own wait for the lap button is kept |
+| `skip_last_rest` | no | `true` drops the rest after each exercise's final set - Connect's "skip last rest", written to every repeat group in the workout. Left out or `false`, every set gets its rest. See [rest between sets](commands.md#rest-between-sets) |
 | `exercises` | yes | List of exercises, below |
 
 List every name your sessions might carry in `activity_prefixes`, including
