@@ -28,7 +28,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from .effort import next_weight_above, next_weight_below
-from .models import ExerciseSpec
+from .models import FROZEN, ExerciseSpec
 
 
 @dataclass(frozen=True)
@@ -272,6 +272,54 @@ def top_streak(spec: ExerciseSpec, history: list[Session], weight: float) -> int
         streak += 1
 
     return streak
+
+
+#: How many sessions a frozen exercise holds one target before `update` asks
+#: whether the freeze is still earning its place. Three, because a freeze is
+#: for a load that should become easy with repetition, and one that has not
+#: after three sessions is more likely waiting on recovery - sleep, stress,
+#: the volume around it - than on adaptation. Past that, the answer is to
+#: take the freeze off or take the load down, not to keep holding.
+FREEZE_REVIEW_AFTER = 3
+
+
+def frozen_streak(history: list[Session], target: Target) -> int:
+    """How many sessions in a row, before the latest, were asked for `target`.
+
+    What a freeze has been holding is the target, so that is what is compared -
+    but in two halves. The reps and the ramp come off the workout each past
+    session was performed against. The load cannot: Garmin's record of an
+    executed workout carries none (see docs/garmin-api.md), which is also why
+    `_moved_on` compares reps alone. So the load is read off what was lifted,
+    as `miss_streak` reads it, and a session worked at another weight belonged
+    to another ladder.
+
+    It is also how long the target has stood for any other reason - a miss
+    held at the same figure, a top-of-range confirmation - and those count,
+    since the question is how long this load has been asked for rather than
+    how long the key has been in the file.
+
+    The walk stops at the first session asked for something else, and at
+    `FREEZE_REVIEW_AFTER - 1`, past which the review is already due and a
+    longer count would change nothing but the figure.
+    """
+    limit = FREEZE_REVIEW_AFTER - 1
+    streak = 0
+    for session in history:
+        if streak >= limit:
+            break
+        asked = (session.target.reps, session.target.lead)
+        if asked != (target.reps, target.lead):
+            break
+        if not session.performed or working_weight(session.performed) != target.weight:
+            break
+        streak += 1
+    return streak
+
+
+def frozen(reason: str) -> bool:
+    """Whether a reason from `next_target` reports a target held by `freeze`."""
+    return reason.startswith(FROZEN)
 
 
 #: How many sessions must have missed *before* this one for it to count as a
@@ -577,7 +625,7 @@ def _advance(  # noqa: PLR0913 - each argument is one independent input
     )
 
 
-def next_target(  # noqa: PLR0913 - each argument is one independent input
+def next_target(  # noqa: PLR0911, PLR0913 - a return per rule, an argument per input
     spec: ExerciseSpec,
     current: Target,
     performed: list[PerformedSet],
@@ -585,6 +633,7 @@ def next_target(  # noqa: PLR0913 - each argument is one independent input
     *,
     bodyweight: float = 0.0,
     topped: int = 0,
+    held: int = 0,
 ) -> tuple[Target, str]:
     """Decide the next prescription for one exercise.
 
@@ -606,6 +655,10 @@ def next_target(  # noqa: PLR0913 - each argument is one independent input
     is no history to consult - a first-ever session, or one too old to look
     behind - and costs a single held session at the top of the range, which the
     session after it then confirms.
+
+    `held` is how many sessions in a row were already asked for this target,
+    from `frozen_streak`, and is only ever read to say how long a frozen
+    exercise has been holding.
 
     Returns the new target plus a short human-readable reason.
     """
@@ -654,6 +707,16 @@ def next_target(  # noqa: PLR0913 - each argument is one independent input
         if streak >= STALLED_AFTER:
             return _deload(spec, current, weight, counted, bodyweight=bodyweight)
         return current, _missed(floor)
+
+    # Frozen by hand: the session met its target, and the target stays. Only
+    # at the load prescribed - a session at another one is your own choice of
+    # load, judged like any other, and lifting lighter is how a frozen
+    # exercise is deloaded without taking the freeze off first.
+    if spec.freeze and not rebased:
+        sessions = held + 1
+        shown = f"{sessions}+" if held >= FREEZE_REVIEW_AFTER - 1 else f"{sessions}"
+        plural = "" if sessions == 1 else "s"
+        return current, f"{FROZEN}, {shown} session{plural} at this target"
 
     return _advance(
         spec, current, weight, floor, streak, bodyweight=bodyweight, topped=topped

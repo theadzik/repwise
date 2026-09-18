@@ -12,17 +12,22 @@ from typing import Any
 
 from .domain.matching import ExerciseIndex, normalise, variants
 from .domain.models import (
+    FROZEN,
     Config,
     ExerciseSpec,
     Workout,
+    frozen_marker,
     hold_marker,
     marker_of,
     with_marker,
 )
 from .domain.progression import (
+    FREEZE_REVIEW_AFTER,
     PerformedSet,
     Session,
     Target,
+    frozen,
+    frozen_streak,
     miss_streak,
     missed,
     next_target,
@@ -437,6 +442,22 @@ def _topped(
     return top_streak(spec, past, working_weight(logged))
 
 
+def _held(spec: ExerciseSpec, current: Target, history: History | None) -> int:
+    """How many sessions in a row were already asked for this target.
+
+    Read only for a frozen exercise, since nothing else asks - and asking is
+    what makes `gather_history` read further back, which a frozen exercise
+    alone pays for. No history is no count, and a first frozen session is
+    simply the first.
+    """
+    if not spec.freeze or not history:
+        return 0
+    past = history.get(normalise(spec.garmin_name))
+    if not past:
+        return 0
+    return frozen_streak(past, current)
+
+
 #: Why a target that was part-way up a ramp is evened out. Worth saying in the
 #: report because nothing else in the run accounts for it: no session earned
 #: it, and the figure in workouts.yaml did not move.
@@ -573,14 +594,34 @@ def _judge(  # noqa: PLR0913 - each argument is one independent input
         logged = [entry.as_time() for entry in logged]
 
     streak = _streak(spec, logged, history)
+    held = _held(spec, current, history)
     new, why = next_target(
-        spec, current, logged, streak, topped=_topped(spec, logged, history)
+        spec,
+        current,
+        logged,
+        streak,
+        topped=_topped(spec, logged, history),
+        held=held,
     )
     # A session that fell short leaves the number on the watch for you to try
-    # again, and the note says so - see `_refresh_note`. Anything else clears
-    # the marker rather than leaving it None: a session that advanced, or one
-    # that only banked a load, is evidence the hold is over.
-    marker = hold_marker(streak, spec.sets) if missed(why) else ""
+    # again, and the note says so - see `_refresh_note`. A frozen one that hit
+    # says how long it has been holding. Anything else clears the marker rather
+    # than leaving it None: a session that advanced, or one that only banked a
+    # load, is evidence the hold is over.
+    marker = ""
+    if missed(why):
+        marker = hold_marker(streak, spec.sets)
+    elif frozen(why):
+        marker = frozen_marker(held, FREEZE_REVIEW_AFTER - 1)
+        # Only reached once the count has saturated, so it is always "N+".
+        if held >= FREEZE_REVIEW_AFTER - 1:
+            shaped.warnings.append(
+                f"{spec.name}: frozen for {FREEZE_REVIEW_AFTER}+ sessions at this "
+                f"target. "
+                f"If it feels right now, remove `freeze`; if it still does "
+                f"not, deload - lift a lighter load next session and the "
+                f"target rebases onto it"
+            )
     return Change(spec, current, new, why, marker)
 
 
@@ -619,6 +660,11 @@ def _refresh_note(
 
     if marker is None:
         marker = next((marker_of(note) for note in existing if note), "")
+        # The one marker the config does decide: with `freeze` gone from the
+        # file, a `frozen` left on the note would be read on the watch at the
+        # very next session as a freeze that no longer exists.
+        if marker.startswith(FROZEN) and not spec.freeze:
+            marker = ""
     wanted = with_marker(spec.note, marker)
 
     stale = [step for step in block.steps if step_note(step) != wanted]

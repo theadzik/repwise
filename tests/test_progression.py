@@ -6,9 +6,12 @@ from builders import held, spec
 from repwise.domain.models import LoadTier
 from repwise.domain.progression import (
     CONFIRMED_AFTER,
+    FREEZE_REVIEW_AFTER,
     Session,
     Target,
     _ladder,
+    frozen,
+    frozen_streak,
     hit,
     miss_streak,
     next_target,
@@ -1189,3 +1192,101 @@ def test_an_overfull_ramp_ranks_where_a_full_one_does():
 
     assert _ladder(OVERFULL, Target(6, 20.0, lead=3)) == full
     assert _ladder(OVERFULL, Target(6, 20.0, lead=99)) == full
+
+
+# --- freezing an exercise by hand -----------------------------------------
+#
+# For numbers that are going up while the effort behind them says they should
+# not. A hit is held; a miss is still a miss; a different load is your call.
+
+FROZEN_SQUAT = spec(freeze=True)
+
+
+def test_a_frozen_exercise_holds_a_target_it_hit():
+    target, why = next_target(FROZEN_SQUAT, Target(8, 20.0), [P(8, 20.0)] * 3)
+
+    assert target == Target(8, 20.0)
+    assert why == "frozen, 1 session at this target"
+    assert frozen(why)
+
+
+def test_a_frozen_exercise_that_beat_its_target_still_holds():
+    """Beating it is the case a freeze is for: the reps were there, the
+    reserve behind them was not."""
+    target, _ = next_target(FROZEN_SQUAT, Target(8, 20.0), [P(10, 20.0)] * 3)
+    assert target == Target(8, 20.0)
+
+
+def test_a_frozen_exercise_holds_at_the_top_of_the_range_too():
+    target, _ = next_target(
+        FROZEN_SQUAT, Target(10, 20.0), [P(10, 20.0)] * 3, topped=CONFIRMED_AFTER
+    )
+    assert target == Target(10, 20.0), "no load goes on while frozen"
+
+
+@pytest.mark.parametrize(
+    ("held_before", "said"),
+    [
+        (1, "frozen, 2 sessions at this target"),
+        (2, "frozen, 3+ sessions at this target"),
+    ],
+)
+def test_the_reason_says_how_long_the_target_has_stood(held_before, said):
+    _, why = next_target(
+        FROZEN_SQUAT, Target(8, 20.0), [P(8, 20.0)] * 3, held=held_before
+    )
+    assert why == said
+
+
+def test_a_miss_is_still_a_miss_when_frozen():
+    target, why = next_target(
+        FROZEN_SQUAT, Target(8, 20.0), [P(8, 20.0), P(8, 20.0), P(6, 20.0)]
+    )
+    assert target == Target(8, 20.0)
+    assert is_miss(why) and not frozen(why)
+
+
+def test_a_second_miss_eases_a_frozen_exercise_as_usual():
+    target, why = next_target(FROZEN_SQUAT, Target(8, 20.0), [P(6, 20.0)] * 3, streak=1)
+    assert target.reps < 8, why
+    assert not frozen(why)
+
+
+def test_a_lighter_load_deloads_a_frozen_exercise():
+    """Lifting something other than what was prescribed is your own choice of
+    load, and judged like any other - which is how you deload one by hand."""
+    target, why = next_target(FROZEN_SQUAT, Target(8, 30.0), [P(9, 20.0)] * 3)
+
+    assert target.weight == 20.0, why
+    assert not frozen(why)
+
+
+def test_an_unfrozen_exercise_is_not_held():
+    target, why = next_target(SQUAT, Target(8, 20.0), [P(8, 20.0)] * 3, held=2)
+    assert target == Target(9, 20.0)
+    assert not frozen(why)
+
+
+def asked(reps, lifted=20.0, lead=0):
+    """A past session as Garmin returns one: the executed target carries no
+    load, so the weight is only in what was lifted."""
+    return Session(Target(reps, 0.0, lead), [P(reps, lifted)] * 3)
+
+
+def test_the_frozen_streak_counts_sessions_asked_for_the_same_target():
+    now = Target(8, 20.0)
+    assert frozen_streak([], now) == 0
+    assert frozen_streak([asked(8)], now) == 1
+    assert frozen_streak([asked(8), asked(7)], now) == 1
+
+
+def test_the_frozen_streak_stops_at_the_review():
+    """Past it the warning is already due, so a longer count changes nothing
+    but the figure, and every session further back costs two requests."""
+    assert frozen_streak([asked(8)] * 9, Target(8, 20.0)) == FREEZE_REVIEW_AFTER - 1
+
+
+def test_a_different_load_or_ramp_is_a_different_target():
+    now = Target(8, 20.0)
+    assert frozen_streak([asked(8, lifted=22.5)], now) == 0
+    assert frozen_streak([asked(8, lead=1)], now) == 0

@@ -53,6 +53,9 @@
 #   start_weight    kg a newly created exercise starts at; never read again
 #                   once the step exists, progression owns the weight from then
 #   unit            reps (default) or seconds for timed holds
+#   freeze          true to hold the target through sessions that hit it,
+#                   for a load hit with less in reserve than intended; a miss
+#                   is still a miss, and update warns after three sessions
 #   notes           free text: a cue, a link, a reminder. Read by nobody -
 #                   not this tool, not Garmin. Survives a rewrite of the file,
 #                   which is what makes it the place for anything you would

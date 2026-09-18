@@ -12,6 +12,7 @@ from repwise.domain.models import (
     ExerciseSpec,
     LoadTier,
     Workout,
+    frozen_marker,
     hold_marker,
     marker_of,
     with_marker,
@@ -249,3 +250,31 @@ def test_a_prefix_is_matched_without_regard_to_case():
 
 def test_a_workout_with_no_prefixes_claims_nothing():
     assert not Workout("Workout A", "1", [], []).claims("Training A")
+
+
+# --- the frozen marker ----------------------------------------------------
+
+
+def test_a_first_frozen_session_needs_no_count():
+    assert frozen_marker(0, 2) == "frozen"
+
+
+def test_a_frozen_count_includes_the_session_being_judged():
+    assert frozen_marker(1, 2) == "frozen x2"
+
+
+def test_a_frozen_count_at_its_cap_says_or_more():
+    """The walk stopped there, so nothing is known about the sessions behind."""
+    assert frozen_marker(2, 2) == "frozen x3+"
+
+
+def test_a_frozen_marker_round_trips_and_replaces_a_hold():
+    """One slot for either word: the one the latest session earned wins."""
+    marked = with_marker(with_marker(CUED, "hold x2"), "frozen x2")
+    assert marker_of(marked) == "frozen x2"
+    assert marked == "6-10 reps | +5 kg | frozen x2 | 0-1 RIR | knees out"
+
+
+def test_a_cue_beginning_with_frozen_is_not_a_marker():
+    note = "6-10 reps | +5 kg | frozen shoulders, pull them down first"
+    assert marker_of(note) == ""

@@ -292,6 +292,7 @@ they are not part of the document. Keep anything worth saying in an exercise's
 | `start_weight` | no | `0` | kg a **newly created** exercise starts at. Never read again once the step exists; progression owns the weight from then on |
 | `unit` | no | `reps` | `reps`, or `seconds` for timed holds like planks |
 | `bodyweight_factor` | no | `0` | The share of **you** this movement carries, 0 to 1. Read only by [`check`](#does-the-range-fit-the-step) |
+| `freeze` | no | `false` | Hold the target where it is through sessions that hit it, until you take it off. A miss is still a miss. See [freezing an exercise](progression.md#freezing-an-exercise) |
 | `notes` | no | none | A cue read mid-set: how far from failure to stop, what the position should look like. Written to the watch on the end of the step's note, so keep it to one line - see [step notes](commands.md#step-notes) |
 
 `garmin_category` is worth filling in even though it is optional: Garmin
@@ -607,6 +608,9 @@ than half-applied. You get an error naming the file and workout for:
 - a `watch_note_limit` outside 1 to 512, the most of a note Garmin keeps
 - a workout with neither a `garmin_workout_id` nor any exercises, which is
   nothing to find in Garmin and nothing to build there either
+- a [shared exercise](progression.md#shared-exercises) frozen in some
+  workouts and not others - they share one target, so freeze every copy or
+  none
 - a [shared exercise](progression.md#shared-exercises) programmed with
   different rep ranges in different workouts. Two entries carrying one
   `garmin_name` on different `load`s are not shared, and are free to differ

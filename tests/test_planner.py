@@ -468,6 +468,82 @@ def test_a_saturated_streak_says_so_rather_than_understating_it():
     assert only_note(payload) == "6-10 reps | +2.5 kg | hold x3+"
 
 
+FROZEN_SQUAT = replace(SQUAT, freeze=True)
+
+
+def a_frozen_squat_hit(times_before=0):
+    """A frozen squat stored at 8 reps, hit again, `times_before` sessions of
+    the same target behind it."""
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 20.0))
+    history = {
+        # As Garmin returns a past session: the load is only in what was lifted.
+        "barbellbacksquat": [Session(Target(8, 0.0), [PerformedSet(8, 20.0)] * 3)]
+        * times_before
+    }
+    plan = plan_workout(
+        a_workout(exercises=[FROZEN_SQUAT]), payload, a_squat_session(8), history
+    )
+    return payload, plan
+
+
+def test_a_frozen_hit_holds_and_marks_the_note():
+    payload, plan = a_frozen_squat_hit()
+
+    assert not plan.moved
+    assert plan.changes[0].reason == "frozen, 1 session at this target"
+    assert only_note(payload) == "6-10 reps | +2.5 kg | frozen"
+    assert not any("frozen for" in w for w in plan.warnings)
+
+
+def test_the_frozen_marker_counts_the_sessions_behind_it():
+    payload, plan = a_frozen_squat_hit(times_before=1)
+
+    assert only_note(payload) == "6-10 reps | +2.5 kg | frozen x2"
+    assert not any("frozen for" in w for w in plan.warnings), "not due yet"
+
+
+def test_a_third_frozen_session_asks_for_a_decision():
+    """By then a load that was going to become easy should have: take the
+    freeze off, or take the load down."""
+    payload, plan = a_frozen_squat_hit(times_before=5)
+
+    assert only_note(payload) == "6-10 reps | +2.5 kg | frozen x3+"
+    [warning] = [w for w in plan.warnings if "frozen for" in w]
+    assert "frozen for 3+ sessions" in warning
+    assert "remove `freeze`" in warning and "deload" in warning
+
+
+def test_a_frozen_miss_is_marked_as_a_miss():
+    payload, performed = a_missed_squat()
+    plan = plan_workout(a_workout(exercises=[FROZEN_SQUAT]), payload, performed)
+
+    assert only_note(payload) == "6-10 reps | +2.5 kg | hold"
+    assert plan.changes[0].reason.startswith("missed")
+
+
+def test_unfreezing_clears_the_marker_without_waiting_for_a_session():
+    """Otherwise the next session is started with the watch still saying
+    frozen, about a freeze that is no longer in the file."""
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 20.0))
+    only_step = next(iter(payload["workoutSegments"][0]["workoutSteps"]))
+    only_step["description"] = "6-10 reps | +2.5 kg | frozen x2"
+
+    plan_workout(a_workout(), payload, ({}, {}))
+
+    assert only_note(payload) == "6-10 reps | +2.5 kg"
+
+
+def test_a_frozen_marker_survives_a_run_that_judged_no_session():
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 8, 20.0))
+    only_step = next(iter(payload["workoutSegments"][0]["workoutSteps"]))
+    only_step["description"] = "6-10 reps | +2.5 kg | frozen x2"
+
+    plan = plan_workout(a_workout(exercises=[FROZEN_SQUAT]), payload, ({}, {}))
+
+    assert plan.notes == []
+    assert only_note(payload) == "6-10 reps | +2.5 kg | frozen x2"
+
+
 def test_a_cue_beginning_with_hold_is_not_read_as_a_marker():
     """One of the real cues starts "hold the chair", and clearing it as if it
     were a marker would delete it."""
