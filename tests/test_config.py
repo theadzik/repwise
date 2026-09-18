@@ -697,6 +697,36 @@ def test_shared_exercise_with_differing_ranges_is_rejected(write_config):
         load_config(write_config(SHARED.format(low=8)))
 
 
+def test_an_exercise_is_not_frozen_unless_it_says_so(write_config):
+    config = load_config(write_config(FIXTURE))
+    assert not any(spec.freeze for spec in config["Workout A"].exercises)
+
+
+def test_freeze_is_read_per_exercise(write_config):
+    text = FIXTURE.replace(
+        "        rest: 120\n", "        rest: 120\n        freeze: true\n"
+    )
+    squat, plank = load_config(write_config(text))["Workout A"].exercises
+    assert squat.freeze and not plank.freeze
+
+
+def test_a_freeze_that_is_not_a_boolean_is_rejected(write_config):
+    text = FIXTURE.replace(
+        "        rest: 120\n", "        rest: 120\n        freeze: yes please\n"
+    )
+    with pytest.raises(ConfigError, match=r"Barbell Back Squat: freeze should be"):
+        load_config(write_config(text))
+
+
+def test_a_shared_exercise_frozen_in_only_one_workout_is_rejected(write_config):
+    """They share a target, so the unfrozen copy would move it for both."""
+    first = "        load: machine\n  - key: Workout B"
+    frozen = "        load: machine\n        freeze: true\n  - key: Workout B"
+    text = SHARED.format(low=12).replace(first, frozen)
+    with pytest.raises(ConfigError, match="frozen in some and not others"):
+        load_config(write_config(text))
+
+
 def test_one_name_on_two_loads_is_not_shared(write_config):
     """The machine calf raise and the dumbbell one are two exercises."""
     text = SHARED.format(low=12).replace("load: machine", "load: dumbbell", 1)

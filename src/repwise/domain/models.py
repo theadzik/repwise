@@ -28,14 +28,21 @@ STORED_NOTE = 512
 #: here is one the cue behind it does not get.
 HOLD = "hold"
 
-#: What a hold marker looks like, matched against a whole `|`-separated field
-#: rather than searched for.
+#: The word a note carries while an exercise is frozen by hand - `freeze` in
+#: workouts.yaml - and is holding a target it has been hitting. A different
+#: word from `HOLD` because it asks something different: `hold` is the tool
+#: saying match this, `frozen` is you having said not yet.
+FROZEN = "frozen"
+
+#: What a marker looks like, matched against a whole `|`-separated field rather
+#: than searched for. Either word, bare or with a count.
 #:
 #: Anchored on purpose. A cue is free text that a user typed, and one of them
 #: begins "hold the chair, lean away" - searching for the word would read that
 #: as a marker, and clearing it would delete the cue. Only a field that is
-#: exactly `hold`, `hold x3` or `hold x3+` and nothing else counts.
-HOLD_MARKER = re.compile(rf"^{HOLD}(?: x\d+\+?)?$")
+#: exactly `hold`, `hold x3`, `frozen x3+` and the like, and nothing else,
+#: counts.
+MARKER = re.compile(rf"^(?:{HOLD}|{FROZEN})(?: x\d+\+?)?$")
 
 
 def hold_marker(streak: int, sets: int) -> str:
@@ -60,6 +67,22 @@ def hold_marker(streak: int, sets: int) -> str:
     return f"{HOLD} x{misses}{saturated}"
 
 
+def frozen_marker(streak: int, cap: int) -> str:
+    """The marker for a frozen session, `streak` sessions at its target behind it.
+
+    Counted the way `hold_marker` counts: `streak` is the sessions *before* the
+    one just judged, so the figure shown is one more. `cap` is where the walk
+    that produced `streak` stopped looking, and a count that reached it is
+    shown with a `+` - `frozen x3+` means three or more, since the history
+    behind the third was never read.
+    """
+    sessions = streak + 1
+    if sessions == 1:
+        return FROZEN
+    saturated = "+" if streak >= cap else ""
+    return f"{FROZEN} x{sessions}{saturated}"
+
+
 def _split_note(note: str) -> tuple[str, str, str]:
     """A note as its fixed head, its marker, and everything after.
 
@@ -74,13 +97,13 @@ def _split_note(note: str) -> tuple[str, str, str]:
         return note, "", ""
     head = " | ".join(parts[:2])
     field, _, rest = parts[2].partition(" | ")
-    if HOLD_MARKER.match(field):
+    if MARKER.match(field):
         return head, field, rest
     return head, "", parts[2]
 
 
 def marker_of(note: str) -> str:
-    """The hold marker a note is carrying, or empty where it has none."""
+    """The marker a note is carrying, `hold` or `frozen`, or empty for none."""
     return _split_note(note)[1]
 
 
@@ -199,6 +222,14 @@ class ExerciseSpec:
     #: most useful where a lap-button wait already follows every exercise and
     #: a timed rest in front of it would only be waited out twice.
     skip_last_rest: bool = False
+    #: Hold the target where it is, through sessions that hit it, until you
+    #: say otherwise. For the exercise whose numbers are going up while the
+    #: effort behind them says they should not - reps at 0-1 in reserve where
+    #: the programme meant 2-3. Only a hit is held: a miss is still a miss and
+    #: runs the rules as usual, and a session at a load other than the one
+    #: prescribed is judged as usual too, which is how a frozen exercise is
+    #: deloaded by hand.
+    freeze: bool = False
     #: The equipment this exercise is loaded on, ascending. Empty means the
     #: load type said nothing a single `weight_step`, `min_weight` and
     #: `max_weight` could not, which is every config written before groups

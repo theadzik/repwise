@@ -136,6 +136,26 @@ def test_the_action_says_which_way_a_target_went(caplog):
     assert "Lat Pull-down hold" in rows(caplog)[1]
 
 
+def test_a_frozen_target_says_freeze_rather_than_hold(caplog):
+    """Your decision and the tool's read differently at a glance."""
+    plan = a_plan(
+        changes=[
+            Change(
+                FIRST,
+                Target(9, 30.0),
+                Target(9, 30.0),
+                "frozen, 2 sessions at this target",
+            ),
+            Change(MIDDLE, Target(9, 30.0), Target(9, 30.0), "missed target"),
+        ]
+    )
+
+    report_plan(plan)
+
+    assert "Barbell Back Squat freeze" in rows(caplog)[0]
+    assert "Lat Pull-down hold" in rows(caplog)[1]
+
+
 def test_an_exercise_left_alone_has_a_blank_marker(caplog):
     """The one row that can be skipped: read, judged, nothing to write."""
     plan = a_plan(

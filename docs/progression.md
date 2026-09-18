@@ -376,6 +376,74 @@ Persistent rejections mean `weight_step` is too big for the range: at 3 kg a
 range or take a smaller step. Isolation work usually wants a wider range than
 a barbell compound for exactly this reason.
 
+## Freezing an exercise
+
+The rules move a target when the reps are there. They cannot see the effort
+behind them, and sometimes the numbers keep going up while the sets are
+getting grim - a range meant for 2-3 reps in reserve being hit at 0-1. Set
+`freeze: true` on the exercise and it holds where it is until you take the key
+off:
+
+```yaml
+      - name: Lat Pull-down
+        ...
+        freeze: true
+```
+
+Holding rather than dropping a couple of reps is the better default for that.
+Proximity to failure costs little or nothing in growth - sets closer to
+failure build at least as much muscle as sets stopped short (Refalo et al.,
+2023; Robinson et al., 2024, both *Sports Medicine*) - so the stimulus is not
+the problem; the fatigue is. And lifters tend to underestimate the reps they
+have left by about one (Halperin et al., 2022, *Sports Medicine*), so a set
+that feels like 0-1 in reserve is often nearer 1-2. The same load becomes
+easier with repetition, and holding it is double progression doing exactly
+that.
+
+What a freeze does and does not hold:
+
+- **A hit is held.** Every set met the target at the load prescribed, and the
+  target stays - including at the top of the range, where no load goes on.
+- **A miss is still a miss.** It runs the rules as usual: repeated once, eased
+  the second time, marked `hold` on the watch.
+- **A different load is your call.** A session at a load other than the one
+  prescribed is judged like any other, so lifting lighter is how you deload a
+  frozen exercise without taking the freeze off first. The target rebases onto
+  what you lifted and the freeze carries on from there.
+
+The report shows a frozen hit as `freeze` rather than `hold`, with how long the
+target has stood, and the watch note says the same:
+
+```text
+*  4 Lat Pull-down  freeze  3   14 x 45 kg  ==  14 x 45 kg   frozen, 2 sessions at this target
+```
+
+```text
+10-15 reps | +5 kg | frozen x2 | 2-3 RIR | full stretch at the top
+```
+
+The count is how many sessions in a row were asked for this same target, this
+one included, read from the workouts they were performed against - so it is
+recomputed every run rather than kept anywhere, and a session held for another
+reason just before the freeze counts too. It stops at three, because that is
+when the question changes:
+
+```text
+! Lat Pull-down: frozen for 3+ sessions at this target. If it feels right now,
+  remove `freeze`; if it still does not, deload - lift a lighter load next
+  session and the target rebases onto it
+```
+
+A load that was going to become easy with repetition usually has by then. One
+that has not is more likely waiting on recovery - sleep, stress, the volume
+around it - than on another session at the same number, and holding longer
+does not fix that.
+
+Taking `freeze` off clears the marker on the next run, whether or not a session
+is judged in it, so the watch never shows a freeze that is no longer in the
+file. An exercise shared between workouts has one target, so every copy of it
+has to be frozen or none.
+
 ## Decision order
 
 Given the exercise's config, the target currently stored in Garmin, and the sets
@@ -388,6 +456,7 @@ actually performed:
 | 3 | Fewer than `sets` counted (see [a harder set still counts](#a-harder-set-still-counts)) | Bank the weight, consolidate reps |
 | 4 | Same weight, any set short, first miss | Repeat unchanged (rule 4) |
 | 4b | Same weight, any set short, missed before | Ease the target, or take weight off at the bottom of the range |
+| 4c | Same weight, every set met, `freeze` on | Unchanged, [frozen](#freezing-an-exercise) |
 | 5 | Floor at or above `rep_high`, first time at this load | `rep_high` at the same weight, held (rule 3) |
 | 5a | Floor at or above `rep_high`, second time at this load | `rep_low` at weight + step (rule 3) |
 | 5b | Floor at or above `rep_high`, step past `max_weight` | `rep_low` at `max_weight` |
@@ -523,8 +592,9 @@ their own business as well, so they may differ freely.
 
 Nothing is stored between runs. The Garmin workout holds the current target and
 the activity holds what was performed - together with the sessions before it,
-which is where both the miss streak and rule 3's
-[confirmation](#confirming-the-top-of-the-range) are read from, they answer
+which is where the miss streak, rule 3's
+[confirmation](#confirming-the-top-of-the-range) and how long a
+[frozen](#freezing-an-exercise) target has stood are all read from, they answer
 everything.
 
 That is why you can edit a target by hand in Garmin Connect and the next run

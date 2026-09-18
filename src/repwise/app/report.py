@@ -15,7 +15,7 @@ import logging
 from dataclasses import dataclass, fields
 
 from ..domain.models import ExerciseSpec
-from ..domain.progression import Target
+from ..domain.progression import Target, frozen
 from ..planner import (
     Change,
     GapChange,
@@ -119,7 +119,7 @@ def moved_to(change: Change) -> str:
     the rules spend them in.
     """
     if change.old == change.new:
-        return "hold"
+        return "freeze" if frozen(change.reason) else "hold"
     was = (change.old.weight, change.old.reps, change.old.lead)
     now = (change.new.weight, change.new.reps, change.new.lead)
     return "advance" if now > was else "ease"

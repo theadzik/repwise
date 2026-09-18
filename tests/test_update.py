@@ -827,6 +827,17 @@ def test_a_smooth_session_reads_back_one_activity_and_stops(stalling):
     assert stalling.read_back == ["800"]
 
 
+def test_a_frozen_exercise_reads_back_far_enough_to_count(stalling):
+    """A hit ends the walk for anything else; a frozen exercise keeps going
+    while every session asked for the same thing, up to the review."""
+    stalling.sets["800"] = sets_of(*squats(8))
+    frozen = Workout("Workout A", "111", ["workout a"], [replace(SQUAT, freeze=True)])
+    earlier = sessions_before(stalling.activities, frozen, "900")
+    gather_history(stalling, frozen, earlier, performed_sets(stalling.sets["900"]))
+
+    assert stalling.read_back == ["800", "700"]
+
+
 def test_a_single_set_exercise_still_reads_one_session_back(stalling):
     """`sets - 1` is no history at all at one set, which used to mean none was
     fetched. Rule 3's confirmation needs the session before this one, so an

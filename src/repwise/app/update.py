@@ -16,6 +16,7 @@ from ..domain.matching import normalise
 from ..domain.models import Config, ExerciseSpec, Workout
 from ..domain.progression import (
     CONFIRMED_AFTER,
+    FREEZE_REVIEW_AFTER,
     PerformedSet,
     Session,
     Target,
@@ -204,8 +205,23 @@ def wants_more(
     all, and without the floor a single-set exercise would arrive at the top of
     its range with no history to confirm against and hold there forever.
     """
+    if not logged:
+        return False
+    # A frozen exercise counts how long its target has stood, which needs one
+    # more read for as long as every session so far asked for the same thing.
+    # Compared among themselves rather than with the latest session's target,
+    # which is not known here - at worst one activity is read that the count
+    # then stops short of. Executed targets carry no load, so this is reps and
+    # ramp; `frozen_streak` checks the load off what was lifted.
+    if (
+        spec.freeze
+        and len(earlier) < FREEZE_REVIEW_AFTER - 1
+        and all(session.target == earlier[0].target for session in earlier)
+    ):
+        return True
+
     limit = max(spec.sets - 1, CONFIRMED_AFTER)
-    if not logged or len(earlier) >= limit:
+    if len(earlier) >= limit:
         # Not trained in the session being judged, so there is nothing for a
         # streak to explain -- or already as deep as the rules can read.
         return False

@@ -171,7 +171,7 @@ decided about it. Every column says one thing:
 | --- | --- |
 | *(marker)* | `*` this run writes it, *(space)* read and left alone, `+` `-` `~` added, dropped or moved. See [ordering](#ordering-adding-and-removing) |
 | `#` | Where it sits in the workout. Blank for an exercise being dropped |
-| ACTION | What is happening: `advance` `hold` `ease` for a target, `build` `drop` `move` for the shape, `retime` for the rest between exercises |
+| ACTION | What is happening: `advance` `hold` `ease` for a target, `freeze` for one [held by hand](progression.md#freezing-an-exercise), `build` `drop` `move` for the shape, `retime` for the rest between exercises |
 | SETS | What the workout prescribes, and `3 -> 4` when you change it |
 | BEFORE, AFTER | The target, in the unit the exercise is measured in - `6 x 65 kg` loaded, `11 reps` bodyweight, `47 s` for a timed hold. See [coming back from a stall](progression.md#coming-back-from-a-stall) for `8+2` |
 | CONFIG | What `workouts.yaml` would rewrite here: `sets`, `rest`, `note`, `last-rest`. The file itself says what to, so only the fact is worth a column |
@@ -414,6 +414,15 @@ the note already says, so the note is where the fact lives rather than
 something recomputed each run. An exercise that appears in more than one
 workout carries the same marker in all of them, on the same terms as its
 target: same movement, same equipment.
+
+An exercise you have [frozen](progression.md#freezing-an-exercise) uses the
+same slot for a different word. A frozen session that hit says how long its
+target has stood - `frozen`, `frozen x2`, `frozen x3+` - and one that missed
+says `hold` like any other, since a miss is still a miss. The one difference in
+how it clears: taking `freeze` out of `workouts.yaml` removes `frozen` on the
+next run even when no session is judged, because that marker is the config's to
+decide and the next session would otherwise start under a freeze that no
+longer exists.
 
 **Keep it short.** The screen is the binding limit, and it differs by watch:
 measured on a real account and read off the watch, a Forerunner 945 displays a

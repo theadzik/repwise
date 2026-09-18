@@ -714,6 +714,7 @@ def _build_exercise(  # noqa: PLR0913 - the flags are settings resolved onto it
         max_weight = None
 
     bodyweight_factor = _bodyweight_factor(raw, where, problems)
+    freeze = _flag(raw.get("freeze"), f"{where}: {raw['name']}: freeze", default=False)
 
     # The equipment comes from the load type, but an exercise that overrides
     # any of the three scalars has stated its own single rack and means it: a
@@ -748,6 +749,7 @@ def _build_exercise(  # noqa: PLR0913 - the flags are settings resolved onto it
         min_weight=min_weight,
         max_weight=max_weight,
         bodyweight_factor=bodyweight_factor,
+        freeze=freeze,
         partial_progression=partial_progression,
         skip_last_rest=skip_last_rest,
         tiers=tiers,
@@ -820,9 +822,10 @@ def _check_shared(config: Config, path: str, problems: Problems) -> None:
     """A shared exercise must be programmed identically everywhere.
 
     Otherwise a target synced out of one workout could land outside another
-    workout's range. Only the copies that really do sync are compared: two
-    entries carrying one name on different loads never reach each other, so
-    what they ask for is nobody else's business.
+    workout's range, or move a target another workout has frozen. Only the
+    copies that really do sync are compared: two entries carrying one name on
+    different loads never reach each other, so what they ask for is nobody
+    else's business.
     """
     for garmin_name in config.shared_exercises():
         by_load: dict[str, list[ExerciseSpec]] = {}
@@ -838,6 +841,14 @@ def _check_shared(config: Config, path: str, problems: Problems) -> None:
                     f"{path}: {garmin_name} appears in several workouts on "
                     f"{load} with different rep ranges {sorted(ranges)}; a "
                     f"synced target could fall outside one of them"
+                )
+            # One target between them, so a copy left unfrozen would progress
+            # it in its own workout and sync the result into the frozen one.
+            if len({s.freeze for s in specs}) > 1:
+                problems.add(
+                    f"{path}: {garmin_name} appears in several workouts on "
+                    f"{load}, frozen in some and not others; they share one "
+                    f"target, so freeze every copy or none"
                 )
 
 
