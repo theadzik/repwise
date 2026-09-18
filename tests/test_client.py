@@ -594,7 +594,8 @@ class ActivityStub(LibraryUrls):
         self.activities = list(activities)
         self.asked: list[str] = []
 
-    def get_activities(self, start, limit):
+    def get_activities(self, start, limit, activitytype=None, activitysubtype=None):
+        self.searched = (activitytype, activitysubtype)
         return self.activities
 
     def get_activity(self, activity_id):
@@ -663,6 +664,15 @@ def test_a_session_edited_in_connect_is_read_again(tmp_path):
     later.exercise_sets("111")
 
     assert api.asked == ["sets 111"]
+
+
+def test_only_strength_sessions_are_asked_for(tmp_path):
+    """Strength training is a sub-type of fitness equipment to Garmin's search:
+    asked for as a type of its own it answers 400."""
+    api = ActivityStub()
+    GarminSession(api, GarminSettings(dump_dir=str(tmp_path))).recent_activities()
+
+    assert api.searched == ("fitness_equipment", "strength_training")
 
 
 def test_a_plain_session_holds_nothing(tmp_path):

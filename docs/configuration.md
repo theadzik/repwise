@@ -46,7 +46,7 @@ When none of them exists, the error lists the paths it tried.
 settings:
   garmin:
     token_store: ~/.config/repwise  # OAuth tokens, and the exercise catalog
-    activity_search_limit: 50       # recent activities scanned for a match
+    activity_search_limit: 50       # recent strength sessions searched
     dump_dir: ~/.local/share/repwise/dumps   # where `fetch` writes JSON (the default)
     activity_caching: false         # read sessions from dump_dir, and file new ones
 
@@ -58,7 +58,7 @@ settings:
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `garmin.token_store` | `$XDG_CONFIG_HOME/repwise`, i.e. `~/.config/repwise` | Where the OAuth tokens are cached, and where [`fetch exercises`](commands.md#fetch-exercises) caches the exercise catalog. Beside your config by default, so one directory is everything this tool owns. The token is as good as being logged in until it expires, so the directory is kept private to you - see [what is stored](troubleshooting.md#what-is-stored-and-what-it-is-worth). [`repwise logout`](commands.md#logout) empties it. The path and every directory above it must be real: `garminconnect` will not keep tokens behind a symlink, which a dotfiles checkout linked into `~/.config` is - [see troubleshooting](troubleshooting.md#the-token-store-cannot-be-a-symlink). |
-| `garmin.activity_search_limit` | `50` | How many recent activities to scan for a name match, for the sessions behind it, and for the strength sessions [`fetch activities`](commands.md#fetch-activities) downloads |
+| `garmin.activity_search_limit` | `50` | How many of your most recent **strength** sessions to search for a name match, for the sessions behind it, and for [`fetch activities`](commands.md#fetch-activities) to download. Garmin leaves every other sport out of the search, so runs and rides do not use any of it up |
 | `garmin.dump_dir` | `$XDG_DATA_HOME/repwise/dumps`, i.e. `~/.local/share/repwise/dumps` | Where [`fetch`](commands.md#fetch) writes JSON, and what `garmin.activity_caching` reads back. Under the data home rather than the cache home: once a session scrolls out of Garmin's search window the copy here is the only one left. A relative path is resolved against the directory you run repwise in, not against this file, so one gives you a separate pile per place you run from. `~` is expanded |
 | `garmin.activity_caching` | `false` | Answer for a performed session from `dump_dir` instead of asking Garmin again, and file every session a run sees. See [reusing what is on disk](#reusing-what-is-on-disk) |
 | `partial_progression` | `true` | Whether a hit after a stall may move only some of the sets, which is what writes an uneven target such as `8+2`. Off, every set moves together in both directions, and an uneven target Garmin still holds is [levelled up](progression.md#turning-partial-progression-off) on the next run |
@@ -708,7 +708,8 @@ exercise a set was filed under without changing the reps. For those,
 [`repwise fetch activities --force`](commands.md#fetch-activities) downloads
 everything again regardless.
 
-A session older than `activity_search_limit` is in no list, so nothing
+A session further back than your last `activity_search_limit` strength
+sessions is in no list, so nothing
 contradicts it and the copy on disk stands. That is the point of keeping them:
 history that has scrolled out of Garmin's window is still yours to read.
 
