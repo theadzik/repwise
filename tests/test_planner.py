@@ -544,6 +544,47 @@ def test_a_frozen_marker_survives_a_run_that_judged_no_session():
     assert only_note(payload) == "6-10 reps | +2.5 kg | frozen x2"
 
 
+def test_freezing_during_the_top_of_range_confirmation_counts_that_session():
+    """At the top of the range, told to hold once more, and frozen instead.
+
+    The confirmation session was asked for the same 10 x 20 kg the frozen one
+    is, so it is one of the sessions this target has stood for, and the first
+    session after the freeze already reads two.
+    """
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 10, 20.0))
+
+    # Session N, unfrozen: asked 10, did 10, the first time at the top.
+    confirming = plan_workout(a_workout(), payload, a_squat_session(10))
+    assert "hold it once more" in confirming.changes[0].reason
+    assert not confirming.moved
+
+    # Frozen before session N+1, which is asked the same and does it again.
+    history = {
+        "barbellbacksquat": [Session(Target(10, 0.0), [PerformedSet(10, 20.0)] * 3)]
+    }
+    frozen_plan = plan_workout(
+        a_workout(exercises=[FROZEN_SQUAT]), payload, a_squat_session(10), history
+    )
+
+    assert not frozen_plan.moved, "the load increase the confirmation earned waits"
+    assert frozen_plan.changes[0].reason == "frozen, 2 sessions at this target"
+    assert only_note(payload) == "6-10 reps | +2.5 kg | frozen x2"
+
+
+def test_a_confirmation_reached_by_beating_the_target_does_not_count():
+    """Asked for 9 and did 10 is a top-out too, but that session was asked for
+    something else, so the frozen count starts at the session after it."""
+    payload = workout(rep_step("BARBELL_BACK_SQUAT", "SQUAT", 10, 20.0))
+    history = {
+        "barbellbacksquat": [Session(Target(9, 0.0), [PerformedSet(10, 20.0)] * 3)]
+    }
+    plan = plan_workout(
+        a_workout(exercises=[FROZEN_SQUAT]), payload, a_squat_session(10), history
+    )
+
+    assert plan.changes[0].reason == "frozen, 1 session at this target"
+
+
 def test_a_cue_beginning_with_hold_is_not_read_as_a_marker():
     """One of the real cues starts "hold the chair", and clearing it as if it
     were a marker would delete it."""
