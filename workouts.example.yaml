@@ -81,8 +81,9 @@ settings:
     # $XDG_CONFIG_HOME/repwise (usually ~/.config/repwise).
     # What lands there is as good as being logged in, so keep it private and out of backups.
     # token_store: ~/.config/repwise
-    # How many recent activities to scan for the last session, and for the
-    # strength sessions `repwise fetch activities` downloads.
+    # How many of your most recent strength sessions to search for the last
+    # one, and for `repwise fetch activities` to download. Other sports are
+    # left out of the search, so they use none of it.
     activity_search_limit: 50
     # Where `fetch` writes its JSON. When unset, this defaults to
     # $XDG_DATA_HOME/repwise/dumps (usually ~/.local/share/repwise/dumps) -

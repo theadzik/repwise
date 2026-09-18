@@ -73,8 +73,8 @@ def run_fetch_activities(
     Ids name sessions directly, and are downloaded as given: asking for one by
     id says more about what you want than its sport does, and an id is also the
     only way to reach a session further back than the search limit. Without
-    them the recent activities are scanned and the strength ones kept - how far
-    back that reaches is `settings.garmin.activity_search_limit`.
+    them your most recent strength sessions are downloaded -
+    `settings.garmin.activity_search_limit` of them.
     """
     ids = list(activity_ids or [])
     if not ids:
@@ -85,10 +85,12 @@ def run_fetch_activities(
             if activity_sport(activity) == STRENGTH and activity.get("activityId")
         ]
         if not ids:
+            # Garmin's search already skips every other sport, so an empty
+            # answer means there are none at all - raising the limit would
+            # only ask for more of nothing.
             logger.warning(
-                f"No strength activities among the {len(recent)} most recent. "
-                "Raise settings.garmin.activity_search_limit to look further "
-                "back, or name an activity id."
+                "Garmin lists no strength activities for this account. Name an "
+                "activity id to download one directly."
             )
             return ExitCode.NOTHING_USABLE
 

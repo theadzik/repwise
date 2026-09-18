@@ -153,7 +153,8 @@ def test_a_scan_finding_no_strength_activity_says_so(config, caplog):
 
     assert run_fetch_activities(session, config) == ExitCode.NOTHING_USABLE
     assert written(config) == set()
-    assert "activity_search_limit" in caplog.text
+    assert "no strength activities" in caplog.text
+    assert "activity id" in caplog.text, "the one way left to name a session"
 
 
 def test_a_scan_reaches_as_far_as_the_configured_limit(config):

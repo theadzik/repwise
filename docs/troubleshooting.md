@@ -110,7 +110,8 @@ choose one explicitly.
 ```
 
 Either the activity is named differently than your `activity_prefixes` expect,
-or it is older than `settings.garmin.activity_search_limit` activities ago.
+or it is further back than your last `settings.garmin.activity_search_limit`
+strength sessions.
 
 Check what Garmin actually called it, then either add that prefix to the config
 or pass the id directly:

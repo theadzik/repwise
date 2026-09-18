@@ -52,6 +52,12 @@ logger = logging.getLogger(__name__)
 #: Garmin's sportTypeKey for strength training, the only kind this tool handles.
 STRENGTH = "strength_training"
 
+#: The activity type strength training is filed under. Garmin's activity search
+#: takes strength training only as a sub-type of this one: asked for as a type
+#: in its own right it answers 400, "Activity type cannot be an activity sub
+#: type", and this type alone also brings indoor cardio with it.
+FITNESS_EQUIPMENT = "fitness_equipment"
+
 
 def _reporting[**P, R](what: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Turn whatever garminconnect raises into this tool's own failure type.
@@ -114,8 +120,15 @@ class GarminSession:
 
     @_reporting("list your recent activities")
     def recent_activities(self, limit: int | None = None) -> list[dict[str, Any]]:
+        """Your most recent strength sessions, newest first.
+
+        Filtered by Garmin rather than here, so `activity_search_limit` counts
+        strength sessions alone: a week of runs and rides no longer pushes the
+        last workout out of reach, and nothing is downloaded only to be thrown
+        away.
+        """
         limit = limit or self._settings.activity_search_limit
-        return self._api.get_activities(0, limit) or []
+        return self._api.get_activities(0, limit, FITNESS_EQUIPMENT, STRENGTH) or []
 
     @_reporting("fetch that activity")
     def activity(self, activity_id: str) -> dict[str, Any]:

@@ -103,9 +103,9 @@ nothing is written back to `workouts.yaml` either.
 
 Without `--activity`, each workout gets its own most recent activity: the
 latest one whose name starts with any of that workout's `activity_prefixes`,
-searching back `settings.garmin.activity_search_limit` activities. Prefixes are
-matched case-insensitively, so `["workout a", "trening a"]` catches either
-spelling.
+searching back through your last `settings.garmin.activity_search_limit`
+strength sessions. Prefixes are matched case-insensitively, so
+`["workout a", "trening a"]` catches either spelling.
 
 With
 [`activity_caching`](configuration.md#reusing-what-is-on-disk) on, that same
@@ -700,11 +700,12 @@ definition Garmin stores holds the target for the *next* one, because
 [`update`](#update) rewrote it once that session was read. A session performed
 against no workout has no third file.
 
-Without ids, the recent activities are scanned and the strength ones kept -
-`settings.garmin.activity_search_limit` is how far back that reaches, and
-raising it is how you get at older sessions. An id is downloaded as given,
-whatever sport it was: naming one says more about what you want than its type
-does, and an id is also the only way to reach a session past the search limit.
+Without ids, your most recent strength sessions are downloaded -
+`settings.garmin.activity_search_limit` of them, since Garmin's search leaves
+every other sport out - and raising it is how you get at older ones. An id is
+downloaded as given, whatever sport it was: naming one says more about what you
+want than its type does, and an id is also the only way to reach a session past
+the search limit.
 
 With
 [`activity_caching`](configuration.md#reusing-what-is-on-disk) on, a session
