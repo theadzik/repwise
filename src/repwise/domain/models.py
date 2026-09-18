@@ -11,22 +11,16 @@ from dataclasses import dataclass, field
 
 BODYWEIGHT = "bodyweight"
 
-#: How long a step's note may be before it stops being read.
-#:
-#: Not the API's limit, which is 512 - Garmin stores that many characters and
-#: silently drops the rest, with no error and nothing to say anything was lost.
-#: The binding limit is the screen: a Forerunner displays a 160-character note
-#: whole and truncates a 200-character one, measured by writing both to a real
-#: workout and reading them off the watch. Round down to the one that fits.
-READABLE_NOTE = 160
-
 #: The most of a note Garmin keeps. Past this it drops the rest on the way in,
 #: with no error and nothing to say it happened - so what was sent back and
 #: what is stored no longer agree, and every later run finds the note stale and
 #: writes it again. The note is cut to fit here for that reason: this tool has
-#: to be able to predict what comes back. `check` reports anything past
-#: `READABLE_NOTE`, which is well under this, so a note near the cut has been
-#: warned about long before it reaches one.
+#: to be able to predict what comes back. It is also as far as `check` looks by
+#: default, since no watch can show a character that was never stored - and the
+#: screen that shows every one of them exists: a Fenix 9 Pro displays a
+#: 512-character note whole, measured by writing notes of graduated length to a
+#: real workout and reading them back off the watch. A smaller screen says so
+#: through `settings.watch_note_limit`, which only ever lowers this.
 STORED_NOTE = 512
 
 #: The word a note carries while an exercise is holding after a missed target.
@@ -250,8 +244,8 @@ class ExerciseSpec:
         rather than about taste: Garmin silently drops a note past 512
         characters, and `GENERATED_NOTE` cannot match one carrying a newline,
         so either would leave this tool unable to recognise what it had just
-        written. Watches run out well before 512 anyway - around 160 on a
-        Forerunner - which is what `check` reports against.
+        written. A screen may run out well before 512 - a Forerunner 945 does,
+        at 160 - which is what `settings.watch_note_limit` is for.
         """
         span = f"{self.rep_low}-{self.rep_high} {'s' if self.time_based else 'reps'}"
         if self.rep_step != 1:
@@ -335,6 +329,13 @@ class Config:
     #: keeps it current without anyone editing a file. Only ever an input to
     #: `check`; no target depends on it.
     bodyweight: float | None = None
+    #: How long a note may be before your watch stops showing all of it. Here
+    #: rather than a constant because the cap is the screen's and the screens
+    #: disagree: a Fenix 9 Pro shows all 512 characters Garmin keeps, while a
+    #: Forerunner 945 shows 160 and cuts from 165. Unset means the stored cap,
+    #: which reports nothing a watch could have shown; state your own screen to
+    #: be warned before it cuts. Only ever an input to `check`.
+    watch_note_limit: int = STORED_NOTE
     #: The file this was read from. Carried so that a use case which learns
     #: something the file should record - a workout id Garmin has just issued -
     #: can write it back without the CLI having to pass the path separately.

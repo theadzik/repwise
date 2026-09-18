@@ -16,6 +16,7 @@ from typing import Any
 
 from .domain.models import (
     BODYWEIGHT,
+    STORED_NOTE,
     Config,
     ExerciseSpec,
     GarminSettings,
@@ -888,6 +889,12 @@ def load_config(path: str | None = None) -> Config:
     declared_bodyweight = settings.get("bodyweight")
     bodyweight = None if declared_bodyweight is None else float(declared_bodyweight)
 
+    # What your own watch shows, when it shows less than Garmin stores. A fact
+    # about the screen rather than about the training, so it is stated here and
+    # read only by `check`.
+    declared_limit = settings.get("watch_note_limit")
+    watch_note_limit = STORED_NOTE if declared_limit is None else int(declared_limit)
+
     problems = Problems()
     types = _load_types(data.get("load"), path, problems)
     workouts: dict[str, Workout] = {}
@@ -911,7 +918,22 @@ def load_config(path: str | None = None) -> Config:
         problems.add(f"{path}: settings.bodyweight is {bodyweight:g}")
         bodyweight = None
 
-    config = Config(workouts=workouts, garmin=garmin, path=path, bodyweight=bodyweight)
+    # Above the stored cap it would be a promise nothing can keep: Garmin drops
+    # the rest of the note on the way in whatever the screen could have shown.
+    if not 1 <= watch_note_limit <= STORED_NOTE:
+        problems.add(
+            f"{path}: settings.watch_note_limit is {watch_note_limit}, "
+            f"which is not 1 to {STORED_NOTE}"
+        )
+        watch_note_limit = STORED_NOTE
+
+    config = Config(
+        workouts=workouts,
+        garmin=garmin,
+        path=path,
+        bodyweight=bodyweight,
+        watch_note_limit=watch_note_limit,
+    )
     _check_shared(config, path, problems)
 
     problems.raise_any()

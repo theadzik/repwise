@@ -103,6 +103,14 @@ settings:
   # here if you do not weigh in, and it wins over anything Garmin has.
   # bodyweight: 81.0
 
+  # How many characters of a step's note your watch shows before it cuts the
+  # rest. The screen is the limit, not Garmin, and watches differ: a Fenix 9
+  # Pro shows all 512 Garmin keeps, a Forerunner 945 shows 160 and cuts from
+  # 165. Left out it is 512, which reports nothing, since the note is cut to
+  # that anyway; state a smaller screen to have `check` warn you before it
+  # cuts. Only `check` reads it; nothing is written to Garmin differently.
+  # watch_note_limit: 160
+
 # The ways you actually load a lift, each under a name of your own. An
 # exercise's own `load` names one of these, and that is what decides how it
 # progresses. Every entry states:

@@ -7,7 +7,7 @@ import pytest
 from builders import catalog, payload, rep_step, repeat, rest_step, spec
 
 from repwise.checker import check_catalog, check_programming, check_workout
-from repwise.domain.models import READABLE_NOTE, ExerciseSpec, LoadTier, Workout
+from repwise.domain.models import STORED_NOTE, ExerciseSpec, LoadTier, Workout
 
 SQUAT_GROUP = repeat(
     rep_step("BARBELL_BACK_SQUAT", "SQUAT", 6, 30.0), sets=4, rest=120.0
@@ -474,14 +474,21 @@ def test_a_workout_declaring_no_prefixes_is_not_second_guessed():
 # --- a note too long to be read --------------------------------------------
 
 
-def test_a_note_past_what_a_watch_shows_is_reported():
-    """Garmin takes 512 characters and drops the rest without a word, so the
-    only way to find out is to be told."""
+#: The screen that shows the least of a note, and the reason the setting
+#: exists: a Forerunner 945 displays 160 characters whole and cuts from 165.
+FORERUNNER = 160
+
+
+def test_a_note_past_what_your_watch_shows_is_reported():
+    """A screen that cuts says nothing about cutting, so the only way to find
+    out is to be told."""
     wordy = replace(SQUAT_SPEC, notes="x" * 200)
-    findings = check_workout(Workout("W", "1", ["w"], [wordy]), payload(SQUAT_GROUP))
+    findings = check_workout(
+        Workout("W", "1", ["w"], [wordy]), payload(SQUAT_GROUP), FORERUNNER
+    )
 
     assert len(findings) == 1
-    assert "past the 160 a watch shows" in findings[0].detail
+    assert "past the 160 your watch shows" in findings[0].detail
 
 
 def test_a_note_that_fits_is_not_mentioned():
@@ -495,22 +502,36 @@ def sized(length: int) -> ExerciseSpec:
     return replace(SQUAT_SPEC, notes="x" * (length - generated))
 
 
-@pytest.mark.parametrize("length", [READABLE_NOTE - 1, READABLE_NOTE])
-def test_a_note_up_to_what_a_watch_shows_is_left_alone(length):
-    """160 displays whole, which is why that is the figure. Reporting at
-    exactly 160 would be advising against a note that reads perfectly."""
+@pytest.mark.parametrize("length", [FORERUNNER - 1, FORERUNNER])
+def test_a_note_up_to_what_your_watch_shows_is_left_alone(length):
+    """160 displays whole on the screen that declared it, which is why that is
+    the figure. Reporting at exactly 160 would be advising against a note that
+    reads perfectly."""
     spec_at = sized(length)
     assert len(spec_at.note) == length
 
-    assert (
-        check_workout(Workout("W", "1", ["w"], [spec_at]), payload(SQUAT_GROUP)) == []
-    )
+    workout = Workout("W", "1", ["w"], [spec_at])
+    assert check_workout(workout, payload(SQUAT_GROUP), FORERUNNER) == []
 
 
 def test_a_note_one_character_over_is_reported():
     """The other side of the same boundary, which is the whole of the rule."""
-    spec_at = sized(READABLE_NOTE + 1)
-    findings = check_workout(Workout("W", "1", ["w"], [spec_at]), payload(SQUAT_GROUP))
+    spec_at = sized(FORERUNNER + 1)
+    workout = Workout("W", "1", ["w"], [spec_at])
+    findings = check_workout(workout, payload(SQUAT_GROUP), FORERUNNER)
 
     assert len(findings) == 1
-    assert f"{READABLE_NOTE + 1} characters" in findings[0].detail
+    assert f"{FORERUNNER + 1} characters" in findings[0].detail
+
+
+def test_a_screen_left_unstated_reports_nothing_a_watch_could_have_shown():
+    """The default is what Garmin stores, and the note was cut to that before
+    it got here - so nothing is reported until a smaller screen says so. That
+    is the point: a Fenix 9 Pro shows all 512, and warning it about a note it
+    displays whole would be warning about nothing."""
+    longest = sized(STORED_NOTE)
+    assert len(replace(longest, notes="x" * 10_000).note) == STORED_NOTE
+
+    workout = Workout("W", "1", ["w"], [longest])
+    assert check_workout(workout, payload(SQUAT_GROUP)) == []
+    assert len(check_workout(workout, payload(SQUAT_GROUP), FORERUNNER)) == 1
