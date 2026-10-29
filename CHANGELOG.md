@@ -1,3 +1,15 @@
+## 3.5.0 (2026-10-29)
+
+### Feat
+
+- step the load when a narrowed range leaves the target above its… (#119) ([cc7d293](https://github.com/theadzik/repwise/commit/cc7d293954184b48cdb862002c8b1f199bdd9d84))
+- step the load when a narrowed range leaves the target above its top ([cc7d293](https://github.com/theadzik/repwise/commit/cc7d293954184b48cdb862002c8b1f199bdd9d84))
+
+### Fix
+
+- add the load rather than hold below a target above a narrowed range (#126) ([7edf34f](https://github.com/theadzik/repwise/commit/7edf34fba23ad9d8861342c17df8cbad9fbd7013))
+- name the step the target weight will take in the step note (#118) ([698cb21](https://github.com/theadzik/repwise/commit/698cb215218b17690cf6830073fc6022eb746963))
+
 ## 3.4.0 (2026-09-18)
 
 ### Feat
