@@ -470,6 +470,12 @@ rep_high  =  rep_low + (30 + rep_low) x weight_step / effective_load
 `rep_low` is on both sides, so raising it to narrow a range also widens what
 the range needs to be. Moving the bottom fights itself; moving the top does not.
 
+Lowering `rep_high` below a target Garmin already holds moves that target on the
+next `update`, session or not: the load goes up one step and the reps start
+again at `rep_low`, as if the top had just been cleared. Where there is nothing
+heavier - a bodyweight exercise, or the top of the equipment - the reps are
+brought down to the new `rep_high` instead.
+
 ### Choosing rep_low for a new exercise
 
 There is no universally best rep count - hypertrophy is much the same anywhere

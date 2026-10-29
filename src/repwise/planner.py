@@ -10,7 +10,7 @@ from collections.abc import Container, Iterator
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from .domain.effort import note_step
+from .domain.effort import next_weight_above, note_step
 from .domain.matching import ExerciseIndex, normalise, variants
 from .domain.models import (
     FROZEN,
@@ -506,9 +506,12 @@ def _clamped(spec: ExerciseSpec, target: Target) -> Target:
     the whole reason, exactly as it is for `_levelled`, so it need not wait to
     be trained.
 
-    Reps only, and the weight is left alone. Landing on `rep_high` is where
-    rule 3 fires from, and a load increase is something a session earns rather
-    than something an edit to a config file hands over.
+    A target above the new `rep_high` steps the load up and starts again at
+    `rep_low`, where rule 3 would have sent it: those reps were already more
+    than the range now asks for. Only where there is no heavier load - a
+    bodyweight exercise, or the top of the equipment - is it brought down to
+    `rep_high` instead. A target below the new `rep_low` is brought up to it,
+    at the same weight.
 
     A ramp goes when the range can no longer hold one: its leading sets ask for
     `rep_step` more, and at the top of the range that is a figure outside it.
@@ -516,6 +519,10 @@ def _clamped(spec: ExerciseSpec, target: Target) -> Target:
     top = target.reps + spec.rep_step if target.lead else target.reps
     if spec.rep_low <= target.reps and top <= spec.rep_high:
         return target
+    if target.reps > spec.rep_high and not spec.bodyweight:
+        heavier = next_weight_above(spec, target.weight)
+        if heavier is not None:
+            return Target(spec.rep_low, heavier)
     reps = min(max(target.reps, spec.rep_low), spec.rep_high)
     lead = target.lead if reps + spec.rep_step <= spec.rep_high else 0
     return Target(reps, target.weight, lead)
@@ -537,7 +544,12 @@ def _config_fixups(spec: ExerciseSpec, target: Target) -> Iterator[tuple[Target,
     clamped = _clamped(spec, target)
     if clamped != target:
         span = f"{spec.rep_low}-{spec.rep_high}"
-        if clamped.reps == target.reps:
+        if clamped.weight != target.weight:
+            yield (
+                clamped,
+                f"outside the {span} range, up to {clamped.weight:g} kg at the bottom",
+            )
+        elif clamped.reps == target.reps:
             # Only the ramp went. The base was inside the range the whole time
             # and it is the leading sets - asking `rep_step` more - that were
             # not, so neither end of the range is where this target was moved
@@ -1230,21 +1242,7 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
             shaped=shaped,
         )
 
-        # What the config says about this exercise holds whether or not this
-        # session moved anything. The marker is the one part that does not:
-        # None where no session was judged, which leaves the note's alone.
         decided = change.new if change is not None else current
-        recounted = _refresh_block(
-            block,
-            spec,
-            current,
-            change.marker if change is not None else None,
-            shaped,
-            decided=decided,
-        )
-        if recounted is not None:
-            reshaped |= _relay(layout, position, recounted)
-
         # The last word on the target, whether a session decided it or nobody
         # did: with partial progression off, a ramp is not a shape this workout
         # is allowed to hold, so it is evened out here rather than left for a
@@ -1261,10 +1259,24 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
                     fixed,
                     f"{said}; {label}" if said and said not in SAYS_NOTHING else label,
                     # Levelling a ramp is a change of shape, not a verdict on
-                    # the session, so it does not get a say in the marker. The
-                    # note has already been written by here either way.
+                    # the session, so it does not get a say in the marker.
                     change.marker if change is not None else None,
                 )
+
+        # What the config says about this exercise holds whether or not this
+        # session moved anything. The marker is the one part that does not:
+        # None where no session was judged, which leaves the note's alone.
+        # After the fixups, which can move the load the note names a step from.
+        recounted = _refresh_block(
+            block,
+            spec,
+            current,
+            change.marker if change is not None else None,
+            shaped,
+            decided=change.new if change is not None else current,
+        )
+        if recounted is not None:
+            reshaped |= _relay(layout, position, recounted)
 
         if change is None:
             continue
