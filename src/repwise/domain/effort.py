@@ -341,6 +341,21 @@ def next_weight_above(
     return _rungs_above(nxt, weight, chosen_step(spec, nxt.minimum, bodyweight))
 
 
+def note_step(spec: ExerciseSpec, weight: float) -> float:
+    """The increment the step's note names for a target at `weight`.
+
+    What rule 3 will actually add next, so the note follows the stack onto its
+    larger plates and across onto the next rack rather than always naming the
+    smallest increment the load type has. At the top of the equipment there is
+    no next load, and the step this weight would take is named instead. With
+    no load yet there is nothing to step from, and the declared step stands.
+    """
+    if weight <= 0:
+        return spec.weight_step
+    heavier = next_weight_above(spec, weight)
+    return heavier - weight if heavier is not None else chosen_step(spec, weight)
+
+
 def next_weight_below(
     spec: ExerciseSpec, weight: float, bodyweight: float = 0.0
 ) -> float | None:

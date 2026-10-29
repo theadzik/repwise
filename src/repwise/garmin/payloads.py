@@ -20,6 +20,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..domain.effort import note_step
 from ..domain.matching import normalise
 from ..domain.models import ExerciseSpec
 from ..domain.progression import PerformedSet, Target
@@ -469,7 +470,7 @@ def new_group(spec: ExerciseSpec, target: Target) -> dict[str, Any]:
         "targetValueTwo": 0.0,
     }
     apply_target(step, target)
-    apply_note(step, spec.note)
+    apply_note(step, spec.note_at(note_step(spec, target.weight)))
 
     return {
         "type": "RepeatGroupDTO",

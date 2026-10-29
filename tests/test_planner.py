@@ -16,7 +16,7 @@ from builders import (
     workout,
 )
 
-from repwise.domain.models import Config, Workout
+from repwise.domain.models import Config, LoadTier, Workout
 from repwise.domain.progression import PerformedSet, Session, Target
 from repwise.errors import ActivityNotFound
 from repwise.garmin.payloads import (
@@ -341,6 +341,38 @@ def test_a_stale_generated_note_is_replaced():
     assert noted(plan) == [
         ("Dumbbell Lateral Raise", "12-15 reps | +1 kg", "12-20 reps | +1 kg")
     ], "the report has both halves of the edit, not just the exercise's name"
+
+
+def test_the_note_names_the_step_the_target_weight_will_take():
+    """A stack that takes several plate sizes steps by more as the load grows,
+    and the note has to say the jump that is actually coming, not the smallest
+    the load type names."""
+    stack = replace(
+        CALF, weight_step=1.25, tiers=(LoadTier(5.0, None, (1.25, 2.5, 5.0)),)
+    )
+    step = rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 14, 12.5)
+    step["description"] = stack.note  # "12-20 reps | +1.25 kg", the smallest
+    plan = plan_workout(a_workout(exercises=[stack]), workout(step), ({}, {}))
+
+    assert step_note(step) == "12-20 reps | +2.5 kg"
+    assert noted(plan) == [
+        (
+            "Weighted Standing Calf Raise",
+            "12-20 reps | +1.25 kg",
+            "12-20 reps | +2.5 kg",
+        )
+    ]
+
+
+def test_the_note_names_the_jump_onto_the_next_rack():
+    racks = replace(
+        LATERAL,
+        tiers=(LoadTier(1.0, 10.0, (1.0,)), LoadTier(12.0, 30.0, (2.0,))),
+    )
+    step = rep_step("DUMBBELL_LATERAL_RAISE", "LATERAL_RAISE", 13, 10.0)
+    plan_workout(a_workout(exercises=[racks]), workout(step), ({}, {}))
+
+    assert step_note(step) == "12-15 reps | +2 kg"
 
 
 def test_a_hand_written_note_is_never_overwritten():

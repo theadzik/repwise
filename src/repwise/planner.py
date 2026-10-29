@@ -10,6 +10,7 @@ from collections.abc import Container, Iterator
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from .domain.effort import note_step
 from .domain.matching import ExerciseIndex, normalise, variants
 from .domain.models import (
     FROZEN,
@@ -625,12 +626,14 @@ def _judge(  # noqa: PLR0913 - each argument is one independent input
     return Change(spec, current, new, why, marker)
 
 
-def _refresh_note(
+def _refresh_note(  # noqa: PLR0913 - each argument is one independent input
     block: ExerciseBlock,
     spec: ExerciseSpec,
     marker: str | None,
     notes: list[NoteChange],
     warnings: list[str],
+    *,
+    weight: float,
 ) -> None:
     """Keep the step's notes field showing how the exercise is programmed.
 
@@ -649,12 +652,16 @@ def _refresh_note(
     four that have nothing to say - an `update` for another workout, a second
     `--apply` over the same activity, a run that found no session at all -
     and the marker would survive only until the next command.
+
+    `weight` is the load the exercise is prescribed next, which decides the
+    step the note names wherever the equipment offers more than one.
     """
+    programmed = spec.note_at(note_step(spec, weight))
     existing = [step_note(step) for step in block.steps]
     own = [note for note in existing if note and not GENERATED_NOTE.match(note)]
     if own:
         warnings.append(
-            f"{spec.name}: has its own note, left alone (wanted {spec.note!r})"
+            f"{spec.name}: has its own note, left alone (wanted {programmed!r})"
         )
         return
 
@@ -665,7 +672,7 @@ def _refresh_note(
         # very next session as a freeze that no longer exists.
         if marker.startswith(FROZEN) and not spec.freeze:
             marker = ""
-    wanted = with_marker(spec.note, marker)
+    wanted = with_marker(programmed, marker)
 
     stale = [step for step in block.steps if step_note(step) != wanted]
     if not stale:
@@ -767,12 +774,14 @@ class _Shaping:
     warnings: list[str] = field(default_factory=list)
 
 
-def _refresh_block(
+def _refresh_block(  # noqa: PLR0913 - each argument is one independent input
     block: ExerciseBlock,
     spec: ExerciseSpec,
     current: Target | None,
     marker: str | None,
     shaped: _Shaping,
+    *,
+    decided: Target | None,
 ) -> list[dict[str, Any]] | None:
     """Write everything workouts.yaml decides about one exercise.
 
@@ -788,7 +797,8 @@ def _refresh_block(
     a verdict - which is the whole reason `marker` is a parameter rather than
     something `spec` could answer. `plan_workout` judges the session first and
     passes what it found; `plan_sync` passes what the session that decided it
-    found elsewhere.
+    found elsewhere. `decided` is the target the exercise leaves with, whose
+    weight decides the step the note names.
 
     Returns what `_refresh_sets` returned: the steps the exercise now occupies
     when its count was rewritten, and None when it was not.
@@ -798,7 +808,14 @@ def _refresh_block(
     # marker. Writing here puts the marker on every step that already exists,
     # and a freshly built half is corrected on the next run - the same one-run
     # lag a rep-range edit has always had.
-    _refresh_note(block, spec, marker, shaped.notes, shaped.warnings)
+    _refresh_note(
+        block,
+        spec,
+        marker,
+        shaped.notes,
+        shaped.warnings,
+        weight=decided.weight if decided is not None else 0.0,
+    )
     _refresh_rest(block, spec, shaped.rests, shaped.skips, shaped.warnings)
     return _refresh_sets(block, spec, current, shaped.sets, shaped.warnings)
 
@@ -1216,8 +1233,14 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
         # What the config says about this exercise holds whether or not this
         # session moved anything. The marker is the one part that does not:
         # None where no session was judged, which leaves the note's alone.
+        decided = change.new if change is not None else current
         recounted = _refresh_block(
-            block, spec, current, change.marker if change is not None else None, shaped
+            block,
+            spec,
+            current,
+            change.marker if change is not None else None,
+            shaped,
+            decided=decided,
         )
         if recounted is not None:
             reshaped |= _relay(layout, position, recounted)
@@ -1226,7 +1249,6 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
         # did: with partial progression off, a ramp is not a shape this workout
         # is allowed to hold, so it is evened out here rather than left for a
         # session that may not come.
-        decided = change.new if change is not None else current
         if decided is not None:
             for fixed, label in _config_fixups(spec, decided):
                 # Whatever the session found is still worth saying alongside -
@@ -1307,14 +1329,19 @@ def plan_sync(
             continue
 
         current = block_target(block, spec)
+        new = targets.get(normalise(spec.garmin_name))
 
         recounted = _refresh_block(
-            block, spec, current, markers.get(normalise(spec.garmin_name)), shaped
+            block,
+            spec,
+            current,
+            markers.get(normalise(spec.garmin_name)),
+            shaped,
+            decided=new or current,
         )
         if recounted is not None:
             reshaped |= _relay(layout, position, recounted)
 
-        new = targets.get(normalise(spec.garmin_name))
         if new is None:
             continue
 
