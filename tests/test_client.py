@@ -4,9 +4,11 @@ import logging
 import os
 import stat
 from pathlib import Path
+from typing import cast
 
 import pytest
 from garminconnect import (
+    Garmin,
     GarminConnectNotFoundError,
     GarminConnectTooManyRequestsError,
 )
@@ -66,7 +68,7 @@ class StubApi(LibraryUrls):
 
 def session(total: int) -> tuple[GarminSession, StubApi]:
     api = StubApi(total)
-    return GarminSession(api, GarminSettings()), api
+    return GarminSession(cast(Garmin, api), GarminSettings()), api
 
 
 def test_a_single_short_page_needs_one_call():
@@ -143,7 +145,7 @@ class WriteStub(LibraryUrls):
 
 def writer(messages=None) -> tuple[GarminSession, WriteStub]:
     api = WriteStub(messages)
-    return GarminSession(api, GarminSettings()), api
+    return GarminSession(cast(Garmin, api), GarminSettings()), api
 
 
 def test_save_workout_goes_through_update_workout():
@@ -195,7 +197,7 @@ class BrokenApi:
 
 
 def broken(failure: Exception) -> GarminSession:
-    return GarminSession(BrokenApi(failure), GarminSettings())
+    return GarminSession(cast(Garmin, BrokenApi(failure)), GarminSettings())
 
 
 def test_a_library_failure_becomes_a_garmin_error():
@@ -557,7 +559,7 @@ class ScaleStub:
 
 def weighing(body) -> tuple[GarminSession, ScaleStub]:
     api = ScaleStub(body)
-    return GarminSession(api, GarminSettings()), api
+    return GarminSession(cast(Garmin, api), GarminSettings()), api
 
 
 def test_the_window_average_is_preferred_and_converted_from_grams():
@@ -624,7 +626,7 @@ def listed(activity_id="111", reps=40):
 def caching(tmp_path, activities=()) -> tuple[CachedSession, ActivityStub]:
     api = ActivityStub(activities)
     settings = GarminSettings(dump_dir=str(tmp_path), activity_caching=True)
-    return CachedSession(api, settings), api
+    return CachedSession(cast(Garmin, api), settings), api
 
 
 def test_the_first_read_of_a_session_asks_garmin(tmp_path):
@@ -670,14 +672,18 @@ def test_only_strength_sessions_are_asked_for(tmp_path):
     """Strength training is a sub-type of fitness equipment to Garmin's search:
     asked for as a type of its own it answers 400."""
     api = ActivityStub()
-    GarminSession(api, GarminSettings(dump_dir=str(tmp_path))).recent_activities()
+    GarminSession(
+        cast(Garmin, api), GarminSettings(dump_dir=str(tmp_path))
+    ).recent_activities()
 
     assert api.searched == ("fitness_equipment", "strength_training")
 
 
 def test_a_plain_session_holds_nothing(tmp_path):
     """`is_cached` is asked by callers that only want to report a skip."""
-    plain = GarminSession(ActivityStub(), GarminSettings(dump_dir=str(tmp_path)))
+    plain = GarminSession(
+        cast(Garmin, ActivityStub()), GarminSettings(dump_dir=str(tmp_path))
+    )
 
     assert plain.is_cached("111") is False
 
