@@ -14,6 +14,7 @@ from builders import (
     workout,
 )
 
+from repwise.domain.models import LoadTier
 from repwise.domain.progression import Target
 from repwise.garmin.payloads import (
     GENERATED_NOTE,
@@ -377,6 +378,14 @@ def test_a_built_exercise_carries_its_note():
     payload = built(SQUAT)
     step = next(iter(iter_exercise_blocks(payload))).step
     assert step_note(step) == SQUAT.note
+
+
+def test_a_built_exercise_notes_the_step_its_target_will_take():
+    stack = replace(
+        SQUAT, weight_step=1.25, tiers=(LoadTier(5.0, None, (1.25, 2.5, 5.0)),)
+    )
+    group = new_group(stack, Target(8, 40.0))
+    assert step_note(group["workoutSteps"][0]) == "6-10 reps | +5 kg"
 
 
 def test_a_start_weight_is_where_a_built_exercise_begins():
