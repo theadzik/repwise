@@ -1,7 +1,9 @@
 version: 2
 
 updates:
-  - package-ecosystem: "pip"
+  # uv rather than pip, so a bump rewrites uv.lock alongside pyproject.toml
+  # instead of leaving it stale for the next `uv run` to relock.
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -10,17 +12,24 @@ updates:
     cooldown:
       default-days: 7
       semver-major-days: 14
-    insecure-external-code-execution: deny
     labels:
       - "dependencies"
     commit-message:
       prefix: "build"
       include: "scope"
+    # uv does not support grouping by dependency-type, so the runtime
+    # dependencies are named: a new one in [project] dependencies goes here too.
     groups:
-      dev-tooling:
-        dependency-type: "development"
       runtime:
-        dependency-type: "production"
+        patterns:
+          - "garminconnect"
+          - "pyyaml"
+      dev-tooling:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "garminconnect"
+          - "pyyaml"
 
   - package-ecosystem: "pre-commit"
     directory: "/"
