@@ -271,6 +271,10 @@ class ExerciseSpec:
 
     @property
     def note(self) -> str:
+        """The note at the declared `weight_step`; see `note_at`."""
+        return self.note_at(self.weight_step)
+
+    def note_at(self, step: float) -> str:
         """How this exercise is programmed, for the step's notes field.
 
         The target already tells you what to do today; this says what you are
@@ -284,11 +288,14 @@ class ExerciseSpec:
         so either would leave this tool unable to recognise what it had just
         written. A screen may run out well before 512 - a Forerunner 945 does,
         at 160 - which is what `settings.watch_note_limit` is for.
+
+        `step` is the increment to name, which depends on the weight where the
+        equipment offers more than one - `domain/effort.note_step` decides it.
         """
         span = f"{self.rep_low}-{self.rep_high} {'s' if self.time_based else 'reps'}"
         if self.rep_step != 1:
             span += f" by {self.rep_step}"
-        load = "bodyweight" if self.bodyweight else f"+{self.weight_step:g} kg"
+        load = "bodyweight" if self.bodyweight else f"+{step:g} kg"
         written = f"{span} | {load}"
         # One line, whatever the config was written across. A cue holding a
         # newline renders a note that `GENERATED_NOTE` cannot match, and a note

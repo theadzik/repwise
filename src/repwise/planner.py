@@ -10,6 +10,7 @@ from collections.abc import Container, Iterator
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from .domain.effort import next_weight_above, note_step
 from .domain.matching import ExerciseIndex, normalise, variants
 from .domain.models import (
     FROZEN,
@@ -505,9 +506,12 @@ def _clamped(spec: ExerciseSpec, target: Target) -> Target:
     the whole reason, exactly as it is for `_levelled`, so it need not wait to
     be trained.
 
-    Reps only, and the weight is left alone. Landing on `rep_high` is where
-    rule 3 fires from, and a load increase is something a session earns rather
-    than something an edit to a config file hands over.
+    A target above the new `rep_high` steps the load up and starts again at
+    `rep_low`, where rule 3 would have sent it: those reps were already more
+    than the range now asks for. Only where there is no heavier load - a
+    bodyweight exercise, or the top of the equipment - is it brought down to
+    `rep_high` instead. A target below the new `rep_low` is brought up to it,
+    at the same weight.
 
     A ramp goes when the range can no longer hold one: its leading sets ask for
     `rep_step` more, and at the top of the range that is a figure outside it.
@@ -515,6 +519,10 @@ def _clamped(spec: ExerciseSpec, target: Target) -> Target:
     top = target.reps + spec.rep_step if target.lead else target.reps
     if spec.rep_low <= target.reps and top <= spec.rep_high:
         return target
+    if target.reps > spec.rep_high and not spec.bodyweight:
+        heavier = next_weight_above(spec, target.weight)
+        if heavier is not None:
+            return Target(spec.rep_low, heavier)
     reps = min(max(target.reps, spec.rep_low), spec.rep_high)
     lead = target.lead if reps + spec.rep_step <= spec.rep_high else 0
     return Target(reps, target.weight, lead)
@@ -536,7 +544,12 @@ def _config_fixups(spec: ExerciseSpec, target: Target) -> Iterator[tuple[Target,
     clamped = _clamped(spec, target)
     if clamped != target:
         span = f"{spec.rep_low}-{spec.rep_high}"
-        if clamped.reps == target.reps:
+        if clamped.weight != target.weight:
+            yield (
+                clamped,
+                f"outside the {span} range, up to {clamped.weight:g} kg at the bottom",
+            )
+        elif clamped.reps == target.reps:
             # Only the ramp went. The base was inside the range the whole time
             # and it is the leading sets - asking `rep_step` more - that were
             # not, so neither end of the range is where this target was moved
@@ -625,12 +638,14 @@ def _judge(  # noqa: PLR0913 - each argument is one independent input
     return Change(spec, current, new, why, marker)
 
 
-def _refresh_note(
+def _refresh_note(  # noqa: PLR0913 - each argument is one independent input
     block: ExerciseBlock,
     spec: ExerciseSpec,
     marker: str | None,
     notes: list[NoteChange],
     warnings: list[str],
+    *,
+    weight: float,
 ) -> None:
     """Keep the step's notes field showing how the exercise is programmed.
 
@@ -649,12 +664,16 @@ def _refresh_note(
     four that have nothing to say - an `update` for another workout, a second
     `--apply` over the same activity, a run that found no session at all -
     and the marker would survive only until the next command.
+
+    `weight` is the load the exercise is prescribed next, which decides the
+    step the note names wherever the equipment offers more than one.
     """
+    programmed = spec.note_at(note_step(spec, weight))
     existing = [step_note(step) for step in block.steps]
     own = [note for note in existing if note and not GENERATED_NOTE.match(note)]
     if own:
         warnings.append(
-            f"{spec.name}: has its own note, left alone (wanted {spec.note!r})"
+            f"{spec.name}: has its own note, left alone (wanted {programmed!r})"
         )
         return
 
@@ -665,7 +684,7 @@ def _refresh_note(
         # very next session as a freeze that no longer exists.
         if marker.startswith(FROZEN) and not spec.freeze:
             marker = ""
-    wanted = with_marker(spec.note, marker)
+    wanted = with_marker(programmed, marker)
 
     stale = [step for step in block.steps if step_note(step) != wanted]
     if not stale:
@@ -767,12 +786,14 @@ class _Shaping:
     warnings: list[str] = field(default_factory=list)
 
 
-def _refresh_block(
+def _refresh_block(  # noqa: PLR0913 - each argument is one independent input
     block: ExerciseBlock,
     spec: ExerciseSpec,
     current: Target | None,
     marker: str | None,
     shaped: _Shaping,
+    *,
+    decided: Target | None,
 ) -> list[dict[str, Any]] | None:
     """Write everything workouts.yaml decides about one exercise.
 
@@ -788,7 +809,8 @@ def _refresh_block(
     a verdict - which is the whole reason `marker` is a parameter rather than
     something `spec` could answer. `plan_workout` judges the session first and
     passes what it found; `plan_sync` passes what the session that decided it
-    found elsewhere.
+    found elsewhere. `decided` is the target the exercise leaves with, whose
+    weight decides the step the note names.
 
     Returns what `_refresh_sets` returned: the steps the exercise now occupies
     when its count was rewritten, and None when it was not.
@@ -798,7 +820,14 @@ def _refresh_block(
     # marker. Writing here puts the marker on every step that already exists,
     # and a freshly built half is corrected on the next run - the same one-run
     # lag a rep-range edit has always had.
-    _refresh_note(block, spec, marker, shaped.notes, shaped.warnings)
+    _refresh_note(
+        block,
+        spec,
+        marker,
+        shaped.notes,
+        shaped.warnings,
+        weight=decided.weight if decided is not None else 0.0,
+    )
     _refresh_rest(block, spec, shaped.rests, shaped.skips, shaped.warnings)
     return _refresh_sets(block, spec, current, shaped.sets, shaped.warnings)
 
@@ -1213,20 +1242,11 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
             shaped=shaped,
         )
 
-        # What the config says about this exercise holds whether or not this
-        # session moved anything. The marker is the one part that does not:
-        # None where no session was judged, which leaves the note's alone.
-        recounted = _refresh_block(
-            block, spec, current, change.marker if change is not None else None, shaped
-        )
-        if recounted is not None:
-            reshaped |= _relay(layout, position, recounted)
-
+        decided = change.new if change is not None else current
         # The last word on the target, whether a session decided it or nobody
         # did: with partial progression off, a ramp is not a shape this workout
         # is allowed to hold, so it is evened out here rather than left for a
         # session that may not come.
-        decided = change.new if change is not None else current
         if decided is not None:
             for fixed, label in _config_fixups(spec, decided):
                 # Whatever the session found is still worth saying alongside -
@@ -1239,10 +1259,24 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
                     fixed,
                     f"{said}; {label}" if said and said not in SAYS_NOTHING else label,
                     # Levelling a ramp is a change of shape, not a verdict on
-                    # the session, so it does not get a say in the marker. The
-                    # note has already been written by here either way.
+                    # the session, so it does not get a say in the marker.
                     change.marker if change is not None else None,
                 )
+
+        # What the config says about this exercise holds whether or not this
+        # session moved anything. The marker is the one part that does not:
+        # None where no session was judged, which leaves the note's alone.
+        # After the fixups, which can move the load the note names a step from.
+        recounted = _refresh_block(
+            block,
+            spec,
+            current,
+            change.marker if change is not None else None,
+            shaped,
+            decided=change.new if change is not None else current,
+        )
+        if recounted is not None:
+            reshaped |= _relay(layout, position, recounted)
 
         if change is None:
             continue
@@ -1307,14 +1341,19 @@ def plan_sync(
             continue
 
         current = block_target(block, spec)
+        new = targets.get(normalise(spec.garmin_name))
 
         recounted = _refresh_block(
-            block, spec, current, markers.get(normalise(spec.garmin_name)), shaped
+            block,
+            spec,
+            current,
+            markers.get(normalise(spec.garmin_name)),
+            shaped,
+            decided=new or current,
         )
         if recounted is not None:
             reshaped |= _relay(layout, position, recounted)
 
-        new = targets.get(normalise(spec.garmin_name))
         if new is None:
             continue
 

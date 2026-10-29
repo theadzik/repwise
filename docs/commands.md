@@ -369,6 +369,10 @@ do today:
 30-60 s | bodyweight       a timed hold
 ```
 
+The `+` is the jump the next load increase will actually take from the current
+target, so it follows a stack onto its larger plates and names the gap onto the
+next rack, rather than always quoting the smallest step the load type has.
+
 An exercise's own [`notes`](configuration.md#exercise-fields) is written on the
 end, which is what makes it worth writing - a cue you can only read by opening
 a YAML file is not a cue:
