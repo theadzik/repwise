@@ -113,10 +113,11 @@ class GarminSession:
 
     # --- reads ---
     #
-    # garminconnect ships no type information, so everything it returns arrives
-    # as Any and the cast is where it stops being. Declaring the shape here
-    # rather than letting Any spread is the whole point of the adapter: one file
-    # asserts what Garmin sends, and is the one file to correct when it changes.
+    # garminconnect types most of its getters as `dict[str, Any]`, but its raw
+    # calls return Any and a few getters a union wider than Garmin really sends.
+    # Declaring the shape here rather than letting either spread is the whole
+    # point of the adapter: one file asserts what Garmin sends, and is the one
+    # file to correct when it changes.
 
     @_reporting("list your recent activities")
     def recent_activities(self, limit: int | None = None) -> list[dict[str, Any]]:
@@ -128,19 +129,20 @@ class GarminSession:
         away.
         """
         limit = limit or self._settings.activity_search_limit
-        return self._api.get_activities(0, limit, FITNESS_EQUIPMENT, STRENGTH) or []
+        found = self._api.get_activities(0, limit, FITNESS_EQUIPMENT, STRENGTH)
+        return cast(list[dict[str, Any]], found or [])
 
     @_reporting("fetch that activity")
     def activity(self, activity_id: str) -> dict[str, Any]:
-        return cast(dict[str, Any], self._api.get_activity(activity_id))
+        return self._api.get_activity(activity_id)
 
     @_reporting("fetch the activity's exercise sets")
     def exercise_sets(self, activity_id: str) -> dict[str, Any]:
-        return cast(dict[str, Any], self._api.get_activity_exercise_sets(activity_id))
+        return self._api.get_activity_exercise_sets(activity_id)
 
     @_reporting("fetch the workout")
     def workout(self, workout_id: str) -> dict[str, Any]:
-        return cast(dict[str, Any], self._api.get_workout_by_id(workout_id))
+        return self._api.get_workout_by_id(workout_id)
 
     @_reporting("fetch the workout that activity was performed against")
     def executed_workout(self, activity_id: str) -> list[dict[str, Any]]:

@@ -195,7 +195,7 @@ warn_unused_ignores = true
 # Garmin's JSON into both. Spelling the shape out is what stops Any spreading
 # from the two files that have a reason for it into the ones that do not.
 disallow_any_generics = true
-# The value garminconnect hands back is Any, so without this a function can
+# Much of what garminconnect hands back is Any, so without this a function can
 # promise `dict[str, Any]` and return whatever came off the wire unchecked.
 # `garmin/client.py` casts at the boundary instead, which is what an adapter is.
 warn_return_any = true
@@ -203,12 +203,6 @@ warn_return_any = true
 # happened to import it - `ActivityNotFound` lives in `errors.py`, whoever else
 # passes it through.
 no_implicit_reexport = true
-
-# garminconnect ships no type information. garmin/client.py is the only module
-# that imports it, which is what keeping the adapter in one place buys.
-[[tool.mypy.overrides]]
-module = "garminconnect.*"
-ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
