@@ -704,6 +704,14 @@ def test_an_overshoot_is_still_capped_at_the_top_while_it_holds():
     assert target == Target(10, 20.0)
 
 
+def test_a_target_left_above_a_narrowed_range_adds_the_load_without_holding():
+    """`rep_high` was lowered under a stored 11. Holding would ask for 10, less
+    than the session just did, so the load goes up as it would with no session
+    at all."""
+    target, why = next_target(FOUR_SET_SQUAT, Target(11, 20.0), [P(11, 20.0)] * 4)
+    assert target == Target(6, 22.5), why
+
+
 def test_a_rebased_load_needs_confirming_at_that_load():
     """Rule 5 admits 22.5 and the session tops the range on it, but the top of
     the range at 22.5 has still only been reached once."""

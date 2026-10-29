@@ -558,7 +558,11 @@ def _advance(  # noqa: PLR0913 - each argument is one independent input
         # nothing to confirm when there is nothing to add, and an exercise that
         # is bodyweight or out of rack would otherwise be told, every run, to
         # hold once more for a jump that is never coming.
-        if topped < CONFIRMED_AFTER:
+        #
+        # Nor for a target `rep_high` was lowered beneath: holding there would
+        # ask for fewer reps than the session just did, and with no session at
+        # all the planner already moves such a target onto the heavier load.
+        if topped < CONFIRMED_AFTER and current.reps <= spec.rep_high:
             return (
                 Target(spec.rep_high, weight),
                 f"hit {floor} on every set{lifted}, top of the range, "
