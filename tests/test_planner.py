@@ -1622,15 +1622,22 @@ def a_stored_squat(reps, weight=20.0, sets=3):
     )
 
 
-def test_a_target_above_the_new_top_is_brought_down_with_no_session_at_all():
-    """Narrowing the range is the whole reason, so it need not wait to be trained."""
+def test_a_target_above_the_new_top_steps_the_load_with_no_session_at_all():
+    """Narrowing the range is the whole reason, so it need not wait to be trained.
+
+    Reps past the new top were already doing more than the range asks for, so
+    the target goes where rule 3 would have sent it: one load step up, back at
+    the bottom of the range.
+    """
     built = a_stored_squat(12)
     plan = plan_workout(a_workout(exercises=[NARROWED]), built)
 
-    assert [c.new for c in plan.moved] == [Target(10, 20.0)]
-    assert plan.changes[0].reason == "outside the 6-10 range, brought to the top"
+    assert [c.new for c in plan.moved] == [Target(6, 22.5)]
+    assert plan.changes[0].reason == (
+        "outside the 6-10 range, up to 22.5 kg at the bottom"
+    )
     assert [step_target(b.step) for b in iter_exercise_blocks(built)] == [
-        Target(10, 20.0)
+        Target(6, 22.5)
     ], "the workout Garmin holds is rewritten, not just reported"
 
 
@@ -1647,22 +1654,41 @@ def test_a_target_already_inside_the_range_is_left_alone():
     assert plan.changes == []
 
 
-def test_bringing_a_target_into_range_never_touches_the_load():
-    """Landing on `rep_high` is where rule 3 fires from, and a weight increase
-    is something a session earns, not something editing a config hands over."""
-    plan = plan_workout(
-        a_workout(exercises=[NARROWED]), a_stored_squat(12, weight=40.0)
-    )
+def test_a_target_above_the_top_of_the_equipment_is_brought_to_the_top():
+    """With no heavier load to move to, the range is all that is left."""
+    capped = replace(NARROWED, max_weight=40.0)
+    plan = plan_workout(a_workout(exercises=[capped]), a_stored_squat(12, weight=40.0))
 
     assert plan.moved[0].new == Target(10, 40.0)
+    assert plan.changes[0].reason == "outside the 6-10 range, brought to the top"
 
 
-def test_a_ramp_the_new_range_cannot_hold_is_dropped():
-    """The leading sets ask for a rep more, which at the top is outside it."""
+def test_a_bodyweight_target_above_the_new_top_is_brought_to_the_top():
+    shortened = replace(PLANK, rep_high=50)
+    definition = payload(repeat(hold_step("PLANK", "PLANK", 55), sets=3))
+    plan = plan_workout(a_workout(exercises=[shortened]), definition)
+
+    assert plan.moved[0].new == Target(50, 0.0)
+
+
+def test_a_ramp_above_the_new_top_steps_the_load_and_is_dropped():
     built = a_ramped_squat(base=12, lead=1)
     plan = plan_workout(a_workout(exercises=[NARROWED]), built)
 
-    assert plan.moved[0].new == Target(10, 20.0, 0)
+    assert plan.moved[0].new == Target(6, 22.5, 0)
+
+
+def test_the_note_names_the_step_from_the_load_the_range_moved_to():
+    """Written in the same run, not one behind the target it describes."""
+    stack = replace(
+        NARROWED, weight_step=1.25, tiers=(LoadTier(5.0, None, (1.25, 2.5, 5.0)),)
+    )
+    built = a_stored_squat(12, weight=13.75)  # +1.25 from here, +2.5 from 15
+    plan = plan_workout(a_workout(exercises=[stack]), built)
+
+    assert plan.moved[0].new == Target(6, 15.0)
+    step = next(iter(iter_exercise_blocks(built))).step
+    assert step_note(step) == "6-10 reps | +2.5 kg"
 
 
 def test_a_ramp_at_the_top_is_dropped_without_claiming_the_target_moved():
@@ -1711,13 +1737,14 @@ def test_a_session_that_tops_the_new_range_earns_the_load_and_needs_no_clamp():
 
 
 def test_a_session_that_missed_still_has_its_target_brought_into_range():
-    """The session has its say, and the clamp is the last word after it."""
+    """The session has its say, and the range is the last word after it."""
     built = a_stored_squat(12)
     plan = plan_workout(a_workout(exercises=[NARROWED]), built, a_squat_session(8))
 
-    assert plan.moved[0].new == Target(10, 20.0)
+    assert plan.moved[0].new == Target(6, 22.5)
     assert plan.changes[0].reason == (
-        "missed target, 8 on the worst set; outside the 6-10 range, brought to the top"
+        "missed target, 8 on the worst set; "
+        "outside the 6-10 range, up to 22.5 kg at the bottom"
     )
 
 
