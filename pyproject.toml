@@ -67,11 +67,11 @@ release = [
 ]
 dev = [
     { include-group = "release" },
-    "coverage==7.17.0",
+    "coverage==7.17.2",
     "mypy==2.4.1",
     "pre-commit==4.7.0",
     "pytest==9.2.0",
-    "ruff==0.17.3",
+    "ruff==0.17.4",
     "types-PyYAML==6.0.12.20260906",
 ]
 
