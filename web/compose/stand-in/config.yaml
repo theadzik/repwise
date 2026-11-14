@@ -1,0 +1,10 @@
+# What the worker downloads in place of a real workouts.yaml. It only has to
+# pass the one check made before a run starts: every workout has a Garmin id.
+settings:
+  garmin:
+    token_store: ~/.config/repwise
+workouts:
+  - key: push
+    garmin_workout_id: 111
+  - key: pull
+    garmin_workout_id: 222

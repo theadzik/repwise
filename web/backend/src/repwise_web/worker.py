@@ -123,10 +123,16 @@ class Worker:
         return int(lost)
 
     def execute(self, run_id: uuid.UUID, athlete_id: uuid.UUID) -> Outcome:
-        home = tempfile.mkdtemp(dir=self.settings.scratch_dir)
+        """Do a claimed run. Whatever goes wrong, it comes back as an outcome.
+
+        A run that was claimed and then abandoned would sit as running until
+        the heartbeat rule gave up on it, with the button dead meanwhile.
+        """
         beat = _Heartbeat(self.sessions, run_id)
         beat.start()
+        home = None
         try:
+            home = tempfile.mkdtemp(dir=self.settings.scratch_dir)
             return self._attempt(athlete_id, Path(home))
         except Refused as exc:
             return Outcome(FAILED, error=str(exc))
@@ -134,7 +140,8 @@ class Worker:
             return Outcome(FAILED, error=f"{type(exc).__name__}: {exc}")
         finally:
             beat.stop()
-            shutil.rmtree(home, ignore_errors=True)
+            if home is not None:
+                shutil.rmtree(home, ignore_errors=True)
 
     def _attempt(self, athlete_id: uuid.UUID, home: Path) -> Outcome:
         with self.sessions() as db:

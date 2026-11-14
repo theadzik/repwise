@@ -278,6 +278,26 @@ def test_a_config_that_cannot_be_downloaded_fails_the_run(
     assert run.error.startswith("Could not download file://")
 
 
+def test_a_run_that_cannot_even_be_set_up_is_failed_not_abandoned(
+    client: TestClient,
+    settings: Settings,
+    sessions: Sessions,
+    garmin_session: uuid.UUID,
+    tmp_path: Path,
+) -> None:
+    """Left as running, it would hold the button until the heartbeat rule."""
+    nowhere = dataclasses.replace(settings, scratch_dir=str(tmp_path / "missing"))
+    run_id = queue(client)
+
+    Worker(nowhere, sessions).run_one()
+
+    run = finished(sessions, run_id)
+    assert run.status == "failed"
+    assert run.error is not None
+    assert run.error.startswith("FileNotFoundError:")
+    assert client.post("/api/v1/runs").status_code == 201
+
+
 def test_a_run_that_takes_too_long_is_stopped(
     client: TestClient,
     settings: Settings,

@@ -5,7 +5,8 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi.testclient import TestClient
-from sqlalchemy import update
+from sqlalchemy import func, select, update
+from starlette.types import Message, Receive, Scope, Send
 
 from repwise_web.api import create_app
 from repwise_web.db import FAILED, Run, Sessions
@@ -142,6 +143,32 @@ def test_signing_out_of_garmin_forgets_the_session(
     assert client.post("/api/v1/runs").status_code == 409
     # Signing out twice is not an error.
     assert client.delete("/api/v1/garmin/connection").status_code == 204
+
+
+def test_a_change_is_committed_before_it_is_answered(
+    settings: Settings, sessions: Sessions, garmin_session: uuid.UUID
+) -> None:
+    """Or the page, told 201, asks another replica and finds nothing there.
+
+    It also means a commit that fails is reported, not answered with a 201.
+    """
+    app = create_app(settings, sessions)
+    seen = []
+
+    async def watching(scope: Scope, receive: Receive, send: Send) -> None:
+        async def answer(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                # What any other connection can see as the answer goes out.
+                with sessions() as db:
+                    seen.append(db.scalar(select(func.count()).select_from(Run)))
+            await send(message)
+
+        await app(scope, receive, answer)
+
+    assert (
+        TestClient(watching, headers=SIGNED_IN).post("/api/v1/runs").status_code == 201
+    )
+    assert seen == [1]
 
 
 def test_the_page_can_tell_the_service_is_up(client: TestClient) -> None:

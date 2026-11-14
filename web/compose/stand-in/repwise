@@ -1,0 +1,23 @@
+#!/opt/repwise-web/bin/python
+"""Stands in for the `repwise` command in the local stack.
+
+It takes long enough for a check to catch a run in progress, says what it was
+given, and never goes near Garmin.
+"""
+
+import os
+import sys
+import time
+
+token = os.path.expanduser("~/.config/repwise/garmin_tokens.json")
+print("stand-in repwise", *sys.argv[1:])
+print(
+    "config:",
+    os.environ["REPWISE_CONFIG"],
+    "exists:",
+    os.path.exists(os.environ["REPWISE_CONFIG"]),
+)
+print("garmin session given:", os.path.exists(token))
+sys.stdout.flush()
+time.sleep(8)
+print("done")

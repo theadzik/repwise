@@ -112,6 +112,9 @@ repos:
     hooks:
       # This repository is more prose than code, and the prose is the product.
       - id: codespell
+        # Lockfiles are written by tools and full of hashes, which are words
+        # to codespell often enough to fail a commit nobody can fix.
+        exclude: (^|/)(uv\.lock|package-lock\.json)$
 
   # --- commit messages ------------------------------------------------------
   - repo: https://github.com/commitizen-tools/commitizen

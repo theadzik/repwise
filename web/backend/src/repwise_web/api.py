@@ -115,7 +115,11 @@ def create_app(settings: Settings, sessions: Sessions | None = None) -> FastAPI:
             raise HTTPException(HTTPStatus.UNAUTHORIZED, "Not signed in.")
         return x_forwarded_user.lower()
 
-    Db = Annotated[Session, Depends(database)]
+    # Committed before the answer is sent, which is not FastAPI's default for a
+    # dependency that yields. Otherwise the page, told a run was made, can ask
+    # another replica before the commit and find nothing; and a commit that
+    # failed would already have been answered with a success.
+    Db = Annotated[Session, Depends(database, scope="function")]
     Login = Annotated[str, Depends(signed_in)]
 
     def registered(login: Login, db: Db) -> Athlete:

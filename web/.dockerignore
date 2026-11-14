@@ -1,0 +1,9 @@
+# Built or installed on the machine, and built again in the image.
+**/node_modules
+**/dist
+**/.venv
+**/build
+**/__pycache__
+**/*.egg-info
+**/.pytest_cache
+**/.ruff_cache

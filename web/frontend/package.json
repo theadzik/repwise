@@ -1,0 +1,25 @@
+{
+  "name": "repwise-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "types": "openapi-typescript openapi.json --output src/schema.d.ts"
+  },
+  "dependencies": {
+    "@mantine/core": "9.8.0",
+    "@mantine/hooks": "9.8.0",
+    "@tanstack/react-query": "5.107.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.8"
+  }
+}
