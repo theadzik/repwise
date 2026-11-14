@@ -1,0 +1,23 @@
+# A local stack for the service's tests and for trying it by hand. Not how it
+# is deployed: that is in the homelab repository.
+#
+#   docker compose -f web/compose.yaml up -d db        # what the tests need
+#   docker compose -f web/compose.yaml up --build      # the whole thing
+#
+# The whole thing is PostgreSQL, two API replicas and a worker, behind a proxy
+# that stands in for oauth2-proxy: it spreads requests over both replicas and
+# names the signed-in user itself, since there is no GitHub sign-in here.
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: repwise
+      POSTGRES_PASSWORD: repwise
+      POSTGRES_DB: repwise
+    ports:
+      - "127.0.0.1:54329:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "repwise"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

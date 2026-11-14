@@ -1,0 +1,10 @@
+# The repository's rules, unchanged, with two things only this project needs.
+extend = "../../pyproject.toml"
+
+# Where this project's own package is, so that its imports sort as first-party.
+src = ["src"]
+
+[lint.per-file-ignores]
+# A test names every fixture it uses as an argument, and one that drives the
+# API, the worker and a stand-in command needs more than five.
+"tests/*" = ["PLR0913", "PLR0917"]

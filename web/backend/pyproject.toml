@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=83.0.0"]
+build-backend = "setuptools.build_meta"
+
+# The service behind the repwise web page. A project of its own inside the
+# repository: it is built into an image and never published to PyPI, so the
+# version here means nothing and the image tag is what identifies a build.
+[project]
+name = "repwise-web"
+version = "0.0.0"
+description = "A web page and API that run repwise for a signed-in athlete"
+requires-python = ">=3.14"
+# Pinned to exact versions, as the CLI's are, and for the same reason: this is
+# an application, and Dependabot raises a pull request per release.
+#
+# garminconnect and pyyaml are imported here but not named: repwise pins the
+# exact versions it was tested with, and a second pin could only come to
+# disagree with it.
+dependencies = [
+    "alembic==1.20.1",
+    "cryptography==50.0.2",
+    "fastapi==0.162.7",
+    "psycopg[binary]==3.3.9",
+    "repwise==3.5.0",
+    "sqlalchemy==2.1.8",
+    "uvicorn==0.54.0",
+    # What uvicorn serves the Garmin login's WebSocket with.
+    "websockets==17.4",
+]
+
+[project.scripts]
+repwise-web = "repwise_web.cli:main"
+
+[dependency-groups]
+dev = [
+    # What FastAPI's test client is built on.
+    "httpx2==2.16.0",
+    "pytest==9.2.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# The built web app is copied in beside the package by the image build.
+repwise_web = ["migrations/*.py", "migrations/versions/*.py"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
