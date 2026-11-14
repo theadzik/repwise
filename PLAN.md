@@ -22,11 +22,12 @@ built so that it can grow into it.
 - [The Garmin session](#the-garmin-session)
 - [Data model](#data-model)
 - [Security](#security)
+- [Where the code lives](#where-the-code-lives)
 - [In the homelab](#in-the-homelab)
 - [Scaling](#scaling)
 - [How it is checked](#how-it-is-checked)
 - [Build order](#build-order)
-- [Decisions needed](#decisions-needed)
+- [Decisions](#decisions)
 - [Left for later](#left-for-later)
 
 ## Summary
@@ -47,6 +48,11 @@ built so that it can grow into it.
    takes two steps that must share a live connection to Garmin. That
    conversation runs over one WebSocket, so that nothing has to be remembered
    between the steps.
+7. **Two ways out.** One button signs out of the site, another makes the
+   service forget the Garmin session.
+8. **Reachable from the home network only, for now.** No Cloudflare tunnel in
+   front, which also means the Garmin password no longer passes through
+   Cloudflare.
 
 The routine stays where it is, in `workouts.yaml` in its git repository. Moving
 it into the database, and an editor for it, is the next version.
@@ -58,12 +64,14 @@ it into the database, and an editor for it, is the next version.
 - An account, created by signing in with GitHub.
 - The Update button, and the result of every run, kept.
 - Signing in to Garmin from the page, with a code when Garmin asks for one.
+- Signing out, of the site and of Garmin, each with its own button.
 - A backend with no state in the pod: any number of replicas, rolling updates.
+- An address that resolves inside the home network only.
 - A data model keyed by athlete, so a second athlete is a row and not a rewrite.
 
 ### Out
 
-- More than the allowed GitHub accounts. See [Decisions needed](#decisions-needed).
+- More than the allowed GitHub accounts. See [Decisions](#decisions).
 - Editing the routine. It is still fetched from git for every run.
 - Garmin's official API, device agents, and everything else that exists to keep
   other people's Garmin access safe.
@@ -91,8 +99,7 @@ and its storage class question go away with it.
 
 ```mermaid
 flowchart TB
-    phone(["Browser on the phone"]) --> cf["Cloudflare, tunnel"]
-    cf --> traefik["Traefik ingress"]
+    phone(["Browser on the home network"]) --> traefik["Traefik ingress"]
 
     subgraph ns["namespace: repwise"]
         subgraph apipod["api pod, 2 or more replicas"]
@@ -191,6 +198,21 @@ sequenceDiagram
   browser asking first. With the cookie's `SameSite=Lax` that is the defence
   against forged requests.
 
+### Signing out
+
+The account screen has a *Sign out* button. It is a link to
+`/oauth2/sign_out`, which oauth2-proxy answers by deleting its session cookie.
+There is nothing for the API to do, because the API never held the session.
+
+- **Where it lands.** oauth2-proxy is switched from redirecting straight to
+  GitHub to showing its own sign-in page, with `--skip-provider-button=false`.
+  Without that, signing out would bounce through GitHub and straight back in,
+  since GitHub still knows the browser.
+- **What it does not do.** It does not sign the browser out of GitHub, and it
+  cannot end a session in another browser. The session is the cookie, and no
+  list of sessions is kept on the server. A cookie expires after 30 days, as
+  now.
+
 ## The API
 
 Everything is under `/api/v1`. Errors are `application/problem+json`.
@@ -199,13 +221,16 @@ Everything is under `/api/v1`. Errors are `application/problem+json`.
 | --- | --- | --- |
 | `GET /me` | The signed-in athlete | 200, or 404 before registering |
 | `PUT /me` | Register, or nothing if registered | 201 or 200 |
-| `POST /runs` | Queue a run | 201 with `Location`. 409 with the active run's `Location` if one is queued or running |
+| `POST /runs` | Queue a run | 201 with `Location`. 409 with the active run's `Location` if one is queued or running. 409 if no Garmin session is held |
 | `GET /runs` | Runs, newest first, without their output | 200 |
 | `GET /runs/{id}` | One run, with its output | 200 |
 | `GET /garmin/connection` | Whether a Garmin session is held, and since when | 200, or 404 |
-| `DELETE /garmin/connection` | Forget the Garmin session | 204 |
+| `DELETE /garmin/connection` | Sign out of Garmin: forget the session | 204 |
 | `WS /garmin/connection/login` | The login conversation, [below](#signing-in-to-garmin) | |
-| `GET /healthz` | Liveness, outside `/api/v1` and outside sign-in | 200 |
+| `GET /healthz` | Liveness, outside `/api/v1` | 200 |
+
+Signing out of the site is not in this table. It is
+[oauth2-proxy's own endpoint](#signing-out), `/oauth2/sign_out`.
 
 The page shows the newest run from `GET /runs`, which is what replaces "Not run
 since the pod started". While a run is queued or running it asks for
@@ -334,15 +359,30 @@ sequenceDiagram
   Nothing was stored, so there is nothing to clean up. Start again.
 - The password is passed to Garmin and dropped, and never logged, as now.
 - The handshake checks the `Origin` header, so another site cannot open it.
-- A ping every 20 seconds keeps Cloudflare from closing an idle socket while a
+- A ping every 20 seconds keeps a proxy from closing an idle socket while a
   code is being typed.
-- Cloudflare can read the password, as it can today. That was accepted for one
-  athlete's own account and is unchanged.
+- With the site internal, the password travels from the browser to Traefik
+  inside the home network, and Cloudflare never sees it. If the site is made
+  public again through the tunnel, Cloudflare can read it, as it could on the
+  trigger page.
 
 If a WebSocket turns out to be awkward through the proxy chain, the fallback is
 to sign in with the CLI on a laptop and upload the token file through an
 ordinary `PUT`. That is fully REST and keeps the password off the server, at
 the price of needing the laptop.
+
+### Signing out of Garmin
+
+The Garmin screen has a *Sign out of Garmin* button, which sends
+`DELETE /garmin/connection`. The row is deleted and with it the only copy of
+the tokens the service had.
+
+- A run already in progress finishes with the token it was given. It does not
+  write the token back, because the row it would update is gone.
+- While no session is held, `POST /runs` is refused with 409 and the page says
+  to sign in to Garmin first.
+- Garmin is not told. The unofficial API has no call that ends a session, which
+  is also true of `repwise logout`. The tokens are forgotten, not revoked.
 
 ## Data model
 
@@ -372,7 +412,6 @@ erDiagram
     GARMIN_CONNECTION {
         uuid athlete_id PK, FK
         bytea token_ciphertext
-        text key_id
         int version
         timestamptz connected_at
         timestamptz updated_at
@@ -382,8 +421,9 @@ erDiagram
 - The unique index is on `run (athlete_id)` where the status is `queued` or
   `running`.
 - Runs are kept. One athlete makes a few hundred small rows a year.
-- `key_id` says which key encrypted the row, so the key can be replaced without
-  a moment when nothing decrypts.
+- The token is encrypted with Fernet, and the service accepts a list of keys:
+  it encrypts with the first and decrypts with any. A key is replaced by
+  putting the new one first, with no moment when nothing decrypts.
 - Where the routine comes from is still configuration, the `CONFIG_URL` and
   token the trigger has now. It becomes a row per athlete when there is a
   second athlete or an editor.
@@ -396,7 +436,8 @@ What changes compared with the trigger page:
 | --- | --- | --- |
 | Garmin tokens at rest | A file on the NAS, readable by anything that mounts the share | Encrypted in PostgreSQL, key in a Secret |
 | Garmin tokens in use | On the volume permanently | In memory-backed scratch for the length of a run |
-| Garmin password | Through Cloudflare to the pod, passed on, dropped | The same |
+| Garmin password | Through Cloudflare to the pod, passed on, dropped | Inside the home network to the pod, passed on, dropped |
+| Who can reach the site | The internet, through the Cloudflare tunnel | The home network only |
 | Who can press the button | One GitHub login, by oauth2-proxy | The same |
 | Database access | None exists | `api` and `worker` share one role that cannot alter tables. `migrate` owns them |
 | What can reach Garmin | The one pod | `worker`, and `api` for the login |
@@ -404,6 +445,36 @@ What changes compared with the trigger page:
 Unchanged: the `restricted` pod security standard, read-only root filesystems,
 a Cilium policy per workload naming the hosts it may reach, signed images
 verified on admission, and the API listening on localhost behind the proxy.
+
+## Where the code lives
+
+| Repository | Holds |
+| --- | --- |
+| `repwise` | The service, under `web/`, and the workflow that builds its image |
+| `homelab` | The deployment, and nothing that is built |
+
+```text
+web/
+    backend/        the Python package repwise_web: api, worker, migrations,
+                    and their tests
+    frontend/       the React app
+    Dockerfile      one image for all three commands
+    compose.yaml    PostgreSQL and two API replicas, for the checks below
+```
+
+- **`web/` is a project of its own,** with its own `pyproject.toml` and
+  lockfile. The CLI's packaging, its checks and its coverage floors are not
+  touched, and nothing under `web/` is shipped to PyPI.
+- **It installs a released `repwise` from PyPI,** as the trigger image does.
+  That makes `web/` the whole build context, and a repwise release reaches the
+  service as a pull request from Dependabot.
+- **The image is `ghcr.io/theadzik/repwise-web`,** built by the shared workflow
+  the homelab's images use, so it is scanned and signed the same way and passes
+  the same admission check. A pull request builds and scans without
+  publishing. A tag `repwise-web-<CalVer>` publishes.
+- **The workflow needs the DHI registry credentials** the homelab repository
+  already has: the variable `DOCKERHUB_USERNAME` and the secret
+  `DOCKERHUB_TOKEN`.
 
 ## In the homelab
 
@@ -423,13 +494,27 @@ Changes to `kubernetes/kustomizations/repwise/`:
 - **Secrets:** the three that exist (the workouts token, the OAuth client, the
   cookie secret), and one new: the key that encrypts the Garmin session. The
   database password is the one CloudNativePG generates.
+- **The Ingress becomes internal:** the Cloudflare annotations go and the label
+  becomes `dns-type: internal`, as audiobookshelf has it. The hostname, the
+  OAuth App and its callback URL stay. GitHub never calls the site itself, so
+  signing in works on an address only the home network resolves.
+- **oauth2-proxy** gains `--skip-provider-button=false`, for
+  [signing out](#signing-out).
 - **Removed:** the `repwise-trigger` Deployment, the claim
   `repwise-trigger-home`, and `apps/repwise-trigger/`.
-- **Kept:** the Ingress, the hostname, the OAuth App and its callback URL.
 
 Cutting over means signing in to Garmin once more through the new page, since
 the session moves to new storage. Nothing else carries over, because the old
 page kept nothing.
+
+### Trying it first
+
+Before any of that, the service is tried in a namespace made by hand,
+`repwise-test`, applied with `kubectl` and outside ArgoCD. It has no Ingress
+and no oauth2-proxy: a GitHub OAuth App has one callback URL, and that belongs
+to the real site. A small proxy that sets `X-Forwarded-User` stands in for it,
+reached by port-forward. The namespace is deleted afterwards. What it cannot
+show is the real sign-in, which is first exercised at the cut-over.
 
 ## Scaling
 
@@ -465,6 +550,8 @@ trigger page's tests did.
 | A dead worker is noticed | Kill the worker mid-run: the run is `failed` with "worker lost" within a minute, and a new run can start |
 | A rollout does not kill a run | Roll the worker mid-run: the run finishes |
 | The login keeps no state | Sign in with a wrong password, with a code, with a wrong code then the right one. Drop the socket halfway and confirm nothing was stored |
+| Signing out of Garmin forgets the tokens | After it the row is gone and `POST /runs` answers 409. A run that was in progress does not put the token back |
+| Signing out of the site ends the session | After it, a request to the API is refused until signing in again |
 | The token is not readable at rest | Dump the database and search it for `di_refresh_token`: no match |
 | Nothing is on disk | The pods run with no volume but memory-backed scratch |
 
@@ -481,22 +568,26 @@ Each step ends in something that runs.
 3. **The Garmin session.** The encrypted row, writing it to scratch and reading
    it back, the WebSocket login against a stand-in `garminconnect`, `DELETE`.
    *Check:* the login and token rows of the table above.
-4. **The web app.** Runs, Garmin, account. Client types generated from the
-   OpenAPI document. *Check:* the whole flow in a headless browser at phone
-   width.
-5. **Deploy beside the trigger,** on a second hostname. Sign in to Garmin
-   through it. *Check:* one real run, pressed by you, gives the same output the
-   trigger does.
-6. **Cut over and remove the trigger.**
+4. **The web app.** Runs, Garmin, account, and both sign-out buttons. Client
+   types generated from the OpenAPI document. *Check:* the whole flow in a
+   headless browser at phone width.
+5. **The image and its workflow.** *Check:* a pull request builds and scans it,
+   and a tag publishes it signed.
+6. **Try it in `repwise-test`,** as [above](#trying-it-first). *Check:* the
+   table above, on the cluster.
+7. **The homelab manifests, and the cut-over.** Sign in to Garmin through the
+   new page. *Check:* one real run, pressed by you, gives the same output the
+   trigger does. Then remove the trigger.
 
-## Decisions needed
+## Decisions
 
-| Decision | Recommendation | Why |
+| Decision | Outcome | Why |
 | --- | --- | --- |
-| Where the code lives | A new repository | A web app with a Node build and a database has outgrown `apps/` in homelab, which then only deploys the image |
-| Who may register | Keep the allow-list of GitHub logins | Open registration means holding other people's Garmin sessions and taking their passwords through our server, which is what the multi-user plan exists to avoid |
-| Where the routine lives | Still in git for this version | It keeps the version small. The limit that a new workout must be given its id from the laptop stays until the routine is in the database |
-| The Garmin login | A WebSocket | It is the only way to keep a two-step login on the page with no state in the pod. The fallback is uploading a token from the laptop |
+| Where the code lives | Decided: `web/` in the repwise repository, which builds the image. The deployment is in homelab | |
+| Who can reach it | Decided: the home network only, for now | |
+| Who may register | Recommended, not confirmed: keep the allow-list of GitHub logins | Open registration means holding other people's Garmin sessions and taking their passwords through our server, which is what the multi-user plan exists to avoid |
+| Where the routine lives | Recommended, not confirmed: still in git for this version | It keeps the version small. The limit that a new workout must be given its id from the laptop stays until the routine is in the database |
+| The Garmin login | Recommended, not confirmed: a WebSocket | It is the only way to keep a two-step login on the page with no state in the pod. The fallback is uploading a token from the laptop |
 
 ## Left for later
 

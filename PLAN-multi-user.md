@@ -363,13 +363,13 @@ Notes on the choices that are not obvious:
 
 | Repository | Holds |
 | --- | --- |
-| `repwise` | The domain, the planner, the CLI, and the CLI's agent mode. Still published to PyPI |
-| A new repository for the service | The FastAPI app, the web app, the image build |
+| `repwise` | The domain, the planner, the CLI, and the CLI's agent mode, still published to PyPI. Under `web/`, the FastAPI app, the web app and the image build |
 | `homelab` | Manifests only: what runs, where, and with which image tag |
 
-The service depends on a pinned release of `repwise`, as the trigger image
-does now. A Node toolchain and a web app do not belong beside a CLI whose
-checks assume one Python package.
+This was decided with [version one](PLAN.md#where-the-code-lives). `web/` is a
+project of its own inside the repository, with its own dependencies and
+lockfile, because the CLI's checks assume one Python package. It depends on a
+pinned release of `repwise`, as the trigger image does now.
 
 ## Flows
 
