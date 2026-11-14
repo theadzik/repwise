@@ -1,0 +1,19 @@
+# Only the stand-in proxy may reach the API. It is what says who is signed in,
+# and the API believes it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: repwise-api
+spec:
+  podSelector:
+    matchLabels:
+      app: repwise-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: repwise-proxy
+      ports:
+        - port: 8080

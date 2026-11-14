@@ -1,6 +1,8 @@
 # repwise on the web, version one: plan
 
-Status: a plan. Nothing in this document is built. Written 2026-11-14.
+Status: being built under [`web/`](web/). Steps 1 to 5 of the
+[build order](#build-order) are done and checked locally. Steps 6 and 7, on the
+cluster, are not started. Written 2026-11-14.
 
 The page that runs `repwise update` from a phone keeps what it knows in the
 memory of one pod. Restart the pod and it says "Not run since the pod started",

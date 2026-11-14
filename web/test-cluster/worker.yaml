@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: repwise-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: repwise-worker
+  template:
+    metadata:
+      labels:
+        app: repwise-worker
+    spec:
+      # Longer than the ten minutes a run may take, which the worker finishes
+      # before it exits.
+      terminationGracePeriodSeconds: 630
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: ghcr.io/theadzik/repwise-web
+          args: ["worker"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: repwise-db-app
+                  key: uri
+            - name: TOKEN_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: repwise-web
+                  key: TOKEN_KEYS
+            - name: CONFIG_URL
+              value: file:///opt/stand-in/config.yaml
+            - name: GITHUB_TOKEN
+              value: not-a-real-token
+            # The stand-in `repwise` first, so that it is run in place of the
+            # real one. Nothing here reaches Garmin.
+            - name: PATH
+              value: /opt/stand-in:/opt/repwise-web/bin:/usr/local/bin:/usr/bin:/bin
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: stand-in
+              mountPath: /opt/stand-in
+              readOnly: true
+            # Where a run is given its home, with the decrypted Garmin session
+            # in it. Memory, so that it never reaches a disk.
+            - name: scratch
+              mountPath: /scratch
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 10m
+              memory: 96Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: stand-in
+          configMap:
+            name: stand-in
+            defaultMode: 0555
+        - name: scratch
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+        - name: tmp
+          emptyDir: {}

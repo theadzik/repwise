@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: repwise-proxy
+spec:
+  selector:
+    app: repwise-proxy
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

@@ -1,0 +1,12 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: repwise-db
+spec:
+  instances: 1
+  # Deleted with the namespace. Nothing in it is worth keeping.
+  storage:
+    size: 1Gi
+    storageClass: synology-iscsi-delete
+  # The operator makes the database `app`, its owner `app`, and the secret
+  # repwise-db-app, whose `uri` is what the service connects with.

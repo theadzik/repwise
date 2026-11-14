@@ -1,0 +1,35 @@
+# The service in a namespace of its own, applied by hand, for trying it on the
+# cluster before the homelab repository deploys it. See README.md.
+#
+# The stand-ins come from ../compose, so this is built with
+#   kubectl kustomize --load-restrictor LoadRestrictionsNone web/test-cluster
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: repwise-test
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: repwise-test
+    includeSelectors: false
+resources:
+  - namespace.yaml
+  - database.yaml
+  - api.yaml
+  - api-service.yaml
+  - api-networkpolicy.yaml
+  - worker.yaml
+  - proxy.yaml
+  - proxy-service.yaml
+configMapGenerator:
+  - name: stand-in
+    files:
+      - repwise=../compose/stand-in/repwise
+      - garminconnect.py=../compose/stand-in/garminconnect/__init__.py
+      - config.yaml=../compose/stand-in/config.yaml
+  - name: proxy
+    files:
+      - nginx.conf
+images:
+  # Set to the tag the workflow published: repwise-web-2026.11.1 publishes
+  # 2026.11.1.
+  - name: ghcr.io/theadzik/repwise-web
+    newTag: "2026.11.1"
