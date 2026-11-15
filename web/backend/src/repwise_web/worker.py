@@ -163,21 +163,24 @@ class Worker:
                 "workouts.yaml is edited, so that the id is written into the "
                 "file, and push it."
             )
+        store = token_file(config, home)
         config_path = home / "workouts.yaml"
         config_path.write_bytes(document)
-        store = token_file(config, home)
         _write_private(store, token)
 
         try:
-            # Only what repwise needs. The worker's own environment holds the
-            # database password and the key that encrypts every session.
             done = subprocess.run(
                 self.settings.command,
+                # Only what repwise needs. The worker's own environment holds
+                # the database password and the key that encrypts every session.
                 env={
                     "PATH": os.environ.get("PATH", ""),
                     "HOME": str(home),
                     "REPWISE_CONFIG": str(config_path),
                 },
+                # So that a relative path in workouts.yaml means the same place
+                # to repwise as to token_file() below.
+                cwd=home,
                 # Without a terminal repwise explains a missing Garmin session
                 # and exits, where it would otherwise wait on a login prompt.
                 stdin=subprocess.DEVNULL,
@@ -283,11 +286,23 @@ def token_file(config: dict[str, Any], home: Path) -> Path:
     """Where repwise will look for the Garmin tokens, given `home` as its home.
 
     workouts.yaml says where the token store is, as a directory or as the JSON
-    file itself, and normally under `~`.
+    file itself, and normally under `~`. repwise is run with `home` as its
+    working directory too, so a relative path is under it as well.
+
+    A store anywhere else is refused: the decrypted session given to a run is
+    deleted with its home, and one written outside it would outlive the run.
     """
     named = (config.get("settings") or {}).get("garmin") or {}
     store = str(named.get("token_store") or "~/.config/repwise")
-    path = home / store[2:] if store.startswith("~/") else Path(store)
+    relative = store[2:] if store == "~" or store.startswith("~/") else store
+    # An absolute `relative` replaces `home` rather than joining it, which is
+    # what the check below is for.
+    path = (home / relative).resolve()
+    if not path.is_relative_to(home.resolve()):
+        raise Refused(
+            f"settings.garmin.token_store is {store!r}, outside the home a run is "
+            "given. Keep it under ~, where the session can be deleted with the run."
+        )
     return path if path.suffix == ".json" else path / "garmin_tokens.json"
 
 

@@ -75,5 +75,9 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 16Mi
+        # Memory as well: repwise runs here with the decrypted session to
+        # hand, and anything it writes to a temporary file lands in /tmp.
         - name: tmp
-          emptyDir: {}
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi

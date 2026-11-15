@@ -436,22 +436,88 @@ def test_a_run_reports_that_it_is_still_going(
 @pytest.mark.parametrize(
     ("token_store", "expected"),
     [
-        (None, "home/.config/repwise/garmin_tokens.json"),
-        ("~/.config/repwise", "home/.config/repwise/garmin_tokens.json"),
-        ("~/elsewhere/tokens.json", "home/elsewhere/tokens.json"),
-        ("/absolute/store", "/absolute/store/garmin_tokens.json"),
+        (None, ".config/repwise/garmin_tokens.json"),
+        ("~/.config/repwise", ".config/repwise/garmin_tokens.json"),
+        ("~/elsewhere/tokens.json", "elsewhere/tokens.json"),
+        ("~", "garmin_tokens.json"),
+        # Relative to the working directory repwise is given, which is home.
+        ("relative/store", "relative/store/garmin_tokens.json"),
+        ("~/a/../b", "b/garmin_tokens.json"),
     ],
 )
 def test_the_token_goes_where_workouts_yaml_says(
-    token_store: str | None, expected: str
+    token_store: str | None, expected: str, tmp_path: Path
 ) -> None:
     config = {"settings": {"garmin": {"token_store": token_store}}}
-    assert worker.token_file(config, Path("home")) == Path(expected)
+    assert worker.token_file(config, tmp_path) == tmp_path.resolve() / expected
 
 
-def test_a_config_with_no_settings_uses_repwises_default_store() -> None:
-    expected = Path("home/.config/repwise/garmin_tokens.json")
-    assert worker.token_file({}, Path("home")) == expected
+@pytest.mark.parametrize(
+    "token_store",
+    [
+        pytest.param("/absolute/store", id="absolute"),
+        pytest.param("~/../elsewhere", id="up out of home"),
+        pytest.param("../elsewhere", id="relative, up out of home"),
+    ],
+)
+def test_a_token_store_outside_the_runs_home_is_refused(
+    token_store: str, tmp_path: Path
+) -> None:
+    """The session written there would outlive the run, and the pod."""
+    config = {"settings": {"garmin": {"token_store": token_store}}}
+    with pytest.raises(worker.Refused, match="outside the home a run is given"):
+        worker.token_file(config, tmp_path)
+
+
+def test_a_config_with_no_settings_uses_repwises_default_store(
+    tmp_path: Path,
+) -> None:
+    expected = tmp_path.resolve() / ".config/repwise/garmin_tokens.json"
+    assert worker.token_file({}, tmp_path) == expected
+
+
+def test_a_run_whose_token_store_is_outside_its_home_never_starts(
+    client: TestClient,
+    settings: Settings,
+    sessions: Sessions,
+    garmin_session: uuid.UUID,
+    stand_in: StandIn,
+    config_file: Path,
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside"
+    config_file.write_text(
+        f"settings:\n  garmin:\n    token_store: {outside}\n"
+        "workouts:\n  - key: push\n    garmin_workout_id: 1\n"
+    )
+    ran = tmp_path / "ran"
+    command = stand_in(f"open({str(ran)!r}, 'w').close()")
+    run_id = queue(client)
+
+    Worker(dataclasses.replace(settings, command=command), sessions).run_one()
+
+    run = finished(sessions, run_id)
+    assert run.status == "failed"
+    assert run.error is not None
+    assert "outside the home a run is given" in run.error
+    assert not ran.exists()
+    assert not outside.exists()
+
+
+def test_repwise_runs_in_its_home(
+    client: TestClient,
+    settings: Settings,
+    sessions: Sessions,
+    garmin_session: uuid.UUID,
+    stand_in: StandIn,
+) -> None:
+    """So that a relative path in workouts.yaml is under home for it too."""
+    command = stand_in("import os; print(os.getcwd() == os.environ['HOME'])")
+    run_id = queue(client)
+
+    Worker(dataclasses.replace(settings, command=command), sessions).run_one()
+
+    assert finished(sessions, run_id).output.strip() == "True"
 
 
 def test_which_workouts_have_no_garmin_id() -> None:
