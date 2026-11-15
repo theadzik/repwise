@@ -83,7 +83,7 @@ def test_a_login_that_needs_a_code_and_gets_a_wrong_one_first(
 ) -> None:
     with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
         socket.send_json(credentials("mfa@example.com"))
-        assert socket.receive_json() == {"step": "code_required"}
+        assert socket.receive_json()["step"] == "code_required"
         assert held(sessions, athlete) is None
 
         socket.send_json({"code": "000000"})
@@ -102,7 +102,7 @@ def test_the_password_is_not_kept_while_waiting_for_the_code(
 ) -> None:
     with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
         socket.send_json(credentials("mfa@example.com"))
-        assert socket.receive_json() == {"step": "code_required"}
+        assert socket.receive_json()["step"] == "code_required"
         assert FakeGarmin.made[0].password is None
 
 
@@ -122,26 +122,113 @@ def test_too_many_wrong_codes_ends_the_login(
 ) -> None:
     with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
         socket.send_json(credentials("mfa@example.com"))
-        assert socket.receive_json() == {"step": "code_required"}
-        for _ in range(5):
+        assert socket.receive_json()["step"] == "code_required"
+        for _ in range(4):
             socket.send_json({"code": "000000"})
             assert socket.receive_json()["step"] == "code_rejected"
+        socket.send_json({"code": "000000"})
         assert socket.receive_json()["step"] == "failed"
     assert held(sessions, athlete) is None
 
 
-def test_a_connection_dropped_halfway_leaves_nothing_behind(
+def wants_code(socket: Any) -> str:  # noqa: ANN401 - a test client socket
+    """Send a password Garmin wants a code for. The `resume` it answers with."""
+    socket.send_json(credentials("mfa@example.com"))
+    said = socket.receive_json()
+    assert said["step"] == "code_required"
+    return str(said["resume"])
+
+
+def test_the_code_can_come_on_a_new_connection(
+    client: TestClient, sessions: Sessions, athlete: uuid.UUID
+) -> None:
+    # As when a phone leaves the page for the mail app and drops the socket.
+    with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
+        resume = wants_code(socket)
+    assert held(sessions, athlete) is None
+
+    with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
+        socket.send_json({"resume": resume, "code": "000000"})
+        assert socket.receive_json()["step"] == "code_rejected"
+        socket.send_json({"code": "123456"})
+        assert socket.receive_json() == {"step": "connected"}
+    assert held(sessions, athlete) is not None
+    assert len(FakeGarmin.made) == 1
+
+    # Finished, so it cannot be resumed again.
+    with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
+        socket.send_json({"resume": resume, "code": "123456"})
+        assert socket.receive_json()["step"] == "failed"
+
+
+def test_wrong_codes_count_across_connections(
     client: TestClient, sessions: Sessions, athlete: uuid.UUID
 ) -> None:
     with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
-        socket.send_json(credentials("mfa@example.com"))
-        assert socket.receive_json() == {"step": "code_required"}
-    # Gone without sending a code. Nothing was stored, so there is nothing to
-    # clean up, and the next login starts from the beginning.
-    assert held(sessions, athlete) is None
+        resume = wants_code(socket)
+    for _ in range(4):
+        with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
+            socket.send_json({"resume": resume, "code": "000000"})
+            assert socket.receive_json()["step"] == "code_rejected"
     with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
-        socket.send_json(credentials())
+        socket.send_json({"resume": resume, "code": "000000"})
+        assert socket.receive_json()["step"] == "failed"
+    with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
+        socket.send_json({"resume": resume, "code": "123456"})
+        assert socket.receive_json()["step"] == "failed"
+    assert held(sessions, athlete) is None
+
+
+@pytest.mark.parametrize(
+    "who",
+    [
+        pytest.param("Tester", id="a resume that is not the one given"),
+        pytest.param("someone-else", id="another account's resume"),
+    ],
+)
+def test_only_the_login_given_can_be_resumed(
+    client: TestClient, sessions: Sessions, athlete: uuid.UUID, who: str
+) -> None:
+    with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
+        resume = wants_code(socket)
+    other = {**OUR_PAGE, "X-Forwarded-User": who}
+    client.put("/api/v1/me", headers=other)
+    guess = resume if who != "Tester" else "not-" + resume
+    with client.websocket_connect(LOGIN, headers=other) as socket:
+        socket.send_json({"resume": guess, "code": "123456"})
+        assert socket.receive_json()["step"] == "failed"
+    # Still waiting for the one who started it.
+    with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
+        socket.send_json({"resume": resume, "code": "123456"})
         assert socket.receive_json() == {"step": "connected"}
+    assert held(sessions, athlete) is not None
+
+
+def test_a_new_password_replaces_a_login_waiting(
+    client: TestClient, athlete: uuid.UUID
+) -> None:
+    with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
+        first = wants_code(socket)
+    with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
+        wants_code(socket)
+    with client.websocket_connect(LOGIN, headers=OUR_PAGE) as socket:
+        socket.send_json({"resume": first, "code": "123456"})
+        assert socket.receive_json()["step"] == "failed"
+
+
+def test_a_login_waits_for_its_code_for_a_while_only() -> None:
+    now = [0.0]
+    waiting = garmin.Waiting(600, clock=lambda: now[0])
+    athlete = uuid.uuid4()
+    login = garmin.Login("mfa@example.com", "right")
+
+    resume = waiting.hold(athlete, login, 5)
+    now[0] = 599
+    taken = waiting.claim(athlete, resume)
+    assert taken is not None
+    waiting.put_back(athlete, taken)
+    now[0] = 600
+    assert waiting.claim(athlete, resume) is None
 
 
 def test_a_new_login_replaces_the_session_held(

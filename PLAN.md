@@ -48,8 +48,9 @@ built so that it can grow into it.
    athlete's session held by the service. No developer program is involved.
 6. **One endpoint is not REST, on purpose.** Signing in to Garmin with a code
    takes two steps that must share a live connection to Garmin. That
-   conversation runs over one WebSocket, so that nothing has to be remembered
-   between the steps.
+   conversation runs over a WebSocket, and the half-finished login waits in
+   the replica's memory for ten minutes, so that a phone that drops the socket
+   can bring the code on a new one.
 7. **Two ways out.** One button signs out of the site, another makes the
    service forget the Garmin session.
 8. **Reachable from the home network only, for now.** No Cloudflare tunnel in
@@ -89,7 +90,7 @@ of state in `server.py` and on its volume.
 | `last`: the latest run's result and output | Gone on restart, which is the message on the page. Different in every replica | A `run` row per run |
 | `running`: a lock in the process | Only one replica can exist, and a rollout has to stop the old pod first | A unique index: one queued or running run per athlete |
 | The run itself: a thread and a subprocess in the web server | Dies with the pod | A worker that claims the row and reports a heartbeat |
-| `pending`: a Garmin login waiting for its code | The code has to arrive at the same pod | One WebSocket per login. Nothing is stored |
+| `pending`: a Garmin login waiting for its code | The code has to arrive at the same pod | Still in memory, for ten minutes. Traefik's sticky cookie brings the browser back to that pod |
 | The Garmin tokens: a file on an NFS volume | Ties the pod to a volume, and a file is not safe with two writers | An encrypted row, written to memory-backed scratch for the length of a run |
 | `workouts.yaml`: downloaded to the volume for each run | Nothing. It is replaced every run already | The same download, into scratch |
 | Session dumps and the exercise catalog: caches on the volume | Nothing lost if they vanish | Scratch. Fetched again each run, at the cost of a few more Garmin calls |
@@ -325,7 +326,7 @@ row, encrypted with a key from a Kubernetes Secret.
 ### Signing in to Garmin
 
 This is the one place the pod has to remember something, and the design keeps
-that memory inside a single connection.
+that memory to one replica and ten minutes.
 
 garminconnect signs in in two steps when Garmin wants a code. Between them it
 holds a live HTTP session with Garmin, in private fields with no way to save
@@ -357,8 +358,13 @@ sequenceDiagram
 ```
 
 - A wrong code is answered with `code_rejected` and may be sent again, as now.
-- If the connection drops, the half-finished login is discarded with it.
-  Nothing was stored, so there is nothing to clean up. Start again.
+- If the connection drops, the half-finished login waits in memory for ten
+  minutes from `code_required`. That message carries a `resume`, and a new
+  connection that sends `{"resume", "code"}` picks the login up. A phone needs
+  this: it closes the page's socket while the code is read in the mail app.
+  Traefik's sticky cookie on the Service sends the browser back to the replica
+  holding it. One login waits per athlete; five wrong codes end it, across
+  connections. Nothing is written to the database until it finishes.
 - The password is passed to Garmin and dropped, and never logged, as now.
 - The handshake checks the `Origin` header, so another site cannot open it.
 - A ping every 20 seconds keeps a proxy from closing an idle socket while a
@@ -551,7 +557,7 @@ trigger page's tests did.
 | One run at a time | Send `POST /runs` twice at the same instant to two replicas: one 201, one 409 |
 | A dead worker is noticed | Kill the worker mid-run: the run is `failed` with "worker lost" within a minute, and a new run can start |
 | A rollout does not kill a run | Roll the worker mid-run: the run finishes |
-| The login keeps no state | Sign in with a wrong password, with a code, with a wrong code then the right one. Drop the socket halfway and confirm nothing was stored |
+| The login survives a dropped socket | Sign in with a wrong password, with a code, with a wrong code then the right one. Drop the socket after `code_required`, send the code on a new one, and confirm nothing was stored before it |
 | Signing out of Garmin forgets the tokens | After it the row is gone and `POST /runs` answers 409. A run that was in progress does not put the token back |
 | Signing out of the site ends the session | After it, a request to the API is refused until signing in again |
 | The token is not readable at rest | Dump the database and search it for `di_refresh_token`: no match |

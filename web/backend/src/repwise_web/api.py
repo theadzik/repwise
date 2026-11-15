@@ -50,6 +50,8 @@ log = logging.getLogger(__name__)
 
 #: How many codes one login may try before it has to start again.
 CODE_ATTEMPTS = 5
+#: How long a login waits for its code, in seconds, connected or not.
+CODE_WAIT = 600
 #: WebSocket close code for a request that may not be made at all.
 POLICY_VIOLATION = 1008
 
@@ -86,6 +88,7 @@ class ConnectionOut(_Out):
 def create_app(settings: Settings, sessions: Sessions | None = None) -> FastAPI:  # noqa: PLR0915 - one closure per route
     sessions = sessions or connect(settings.database_url)
     box = garmin.TokenBox(settings.token_keys)
+    waiting = garmin.Waiting(CODE_WAIT)
     app = FastAPI(
         title="repwise",
         openapi_url="/api/v1/openapi.json",
@@ -242,9 +245,9 @@ def create_app(settings: Settings, sessions: Sessions | None = None) -> FastAPI:
     async def garmin_login(socket: WebSocket) -> None:
         """Sign in to Garmin: the password, then the code if Garmin asks.
 
-        One connection carries both steps, because what garminconnect holds
-        between them cannot be stored. Nothing of a login that does not finish
-        outlives its connection.
+        The code may come on a later connection than the password did, with
+        the `resume` sent along with `code_required`: a phone drops the first
+        while the code is being read in another app. See `garmin.Waiting`.
 
         What is sent is passed on and never logged: what reaches the log is
         which step it was and how it ended.
@@ -261,7 +264,7 @@ def create_app(settings: Settings, sessions: Sessions | None = None) -> FastAPI:
             return
         await socket.accept()
         try:
-            token = await _converse(socket)
+            token = await _converse(socket, athlete, waiting)
             if token is not None:
                 await run_in_threadpool(keep, athlete, token)
                 log.info("Garmin login: signed in")
@@ -285,32 +288,54 @@ def create_app(settings: Settings, sessions: Sessions | None = None) -> FastAPI:
     return app
 
 
-async def _converse(socket: WebSocket) -> str | None:
-    """Both steps of a login. The session it produced, or None if it failed."""
-    form = await socket.receive_json()
-    attempt = garmin.Login(str(form.get("email", "")), str(form.get("password", "")))
-    try:
-        wants_code = await run_in_threadpool(attempt.start)
-    except Exception as exc:  # noqa: BLE001 - whatever it was, the page is where it gets read
-        log.info("Garmin login: password step failed: %s", type(exc).__name__)
-        await socket.send_json({"step": "failed", "detail": _said(exc)})
-        return None
-    if wants_code:
-        await socket.send_json({"step": "code_required"})
-        for _ in range(CODE_ATTEMPTS):
-            code = str((await socket.receive_json()).get("code", ""))
-            try:
-                await run_in_threadpool(attempt.finish, code)
-                break
-            except Exception as exc:  # noqa: BLE001 - as above
-                log.info("Garmin login: code step failed: %s", type(exc).__name__)
-                await socket.send_json({"step": "code_rejected", "detail": _said(exc)})
-        else:
+async def _converse(
+    socket: WebSocket, athlete: uuid.UUID, waiting: garmin.Waiting
+) -> str | None:
+    """Both steps of a login, or the second step of one already started.
+
+    The session it produced, or None if it failed.
+    """
+    said = await socket.receive_json()
+    if "resume" in said:
+        resume = str(said["resume"])
+    else:
+        attempt = garmin.Login(
+            str(said.get("email", "")), str(said.get("password", ""))
+        )
+        try:
+            wants_code = await run_in_threadpool(attempt.start)
+        except Exception as exc:  # noqa: BLE001 - whatever it was, the page is where it gets read
+            log.info("Garmin login: password step failed: %s", type(exc).__name__)
+            await socket.send_json({"step": "failed", "detail": _said(exc)})
+            return None
+        if not wants_code:
+            return attempt.token()
+        resume = waiting.hold(athlete, attempt, CODE_ATTEMPTS)
+        await socket.send_json({"step": "code_required", "resume": resume})
+        said = await socket.receive_json()
+    while True:
+        held = waiting.claim(athlete, resume)
+        if held is None:
+            log.info("Garmin login: nothing waiting to resume")
             await socket.send_json(
-                {"step": "failed", "detail": "Too many wrong codes. Start again."}
+                {"step": "failed", "detail": "That sign-in has expired. Start again."}
             )
             return None
-    return attempt.token()
+        try:
+            await run_in_threadpool(held.login.finish, str(said.get("code", "")))
+        except Exception as exc:  # noqa: BLE001 - as above
+            log.info("Garmin login: code step failed: %s", type(exc).__name__)
+            held.codes_left -= 1
+            if not held.codes_left:
+                await socket.send_json(
+                    {"step": "failed", "detail": "Too many wrong codes. Start again."}
+                )
+                return None
+            waiting.put_back(athlete, held)
+            await socket.send_json({"step": "code_rejected", "detail": _said(exc)})
+            said = await socket.receive_json()
+            continue
+        return held.login.token()
 
 
 def _said(exc: Exception) -> str:
