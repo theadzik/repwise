@@ -1,8 +1,10 @@
 # repwise on the web, version one: plan
 
-Status: being built under [`web/`](web/). Steps 1 to 5 of the
-[build order](#build-order) are done and checked locally. Steps 6 and 7, on the
-cluster, are not started. Written 2026-11-14.
+Status: built under [`web/`](web/). Steps 1 to 6 of the
+[build order](#build-order) are done: checked locally, and on the cluster in
+`repwise-test` on 2026-11-15. Step 7 is
+[theadzik/homelab#446](https://github.com/theadzik/homelab/pull/446), with the
+trigger removed after it once a real run has been checked. Written 2026-11-14.
 
 The page that runs `repwise update` from a phone keeps what it knows in the
 memory of one pod. Restart the pod and it says "Not run since the pod started",
@@ -447,7 +449,7 @@ What changes compared with the trigger page:
 | Garmin password | Through Cloudflare to the pod, passed on, dropped | Inside the home network to the pod, passed on, dropped |
 | Who can reach the site | The internet, through the Cloudflare tunnel | The home network only |
 | Who can press the button | One GitHub login, by oauth2-proxy | The same |
-| Database access | None exists | `api` and `worker` share one role that cannot alter tables. `migrate` owns them |
+| Database access | None exists | `api`, `worker` and `migrate` share the role CloudNativePG makes, which owns the tables. A role that cannot alter them would stop the API dropping a table but not emptying it, so it waits for a second athlete |
 | What can reach Garmin | The one pod | `worker`, and `api` for the login |
 
 Unchanged: the `restricted` pod security standard, read-only root filesystems,

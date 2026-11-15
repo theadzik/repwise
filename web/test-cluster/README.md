@@ -31,6 +31,19 @@ The page is then at <http://127.0.0.1:8088>. The stand-in signs in to Garmin
 with the password `right`, asks an email starting `mfa@` for a code, and takes
 `123456`.
 
+## Check
+
+```bash
+web/test-cluster/check.sh
+```
+
+The checks of `../compose/check.sh`, made with `kubectl` in place of Docker
+Compose. Two more only a cluster can answer: that no pod but the proxy reaches
+the API, and that a run leaves nothing in the worker's scratch. It opens its
+own port-forward, and restarts and kills pods in the namespace as it goes. It
+takes a few minutes, most of it waiting for a killed worker's run to be given
+up on.
+
 ## Down
 
 ```bash
