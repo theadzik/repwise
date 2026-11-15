@@ -57,7 +57,9 @@ export function App() {
 
 function Page({ children }: { children: ReactNode }) {
   return (
-    <Container size="xs" py="md">
+    // Wide enough for the tables repwise prints, which a phone scrolls
+    // sideways instead.
+    <Container size="lg" py="md">
       <Stack>
         <Title order={2}>repwise</Title>
         {children}
