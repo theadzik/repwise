@@ -101,8 +101,8 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
   }
 
   return (
-    // A form, so no wider than it was when the whole page was this wide.
-    <Stack maw="var(--container-size-xs)">
+    // A form, so no wider than the 540px the whole page used to be.
+    <Stack maw={540}>
       {wantsCode ? (
         <form onSubmit={sendCode}>
           <Stack gap="xs">
