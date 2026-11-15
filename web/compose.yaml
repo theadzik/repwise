@@ -1,0 +1,86 @@
+# A local stack for the service's tests and for trying it by hand. Not how it
+# is deployed: that is in the homelab repository.
+#
+#   docker compose -f web/compose.yaml up -d db        # what the tests need
+#   web/compose/check.sh                               # the whole thing, checked
+#
+# The whole thing is PostgreSQL, two API replicas and a worker, behind a proxy
+# that stands in for oauth2-proxy: it spreads requests over both replicas and
+# names the signed-in user itself, since there is no GitHub sign-in here.
+#
+# Nothing in it reaches Garmin. compose/stand-in holds a `repwise` command and
+# a `garminconnect` module that take the real ones' places.
+
+x-service: &service
+  build: .
+  image: repwise-web:local
+  environment:
+    DATABASE_URL: postgresql://repwise:repwise@db:5432/repwise
+    # For this stack only, and in the open: it protects a stand-in token.
+    TOKEN_KEYS: TbldIJGLAnccg0QqHRRyg1Z8zAD4ofXLo0NwqlgojSg=
+    CONFIG_URL: file:///opt/stand-in/config.yaml
+    GITHUB_TOKEN: not-a-real-token
+    # Reachable from the proxy container. In the cluster the API listens on
+    # localhost, beside oauth2-proxy in the same pod.
+    LISTEN_HOST: 0.0.0.0
+    # The stand-ins come first, so they are found before the real things.
+    PYTHONPATH: /opt/stand-in
+    PATH: /opt/stand-in:/opt/repwise-web/bin:/usr/local/bin:/usr/bin:/bin
+  volumes:
+    - ./compose/stand-in:/opt/stand-in:ro
+  # As in the cluster: nothing writable but memory. The mode is spelled out
+  # because Docker otherwise remounts these as root's alone when a container
+  # is restarted, and the image does not run as root.
+  read_only: true
+  tmpfs:
+    - /scratch:mode=1777
+    - /tmp:mode=1777
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: repwise
+      POSTGRES_PASSWORD: repwise
+      POSTGRES_DB: repwise
+    ports:
+      - "127.0.0.1:54329:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "repwise"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  migrate:
+    <<: *service
+    command: ["migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api-1:
+    <<: *service
+    command: ["api"]
+
+  api-2:
+    <<: *service
+    command: ["api"]
+
+  worker:
+    <<: *service
+    command: ["worker"]
+    # Longer than a run may take, which the worker finishes before it exits.
+    stop_grace_period: 630s
+
+  proxy:
+    image: nginx:1.29-alpine
+    volumes:
+      - ./compose/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:8088:80"
+    depends_on:
+      - api-1
+      - api-2

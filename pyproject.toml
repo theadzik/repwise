@@ -92,6 +92,10 @@ version_provider = "pep621"
 # hand-cut 0.1.0 tag, so it is stated only to pin it: the default has changed
 # upstream before, and a silent change would start a second tag series.
 tag_format = "$version"
+# The web service's image tags, from .github/workflows/web.yml. They share the
+# repository's tags but are not repwise releases, and without this commitizen
+# warns about each one on every bump.
+ignored_tag_formats = ["repwise-web-*"]
 version_files = ["src/repwise/__init__.py:__version__"]
 update_changelog_on_bump = true
 # History before 0.1.0 predates conventional commits, so there is nothing to

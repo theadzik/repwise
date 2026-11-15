@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: repwise-api
+spec:
+  # Two, so that the checks can show either one answers.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: repwise-api
+  template:
+    metadata:
+      labels:
+        app: repwise-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Both pods run it as they start. A lock in the database makes the
+        # second wait for the first and then find nothing left to do.
+        - name: migrate
+          image: ghcr.io/theadzik/repwise-web
+          args: ["migrate"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: repwise-db-app
+                  key: uri
+            - name: TOKEN_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: repwise-web
+                  key: TOKEN_KEYS
+          securityContext: &container
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: api
+          image: ghcr.io/theadzik/repwise-web
+          args: ["api"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: repwise-db-app
+                  key: uri
+            - name: TOKEN_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: repwise-web
+                  key: TOKEN_KEYS
+            # Reachable from the stand-in proxy, which here is a pod of its
+            # own. In the real deployment oauth2-proxy shares the pod, and the
+            # API listens on localhost.
+            - name: LISTEN_HOST
+              value: 0.0.0.0
+            # The stand-in first, so that it is found before the real
+            # garminconnect. Nothing here reaches Garmin.
+            - name: PYTHONPATH
+              value: /opt/stand-in
+          securityContext: *container
+          volumeMounts:
+            - name: stand-in
+              mountPath: /opt/stand-in
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          resources:
+            requests:
+              cpu: 10m
+              memory: 96Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: stand-in
+          configMap:
+            name: stand-in
+            defaultMode: 0555
+        - name: tmp
+          emptyDir: {}

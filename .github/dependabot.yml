@@ -1,5 +1,14 @@
 version: 2
 
+registries:
+  # The hardened base images web/Dockerfile is built from. The two Dependabot
+  # secrets are the same Docker Hub account the web workflow logs in with.
+  dhi-io:
+    type: docker-registry
+    url: https://dhi.io
+    username: ${{ secrets.DOCKERHUB_USERNAME }}
+    password: ${{ secrets.DOCKERHUB_TOKEN }}
+
 updates:
   # uv rather than pip, so a bump rewrites uv.lock alongside pyproject.toml
   # instead of leaving it stale for the next `uv run` to relock.
@@ -60,5 +69,65 @@ updates:
       prefix: "build"
     groups:
       actions:
+        patterns:
+          - "*"
+
+  # The web service, which is a project of its own under web/. Its updates
+  # are grouped apart from the CLI's, and all of them are typed `build`, so
+  # none of them moves repwise's version.
+  - package-ecosystem: "uv"
+    directory: "/web/backend"
+    schedule:
+      interval: "weekly"
+      day: "friday"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      web-backend:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/web/frontend"
+    schedule:
+      interval: "weekly"
+      day: "friday"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      web-frontend:
+        patterns:
+          - "*"
+
+  # Grouped so that the two Python stages move to the same version in one pull
+  # request: the virtualenv built in the first only runs in the last while
+  # they match.
+  - package-ecosystem: "docker"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+      day: "friday"
+    cooldown:
+      default-days: 7
+    registries:
+      - dhi-io
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "build"
+    groups:
+      web-images:
         patterns:
           - "*"

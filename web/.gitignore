@@ -1,0 +1,3 @@
+# The web app's dependencies and its build.
+node_modules/
+dist/
