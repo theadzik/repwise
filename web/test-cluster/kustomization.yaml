@@ -15,6 +15,7 @@ resources:
   - database.yaml
   - api.yaml
   - api-service.yaml
+  - api-login-service.yaml
   - api-networkpolicy.yaml
   - worker.yaml
   - proxy.yaml
