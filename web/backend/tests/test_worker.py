@@ -357,7 +357,8 @@ def test_what_a_run_prints_is_shown_while_it_goes(
             time.sleep(0.02)
         assert (shown["status"], shown["output"]) == ("running", "signed in\n")
     finally:
-        # Even when the above fails, or the stand-in waits, and the test, forever.
+        # Release the stand-in even when the above fails; otherwise it would
+        # wait forever, and the test with it.
         go.touch()
         running.join()
 

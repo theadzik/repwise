@@ -207,14 +207,16 @@ class Worker:
             reader.start()
             deadline = time.monotonic() + self.settings.run_timeout
             shown = 0
+            so_far = ""
             code = None
             while code is None and time.monotonic() < deadline:
                 left = max(0.0, deadline - time.monotonic())
                 with contextlib.suppress(subprocess.TimeoutExpired):
                     code = process.wait(min(OUTPUT_SECONDS, left))
-                if len(said) > shown:
-                    shown = len(said)
-                    self._show(run_id, "".join(said))
+                if (heard := len(said)) > shown:
+                    so_far += "".join(said[shown:heard])
+                    shown = heard
+                    self._show(run_id, so_far)
             if code is None:
                 process.kill()
             reader.join()
