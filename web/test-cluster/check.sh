@@ -44,17 +44,21 @@ wait_for() {
 up() { until [[ "$(status GET /healthz)" == 200 ]]; do sleep 1; done; }
 worker_pod() { k get pods -l app=repwise-worker -o name; }
 
-# The Garmin login, through the proxy like a browser: a wrong code, then the
-# right one. Run inside an api pod, which has a WebSocket client.
+# The Garmin login, through the proxy like a browser: the password, then a
+# wrong code and the right one on a new connection, as a phone that dropped the
+# first sends them. Run inside an api pod, which has a WebSocket client.
 garmin_login() {
     k exec -i deploy/repwise-api -c api -- python - <<'EOF'
 import json
 from websockets.sync.client import connect
 
-with connect("ws://repwise-proxy:8080/api/v1/garmin/connection/login", origin="http://repwise-proxy:8080") as socket:
+LOGIN = "ws://repwise-proxy:8080/api/v1/garmin/connection/login"
+with connect(LOGIN, origin="http://repwise-proxy:8080") as socket:
     socket.send(json.dumps({"email": "mfa@example.com", "password": "right"}))
-    assert json.loads(socket.recv()) == {"step": "code_required"}
-    socket.send(json.dumps({"code": "000000"}))
+    said = json.loads(socket.recv())
+    assert said["step"] == "code_required"
+with connect(LOGIN, origin="http://repwise-proxy:8080") as socket:
+    socket.send(json.dumps({"resume": said["resume"], "code": "000000"}))
     assert json.loads(socket.recv())["step"] == "code_rejected"
     socket.send(json.dumps({"code": "123456"}))
     assert json.loads(socket.recv()) == {"step": "connected"}

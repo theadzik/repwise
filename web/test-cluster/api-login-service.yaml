@@ -1,0 +1,16 @@
+# The Garmin login alone. A login waiting on its code lives in one replica's
+# memory, and the code comes on a new connection: in homelab Traefik's sticky
+# cookie sends it back there, and here the proxy's address does, as every
+# request comes from the one proxy pod.
+apiVersion: v1
+kind: Service
+metadata:
+  name: repwise-api-login
+spec:
+  selector:
+    app: repwise-api
+  sessionAffinity: ClientIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
