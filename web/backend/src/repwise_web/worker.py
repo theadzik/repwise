@@ -5,6 +5,7 @@ with its config and its Garmin token store in it, so each run is given one,
 filled from the database and deleted afterwards. Nothing is left in the pod.
 """
 
+import contextlib
 import logging
 import os
 import shutil
@@ -13,11 +14,12 @@ import socket
 import subprocess
 import tempfile
 import threading
+import time
 import urllib.request
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 import yaml
 from sqlalchemy import func, text, update
@@ -32,6 +34,8 @@ HEARTBEAT_SECONDS = 10
 #: A running row whose worker has said nothing for this long has lost it.
 LOST_AFTER_SECONDS = 60
 POLL_SECONDS = 2
+#: How often what the run has printed so far is written, for the page to show.
+OUTPUT_SECONDS = 1
 #: The end of the output is where repwise says what it did.
 MAX_OUTPUT = 1_000_000
 
@@ -133,7 +137,7 @@ class Worker:
         home = None
         try:
             home = tempfile.mkdtemp(dir=self.settings.scratch_dir)
-            return self._attempt(athlete_id, Path(home))
+            return self._attempt(run_id, athlete_id, Path(home))
         except Refused as exc:
             return Outcome(FAILED, error=str(exc))
         except Exception as exc:  # noqa: BLE001 - whatever it was, the page is where it gets read
@@ -143,7 +147,7 @@ class Worker:
             if home is not None:
                 shutil.rmtree(home, ignore_errors=True)
 
-    def _attempt(self, athlete_id: uuid.UUID, home: Path) -> Outcome:
+    def _attempt(self, run_id: uuid.UUID, athlete_id: uuid.UUID, home: Path) -> Outcome:
         with self.sessions() as db:
             held = garmin.load(db, self.box, athlete_id)
         if held is None:
@@ -168,45 +172,78 @@ class Worker:
         config_path.write_bytes(document)
         _write_private(store, token)
 
-        try:
-            done = subprocess.run(
-                self.settings.command,
-                # Only what repwise needs. The worker's own environment holds
-                # the database password and the key that encrypts every session.
-                env={
-                    "PATH": os.environ.get("PATH", ""),
-                    "HOME": str(home),
-                    "REPWISE_CONFIG": str(config_path),
-                },
-                # So that a relative path in workouts.yaml means the same place
-                # to repwise as to token_file() below.
-                cwd=home,
-                # Without a terminal repwise explains a missing Garmin session
-                # and exits, where it would otherwise wait on a login prompt.
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                timeout=self.settings.run_timeout,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            said = exc.stdout or ""
-            outcome = Outcome(
-                FAILED,
-                output=said if isinstance(said, str) else said.decode(errors="replace"),
-                error=f"Timed out after {self.settings.run_timeout} seconds",
-            )
-        else:
-            outcome = Outcome(
-                SUCCEEDED if done.returncode == 0 else FAILED,
-                exit_code=done.returncode,
-                output=done.stdout,
-            )
+        outcome = self._run_command(run_id, home, config_path)
         # However the run ended. repwise refreshes the session as it goes, and
         # a refresh token that was replaced is no use to the next run.
         self._keep_refreshed(athlete_id, store, token, version)
         return outcome
+
+    def _run_command(self, run_id: uuid.UUID, home: Path, config_path: Path) -> Outcome:
+        """Run repwise, writing what it prints to the run as it goes."""
+        said: list[str] = []
+        with subprocess.Popen(
+            self.settings.command,
+            # Only what repwise needs. The worker's own environment holds the
+            # database password and the key that encrypts every session.
+            env={
+                "PATH": os.environ.get("PATH", ""),
+                "HOME": str(home),
+                "REPWISE_CONFIG": str(config_path),
+                # Into a pipe Python holds output back in blocks, and the page
+                # would see it all at the end.
+                "PYTHONUNBUFFERED": "1",
+            },
+            # So that a relative path in workouts.yaml means the same place to
+            # repwise as to token_file() below.
+            cwd=home,
+            # Without a terminal repwise explains a missing Garmin session and
+            # exits, where it would otherwise wait on a login prompt.
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        ) as process:
+            reader = threading.Thread(target=_collect, args=(process.stdout, said))
+            reader.start()
+            deadline = time.monotonic() + self.settings.run_timeout
+            shown = 0
+            so_far = ""
+            code = None
+            while code is None and time.monotonic() < deadline:
+                left = max(0.0, deadline - time.monotonic())
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    code = process.wait(min(OUTPUT_SECONDS, left))
+                if (heard := len(said)) > shown:
+                    so_far += "".join(said[shown:heard])
+                    shown = heard
+                    self._show(run_id, so_far)
+            if code is None:
+                process.kill()
+            reader.join()
+        output = "".join(said)
+        if code is None:
+            return Outcome(
+                FAILED,
+                output=output,
+                error=f"Timed out after {self.settings.run_timeout} seconds",
+            )
+        return Outcome(
+            SUCCEEDED if code == 0 else FAILED, exit_code=code, output=output
+        )
+
+    def _show(self, run_id: uuid.UUID, output: str) -> None:
+        """Write the output so far, for the page to show while the run goes on."""
+        try:
+            with self.sessions() as db, db.begin():
+                db.execute(
+                    update(Run)
+                    .where(Run.id == run_id, Run.status == RUNNING)
+                    .values(output=output[-MAX_OUTPUT:])
+                )
+        except Exception:
+            # Only the page's view is behind: the run goes on, and its whole
+            # output is written when it ends.
+            log.exception("Could not write the output so far")
 
     def _keep_refreshed(
         self, athlete_id: uuid.UUID, store: Path, given: str, version: int
@@ -220,6 +257,12 @@ class Worker:
         with self.sessions() as db, db.begin():
             kept = garmin.store_refreshed(db, self.box, athlete_id, now, seen=version)
         log.info("Garmin session refreshed: %s", "kept" if kept else "superseded")
+
+
+def _collect(stream: IO[str], into: list[str]) -> None:
+    """Each line as it comes, so the output so far can be shown."""
+    for line in stream:
+        into.append(line)
 
 
 class _Heartbeat:
