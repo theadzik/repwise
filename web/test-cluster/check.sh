@@ -13,7 +13,8 @@ base=http://127.0.0.1:8088
 
 k port-forward service/repwise-proxy 8088:8080 >/dev/null 2>&1 &
 forward=$!
-trap 'kill $forward' EXIT
+# Tolerant: a port-forward that already died must not fail a run that passed.
+trap 'kill $forward 2>/dev/null || true' EXIT
 
 status() { curl -s -o /dev/null -w '%{http_code}' -X "$1" -H 'Content-Type: application/json' "$base$2"; }
 body() { curl -s -X "$1" -H 'Content-Type: application/json' "$base$2"; }
