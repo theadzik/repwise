@@ -2,9 +2,11 @@
 
 Status: built under [`web/`](web/). Steps 1 to 6 of the
 [build order](#build-order) are done: checked locally, and on the cluster in
-`repwise-test` on 2026-11-15. Step 7 is
-[theadzik/homelab#446](https://github.com/theadzik/homelab/pull/446), with the
-trigger removed after it once a real run has been checked. Written 2026-11-14.
+`repwise-test` on 2026-11-15. Step 7,
+[theadzik/homelab#446](https://github.com/theadzik/homelab/pull/446), is live
+and a real run has worked; the trigger is removed in
+[theadzik/homelab#449](https://github.com/theadzik/homelab/pull/449). Written
+2026-11-14.
 
 The page that runs `repwise update` from a phone keeps what it knows in the
 memory of one pod. Restart the pod and it says "Not run since the pod started",
