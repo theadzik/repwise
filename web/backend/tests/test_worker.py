@@ -324,6 +324,47 @@ def test_a_run_that_takes_too_long_is_stopped(
     assert "started" in run.output
 
 
+def test_what_a_run_prints_is_shown_while_it_goes(
+    client: TestClient,
+    settings: Settings,
+    sessions: Sessions,
+    garmin_session: uuid.UUID,
+    stand_in: StandIn,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(worker, "OUTPUT_SECONDS", 0.05)
+    go = tmp_path / "go"
+    # Not flushed, as repwise does not flush: what it prints must not be held
+    # back until it exits.
+    command = stand_in(
+        f"""
+        import pathlib, time
+        print("signed in")
+        pathlib.Path({str(tmp_path / "started")!r}).touch()
+        while not pathlib.Path({str(go)!r}).exists():
+            time.sleep(0.01)
+        print("done")
+        """
+    )
+    run_id = queue(client)
+    running = in_the_middle_of_a_run(settings, sessions, command, tmp_path)
+
+    try:
+        deadline = time.monotonic() + 5
+        while not (shown := client.get(f"/api/v1/runs/{run_id}").json())["output"]:
+            assert time.monotonic() < deadline, "nothing was shown while the run went"
+            time.sleep(0.02)
+        assert (shown["status"], shown["output"]) == ("running", "signed in\n")
+    finally:
+        # Even when the above fails, or the stand-in waits, and the test, forever.
+        go.touch()
+        running.join()
+
+    run = finished(sessions, run_id)
+    assert (run.status, run.output) == ("succeeded", "signed in\ndone\n")
+
+
 def test_no_run_queued_means_nothing_to_do(
     settings: Settings, sessions: Sessions
 ) -> None:

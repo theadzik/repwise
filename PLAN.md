@@ -269,6 +269,9 @@ sequenceDiagram
     loop every 10 seconds
         W->>D: Heartbeat
     end
+    loop every second, while repwise prints
+        W->>D: The output so far, for the page to show
+    end
     W->>D: Store the session if repwise refreshed it
     W->>D: Status, exit code, output
     W->>W: Delete the scratch directory
