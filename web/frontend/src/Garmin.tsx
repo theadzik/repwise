@@ -69,11 +69,18 @@ function store(resume: string | null) {
  */
 function Login({ onSignedIn }: { onSignedIn: () => void }) {
   const socket = useRef<WebSocket | null>(null);
-  const [wantsCode, setWantsCode] = useState(() => stored() !== null);
+  // Held here, and in sessionStorage only for a reload: storage can be missing.
+  const resume = useRef<string | null>(stored());
+  const [wantsCode, setWantsCode] = useState(() => resume.current !== null);
   const [working, setWorking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => () => socket.current?.close(), []);
+
+  function remember(value: string | null) {
+    resume.current = value;
+    store(value);
+  }
 
   /** A new connection, which says `first` and takes over from any before it. */
   function converse(first: object) {
@@ -88,14 +95,14 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
       const said = JSON.parse(received.data);
       setWorking(false);
       if (said.step === "code_required") {
-        store(said.resume);
+        remember(said.resume);
         setWantsCode(true);
         setMessage("Garmin wants a code.");
       } else if (said.step === "code_rejected") {
         setMessage(said.detail);
       } else {
         settled = true;
-        store(null);
+        remember(null);
         setWantsCode(false);
         setMessage(said.step === "connected" ? "Signed in to Garmin." : said.detail);
         if (said.step === "connected") onSignedIn();
@@ -106,7 +113,7 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
       if (socket.current !== opened || settled) return;
       socket.current = null;
       setWorking(false);
-      if (stored()) return; // The login is still waiting; the code can follow.
+      if (resume.current) return; // The login is still waiting; the code can follow.
       setWantsCode(false);
       setMessage("The connection was lost. Start again.");
     };
@@ -117,7 +124,7 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
     const form = event.currentTarget;
     const credentials = Object.fromEntries(new FormData(form));
     form.reset();
-    store(null);
+    remember(null);
     converse(credentials);
   }
 
@@ -126,12 +133,15 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
     const form = event.currentTarget;
     const code = Object.fromEntries(new FormData(form));
     form.reset();
-    converse({ ...code, resume: stored() });
+    converse({ ...code, resume: resume.current });
   }
 
   function startAgain() {
-    socket.current?.close();
-    store(null);
+    const open = socket.current;
+    socket.current = null; // So its close is not taken for a lost connection.
+    open?.close();
+    remember(null);
+    setWorking(false);
     setWantsCode(false);
     setMessage(null);
   }
