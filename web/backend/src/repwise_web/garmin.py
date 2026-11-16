@@ -5,8 +5,11 @@ which is as good as being signed in. Here it is one encrypted row. The key is
 not in the database, so a copy of the database alone cannot use it.
 """
 
+import secrets
+import time
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 
 import garminconnect
 from cryptography.fernet import Fernet, MultiFernet
@@ -100,12 +103,11 @@ def is_connected(db: Session, athlete_id: uuid.UUID) -> bool:
 
 
 class Login:
-    """One sign-in to Garmin, alive for as long as its WebSocket is open.
+    """One sign-in to Garmin, in the two steps it takes when Garmin wants a code.
 
-    garminconnect signs in in two steps when Garmin wants a code, and holds a
-    live HTTP session between them that cannot be saved and restored. So this
-    object is never stored: it lives in the one connection that carries both
-    steps, and is discarded with it.
+    garminconnect holds a live HTTP session between the steps that cannot be
+    saved and restored, so this object never leaves the process. Between the
+    steps it waits in `Waiting`.
     """
 
     def __init__(self, email: str, password: str) -> None:
@@ -125,3 +127,55 @@ class Login:
 
     def token(self) -> str:
         return str(self._api.client.dumps())
+
+
+@dataclass
+class Held:
+    """A login waiting on its code, and what it is allowed before it ends."""
+
+    resume: str
+    login: Login
+    deadline: float
+    codes_left: int
+
+
+class Waiting:
+    """Logins waiting on their code, at most one per athlete, for a while.
+
+    Kept here rather than in the WebSocket that started them, because a phone
+    closes the page's connection when it is left to read the code in the mail
+    app. A new connection brings the code back with the `resume` it was given.
+    This is memory in one replica: the ingress sends a browser back to the
+    replica it used before, and a login that does not finish is gone after
+    `ttl` seconds or with the pod.
+    """
+
+    def __init__(self, ttl: float, clock: Callable[[], float] = time.monotonic) -> None:
+        self._ttl = ttl
+        self._clock = clock
+        self._held: dict[uuid.UUID, Held] = {}
+
+    def hold(self, athlete: uuid.UUID, login: Login, codes: int) -> str:
+        """Keep a login until its code comes, replacing any older one."""
+        self._expire()
+        resume = secrets.token_urlsafe(16)
+        self._held[athlete] = Held(resume, login, self._clock() + self._ttl, codes)
+        return resume
+
+    def claim(self, athlete: uuid.UUID, resume: str) -> Held | None:
+        """Take the login out to send it a code, or None if it is gone."""
+        self._expire()
+        held = self._held.get(athlete)
+        if held is None or not secrets.compare_digest(held.resume, resume):
+            return None
+        del self._held[athlete]
+        return held
+
+    def put_back(self, athlete: uuid.UUID, held: Held) -> None:
+        """Return a login whose code was wrong, unless a newer one started."""
+        self._held.setdefault(athlete, held)
+
+    def _expire(self) -> None:
+        now = self._clock()
+        for athlete in [a for a, held in self._held.items() if held.deadline <= now]:
+            del self._held[athlete]

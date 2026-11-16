@@ -40,64 +40,110 @@ export function Garmin() {
   );
 }
 
+/** Where the page keeps a login waiting on its code, through a reload. */
+const RESUME = "garmin-login-resume";
+
+function stored(): string | null {
+  try {
+    return sessionStorage.getItem(RESUME);
+  } catch {
+    return null;
+  }
+}
+
+function store(resume: string | null) {
+  try {
+    if (resume) sessionStorage.setItem(RESUME, resume);
+    else sessionStorage.removeItem(RESUME);
+  } catch {
+    // Without it, a reload while the code is being fetched means starting again.
+  }
+}
+
 /**
- * Both steps of a Garmin login, over one connection: the password, then the
- * code if Garmin asks for one. The server keeps nothing between the steps, so
- * a connection that drops means starting again.
+ * Both steps of a Garmin login: the password, then the code if Garmin asks
+ * for one. The server keeps the login waiting for its code for a while, so a
+ * phone that drops the connection while the code is read in the mail app has
+ * not lost it: the code goes on a new connection, with the `resume` the
+ * server gave.
  */
 function Login({ onSignedIn }: { onSignedIn: () => void }) {
   const socket = useRef<WebSocket | null>(null);
-  // Set once the server has given its verdict, so that the close which
-  // follows is not taken for a lost connection.
-  const settled = useRef(false);
-  const [wantsCode, setWantsCode] = useState(false);
+  // Held here, and in sessionStorage only for a reload: storage can be missing.
+  const resume = useRef<string | null>(stored());
+  const [wantsCode, setWantsCode] = useState(() => resume.current !== null);
   const [working, setWorking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => () => socket.current?.close(), []);
 
-  function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const credentials = Object.fromEntries(new FormData(form));
-    form.reset();
+  function remember(value: string | null) {
+    resume.current = value;
+    store(value);
+  }
+
+  /** A new connection, which says `first` and takes over from any before it. */
+  function converse(first: object) {
+    socket.current?.close();
     setWorking(true);
     setMessage(null);
-    settled.current = false;
-
+    let settled = false;
     const opened = garminLoginSocket();
     socket.current = opened;
-    opened.onopen = () => opened.send(JSON.stringify(credentials));
+    opened.onopen = () => opened.send(JSON.stringify(first));
     opened.onmessage = (received) => {
       const said = JSON.parse(received.data);
       setWorking(false);
       if (said.step === "code_required") {
+        remember(said.resume);
         setWantsCode(true);
         setMessage("Garmin wants a code.");
       } else if (said.step === "code_rejected") {
         setMessage(said.detail);
       } else {
-        settled.current = true;
+        settled = true;
+        remember(null);
         setWantsCode(false);
         setMessage(said.step === "connected" ? "Signed in to Garmin." : said.detail);
         if (said.step === "connected") onSignedIn();
       }
     };
     opened.onclose = () => {
+      // Closed by a newer connection, or after the server's verdict.
+      if (socket.current !== opened || settled) return;
       socket.current = null;
-      if (settled.current) return;
       setWorking(false);
+      if (resume.current) return; // The login is still waiting; the code can follow.
       setWantsCode(false);
       setMessage("The connection was lost. Start again.");
     };
   }
 
+  function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const credentials = Object.fromEntries(new FormData(form));
+    form.reset();
+    remember(null);
+    converse(credentials);
+  }
+
   function sendCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    socket.current?.send(JSON.stringify(Object.fromEntries(new FormData(form))));
+    const code = Object.fromEntries(new FormData(form));
     form.reset();
-    setWorking(true);
+    converse({ ...code, resume: resume.current });
+  }
+
+  function startAgain() {
+    const open = socket.current;
+    socket.current = null; // So its close is not taken for a lost connection.
+    open?.close();
+    remember(null);
+    setWorking(false);
+    setWantsCode(false);
+    setMessage(null);
   }
 
   return (
@@ -115,6 +161,9 @@ function Login({ onSignedIn }: { onSignedIn: () => void }) {
             />
             <Button type="submit" loading={working}>
               Send code
+            </Button>
+            <Button variant="subtle" onClick={startAgain}>
+              Start again
             </Button>
           </Stack>
         </form>
