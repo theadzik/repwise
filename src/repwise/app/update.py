@@ -39,6 +39,7 @@ from ..planner import (
     logged_for,
     plan_sync,
     plan_workout,
+    trained_exercises,
 )
 from .fetch import cache_activities
 from .report import report_plan
@@ -457,6 +458,20 @@ def advance_trained(
     plans: list[Plan] = []
     usable = False
 
+    # A newer session that trained a shared exercise has the last word on its
+    # marker, so an older one must leave it alone - see `superseded` on
+    # `plan_workout`. That needs every session's sets before the first is
+    # planned. Matched against the definitions as Garmin holds them, before
+    # this run changes any.
+    performed_by = [
+        performed_sets(session.exercise_sets(trained.activity_id))
+        for trained in sessions
+    ]
+    trained_by = [
+        trained_exercises(trained.workout, payloads[garmin_id(trained.workout)], sets)
+        for trained, sets in zip(sessions, performed_by, strict=True)
+    ]
+
     for position, trained in enumerate(sessions):
         workout, activity = trained.workout, trained.activity
         activity_id = trained.activity_id
@@ -465,10 +480,9 @@ def advance_trained(
         logger.info(f"Activity: {activity.get('activityName') or ''} ({activity_id})")
         logger.info(f"Updating: {workout.key} -> workout {workout.garmin_workout_id}")
 
-        sets_payload = session.exercise_sets(activity_id)
         payload = payloads[garmin_id(workout)]
 
-        performed = performed_sets(sets_payload)
+        performed = performed_by[position]
         if not any(performed):
             logger.warning("No working sets found in that activity; nothing to do.")
             continue
@@ -486,7 +500,13 @@ def advance_trained(
         history = gather_history(session, workout, trained.earlier, performed)
 
         plan = plan_workout(
-            workout, payload, performed, history, asked, trusted=trusted
+            workout,
+            payload,
+            performed,
+            history,
+            asked,
+            trusted=trusted,
+            superseded=set().union(*trained_by[position + 1 :]),
         )
         report_plan(plan)
         plans.append(plan)

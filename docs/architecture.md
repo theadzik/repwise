@@ -245,7 +245,9 @@ An `update` run in order:
    config, building a whole workout from scratch when Garmin has none.
 5. Order the sessions oldest first, so replaying them matches what running the
    tool after each would have done.
-6. For each in turn, fetch the activity's exercise sets and the Garmin workout
+6. Fetch every session's exercise sets and note which exercises each trained,
+   so that a hold marker is decided only by the most recent session that
+   trained the exercise. Then for each in turn, fetch the Garmin workout
    definition, reconcile it the same way, read back how long each exercise had
    been stalling, and compute the next target.
 7. Propagate any target that moved into other workouts sharing that exercise.
