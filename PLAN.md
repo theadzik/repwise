@@ -97,7 +97,8 @@ of state in `server.py` and on its volume.
 | `pending`: a Garmin login waiting for its code | The code has to arrive at the same pod | Still in memory, for ten minutes. Traefik's sticky cookie brings the browser back to that pod |
 | The Garmin tokens: a file on an NFS volume | Ties the pod to a volume, and a file is not safe with two writers | An encrypted row, written to memory-backed scratch for the length of a run |
 | `workouts.yaml`: downloaded to the volume for each run | Nothing. It is replaced every run already | The same download, into scratch |
-| Session dumps and the exercise catalog: caches on the volume | Nothing lost if they vanish | Scratch. Fetched again each run, at the cost of a few more Garmin calls |
+| Session dumps: a cache on the volume | Without it every run downloads every session in the search window again, three calls each | A row per file, written to scratch for a run and stored back after it |
+| The exercise catalog: a cache on the volume | Nothing lost if it vanishes | Scratch. Fetched again each run, at the cost of a Garmin call |
 
 After this the service has no volume at all. The claim `repwise-trigger-home`
 and its storage class question go away with it.
@@ -264,7 +265,8 @@ sequenceDiagram
     W->>D: Claim the oldest queued run
     W->>D: Read and decrypt the Garmin session
     W->>H: Fetch workouts.yaml
-    W->>W: Write both into a scratch directory
+    W->>D: Read the session cache
+    W->>W: Write all three into a scratch directory
     W->>G: repwise update --apply --push
     loop every 10 seconds
         W->>D: Heartbeat
@@ -273,6 +275,7 @@ sequenceDiagram
         W->>D: The output so far, for the page to show
     end
     W->>D: Store the session if repwise refreshed it
+    W->>D: Store what the run added to the session cache
     W->>D: Status, exit code, output
     W->>W: Delete the scratch directory
     B->>A: GET /api/v1/runs/42
@@ -405,6 +408,7 @@ the tokens the service had.
 erDiagram
     ATHLETE ||--o{ RUN : starts
     ATHLETE ||--o| GARMIN_CONNECTION : has
+    ATHLETE ||--o{ DUMP : caches
 
     ATHLETE {
         uuid id PK
@@ -431,11 +435,20 @@ erDiagram
         timestamptz connected_at
         timestamptz updated_at
     }
+    DUMP {
+        uuid athlete_id PK, FK
+        text name PK
+        bytea content
+    }
 ```
 
 - The unique index is on `run (athlete_id)` where the status is `queued` or
   `running`.
 - Runs are kept. One athlete makes a few hundred small rows a year.
+- `dump` is repwise's `dump_dir`, one row per file, kept only when
+  `activity_caching` is on in `workouts.yaml`. Three files a session, about
+  65 KB together, so a few MB a year. Garmin data, as the run output is, and
+  not encrypted.
 - The token is encrypted with Fernet, and the service accepts a list of keys:
   it encrypts with the first and decrypts with any. A key is replaced by
   putting the new one first, with no moment when nothing decrypts.

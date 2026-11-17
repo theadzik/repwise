@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, text, update
 
 from repwise_web import garmin, worker
-from repwise_web.db import Run, Sessions
+from repwise_web.db import Dump, Run, Sessions
 from repwise_web.settings import Settings
 from repwise_web.worker import Worker
 
@@ -572,3 +572,178 @@ def test_which_workouts_have_no_garmin_id() -> None:
     }
     assert worker.without_garmin_id(config) == ["b", "c"]
     assert worker.without_garmin_id({}) == []
+
+
+CACHING = """\
+settings:
+  garmin:
+    dump_dir: ~/git/workouts/dumps
+    activity_caching: true
+workouts:
+  - key: push
+    garmin_workout_id: 111
+"""
+#: What a stand-in sees of the cache, printed, before it changes anything.
+SHOW_CACHE = """
+    import json, os, pathlib
+    cache = pathlib.Path(os.path.expanduser("~/git/workouts/dumps"))
+    print(json.dumps({p.name: p.read_text() for p in sorted(cache.iterdir())}))
+"""
+
+
+def cached(sessions: Sessions, athlete: uuid.UUID) -> dict[str, bytes]:
+    with sessions() as db:
+        rows = db.execute(
+            select(Dump.name, Dump.content).where(Dump.athlete_id == athlete)
+        ).all()
+        return dict(rows)
+
+
+def run_once(
+    client: TestClient, settings: Settings, sessions: Sessions, command: tuple[str, ...]
+) -> Run:
+    run_id = queue(client)
+    Worker(dataclasses.replace(settings, command=command), sessions).run_one()
+    return finished(sessions, run_id)
+
+
+def test_the_session_cache_is_kept_between_runs(
+    client: TestClient,
+    settings: Settings,
+    sessions: Sessions,
+    garmin_session: uuid.UUID,
+    stand_in: StandIn,
+    config_file: Path,
+) -> None:
+    config_file.write_text(CACHING)
+    # A run that fails still filed what it downloaded before it stopped.
+    first = run_once(
+        client,
+        settings,
+        sessions,
+        stand_in(
+            SHOW_CACHE
+            + """
+    (cache / "activity-1.json").write_text("one")
+    (cache / "activity-2.json").write_text("two")
+    raise SystemExit(3)
+    """
+        ),
+    )
+    second = run_once(
+        client,
+        settings,
+        sessions,
+        stand_in(
+            SHOW_CACHE
+            + """
+    (cache / "activity-1.json").write_text("one, edited in Connect")
+    (cache / "activity-2.json").unlink()
+    (cache / "activity-3.json").write_text("three")
+    """
+        ),
+    )
+    third = run_once(client, settings, sessions, stand_in(SHOW_CACHE))
+
+    assert (first.status, json.loads(first.output)) == ("failed", {})
+    assert json.loads(second.output) == {
+        "activity-1.json": "one",
+        "activity-2.json": "two",
+    }
+    assert json.loads(third.output) == {
+        "activity-1.json": "one, edited in Connect",
+        "activity-3.json": "three",
+    }
+    assert cached(sessions, garmin_session) == {
+        "activity-1.json": b"one, edited in Connect",
+        "activity-3.json": b"three",
+    }
+    assert list(Path(settings.scratch_dir).iterdir()) == []
+
+
+def test_without_caching_nothing_is_kept(
+    client: TestClient,
+    settings: Settings,
+    sessions: Sessions,
+    garmin_session: uuid.UUID,
+    stand_in: StandIn,
+) -> None:
+    """repwise reads nothing back from dump_dir then, so it is not worth a row."""
+    command = stand_in(
+        """
+        import os, pathlib
+        dumps = pathlib.Path(os.path.expanduser("~/.local/share/repwise/dumps"))
+        dumps.mkdir(parents=True)
+        (dumps / "activity-1.json").write_text("one")
+        """
+    )
+
+    assert run_once(client, settings, sessions, command).status == "succeeded"
+    assert cached(sessions, garmin_session) == {}
+
+
+@pytest.mark.parametrize(
+    ("garmin_settings", "expected"),
+    [
+        ({"activity_caching": True}, ".local/share/repwise/dumps"),
+        (
+            {"activity_caching": True, "dump_dir": "~/git/workouts/dumps"},
+            "git/workouts/dumps",
+        ),
+        ({"activity_caching": True, "dump_dir": "relative"}, "relative"),
+        ({"activity_caching": False, "dump_dir": "~/dumps"}, None),
+        ({}, None),
+    ],
+)
+def test_the_cache_is_where_workouts_yaml_says(
+    garmin_settings: dict[str, object], expected: str | None, tmp_path: Path
+) -> None:
+    config = {"settings": {"garmin": garmin_settings}}
+    want = None if expected is None else tmp_path.resolve() / expected
+    assert worker.dump_dir(config, tmp_path) == want
+
+
+def test_a_cache_outside_the_runs_home_is_refused(tmp_path: Path) -> None:
+    config = {"settings": {"garmin": {"activity_caching": True, "dump_dir": "/data"}}}
+    with pytest.raises(worker.Refused, match="outside the home a run is given"):
+        worker.dump_dir(config, tmp_path)
+
+
+@pytest.mark.parametrize("name", ["../garmin_tokens.json", "ABSOLUTE", ".."])
+def test_a_cached_name_that_is_a_path_is_not_written_and_is_dropped(
+    name: str,
+    client: TestClient,
+    settings: Settings,
+    sessions: Sessions,
+    garmin_session: uuid.UUID,
+    stand_in: StandIn,
+    config_file: Path,
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside"
+    name = str(outside) if name == "ABSOLUTE" else name
+    config_file.write_text(CACHING)
+    with sessions() as db, db.begin():
+        db.add(Dump(athlete_id=garmin_session, name=name, content=b"planted"))
+        db.add(Dump(athlete_id=garmin_session, name="activity-1.json", content=b"one"))
+    command = stand_in(
+        SHOW_CACHE
+        + """
+    home = pathlib.Path(os.environ["HOME"])
+    files = (p for p in home.rglob("*") if p.is_file())
+    print(json.dumps(sorted(str(p.relative_to(home)) for p in files)))
+    """
+    )
+
+    run = run_once(client, settings, sessions, command)
+
+    shown, files = (json.loads(line) for line in run.output.splitlines())
+    assert run.status == "succeeded"
+    assert shown == {"activity-1.json": "one"}
+    assert files == [
+        ".config/repwise/garmin_tokens.json",
+        "git/workouts/dumps/activity-1.json",
+        "workouts.yaml",
+    ]
+    assert not outside.exists()
+    assert cached(sessions, garmin_session) == {"activity-1.json": b"one"}
