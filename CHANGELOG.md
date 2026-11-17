@@ -1,3 +1,9 @@
+## 3.5.1 (2026-11-17)
+
+### Fix
+
+- **update**: let only the newest session decide a shared exercise's hold (#141) ([75cd5ff](https://github.com/theadzik/repwise/commit/75cd5ff5e0592d5829461d808948f7e06bd4c7ad))
+
 ## 3.5.0 (2026-10-29)
 
 ### Feat
