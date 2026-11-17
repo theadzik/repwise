@@ -707,3 +707,43 @@ def test_a_cache_outside_the_runs_home_is_refused(tmp_path: Path) -> None:
     config = {"settings": {"garmin": {"activity_caching": True, "dump_dir": "/data"}}}
     with pytest.raises(worker.Refused, match="outside the home a run is given"):
         worker.dump_dir(config, tmp_path)
+
+
+@pytest.mark.parametrize("name", ["../garmin_tokens.json", "ABSOLUTE", ".."])
+def test_a_cached_name_that_is_a_path_is_not_written_and_is_dropped(
+    name: str,
+    client: TestClient,
+    settings: Settings,
+    sessions: Sessions,
+    garmin_session: uuid.UUID,
+    stand_in: StandIn,
+    config_file: Path,
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside"
+    name = str(outside) if name == "ABSOLUTE" else name
+    config_file.write_text(CACHING)
+    with sessions() as db, db.begin():
+        db.add(Dump(athlete_id=garmin_session, name=name, content=b"planted"))
+        db.add(Dump(athlete_id=garmin_session, name="activity-1.json", content=b"one"))
+    command = stand_in(
+        SHOW_CACHE
+        + """
+    home = pathlib.Path(os.environ["HOME"])
+    files = (p for p in home.rglob("*") if p.is_file())
+    print(json.dumps(sorted(str(p.relative_to(home)) for p in files)))
+    """
+    )
+
+    run = run_once(client, settings, sessions, command)
+
+    shown, files = (json.loads(line) for line in run.output.splitlines())
+    assert run.status == "succeeded"
+    assert shown == {"activity-1.json": "one"}
+    assert files == [
+        ".config/repwise/garmin_tokens.json",
+        "git/workouts/dumps/activity-1.json",
+        "workouts.yaml",
+    ]
+    assert not outside.exists()
+    assert cached(sessions, garmin_session) == {"activity-1.json": b"one"}

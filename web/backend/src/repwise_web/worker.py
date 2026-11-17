@@ -277,6 +277,12 @@ class Worker:
             )
         directory.mkdir(parents=True, exist_ok=True)
         for name, content in kept.items():
+            # Only names read from the directory are stored, but a row is not
+            # trusted to be one: a path in it would write outside the cache.
+            # Left out here, it counts as gone and is deleted after the run.
+            if name in ("", ".", "..") or os.path.basename(name) != name:
+                log.warning("Not restoring cached file %r: not a file name", name)
+                continue
             (directory / name).write_bytes(content)
         return kept
 
