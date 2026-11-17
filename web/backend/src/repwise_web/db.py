@@ -1,6 +1,6 @@
 """The tables, and how a process reaches them.
 
-Three tables hold everything the service knows. Each row belongs to an athlete,
+Four tables hold everything the service knows. Each row belongs to an athlete,
 so a second athlete is more rows and not a different schema.
 """
 
@@ -96,6 +96,23 @@ class GarminConnection(Base):
     version: Mapped[int] = mapped_column(default=1)
     connected_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class Dump(Base):
+    """One file of repwise's session cache, its `dump_dir`, kept between runs.
+
+    A run's home is deleted when it ends, and the cache with it, so without
+    these every run downloads every session in the search window again.
+    """
+
+    __tablename__ = "dump"
+
+    athlete_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("athlete.id", ondelete="CASCADE"), primary_key=True
+    )
+    #: The file's name in `dump_dir`, which holds no directories.
+    name: Mapped[str] = mapped_column(primary_key=True)
+    content: Mapped[bytes] = mapped_column(LargeBinary)
 
 
 def connect(database_url: str) -> Sessions:

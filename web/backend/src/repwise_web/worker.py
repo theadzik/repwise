@@ -3,6 +3,8 @@
 repwise is run as the command it is, unchanged. It expects a home directory
 with its config and its Garmin token store in it, so each run is given one,
 filled from the database and deleted afterwards. Nothing is left in the pod.
+The one part of that home worth keeping, repwise's session cache, goes back to
+the database before it is deleted.
 """
 
 import contextlib
@@ -22,10 +24,11 @@ from pathlib import Path
 from typing import IO, Any
 
 import yaml
-from sqlalchemy import func, text, update
+from sqlalchemy import delete, func, select, text, update
+from sqlalchemy.dialects.postgresql import insert
 
 from repwise_web import garmin
-from repwise_web.db import FAILED, RUNNING, SUCCEEDED, Run, Sessions, connect
+from repwise_web.db import FAILED, RUNNING, SUCCEEDED, Dump, Run, Sessions, connect
 from repwise_web.settings import Settings
 
 log = logging.getLogger(__name__)
@@ -168,14 +171,18 @@ class Worker:
                 "file, and push it."
             )
         store = token_file(config, home)
+        cache = dump_dir(config, home)
         config_path = home / "workouts.yaml"
         config_path.write_bytes(document)
         _write_private(store, token)
+        given = self._restore_dumps(athlete_id, cache) if cache else {}
 
         outcome = self._run_command(run_id, home, config_path)
         # However the run ended. repwise refreshes the session as it goes, and
         # a refresh token that was replaced is no use to the next run.
         self._keep_refreshed(athlete_id, store, token, version)
+        if cache:
+            self._keep_dumps(athlete_id, cache, given)
         return outcome
 
     def _run_command(self, run_id: uuid.UUID, home: Path, config_path: Path) -> Outcome:
@@ -258,6 +265,62 @@ class Worker:
             kept = garmin.store_refreshed(db, self.box, athlete_id, now, seen=version)
         log.info("Garmin session refreshed: %s", "kept" if kept else "superseded")
 
+    def _restore_dumps(
+        self, athlete_id: uuid.UUID, directory: Path
+    ) -> dict[str, bytes]:
+        """Put the cache kept from earlier runs where repwise will look for it."""
+        with self.sessions() as db:
+            kept = dict(
+                db.execute(
+                    select(Dump.name, Dump.content).where(Dump.athlete_id == athlete_id)
+                ).all()
+            )
+        directory.mkdir(parents=True, exist_ok=True)
+        for name, content in kept.items():
+            (directory / name).write_bytes(content)
+        return kept
+
+    def _keep_dumps(
+        self, athlete_id: uuid.UUID, directory: Path, given: dict[str, bytes]
+    ) -> None:
+        """Store what the run added to the cache or changed in it.
+
+        A cache that could not be stored costs the next run its downloads, not
+        this run its result: Garmin may already have been changed.
+        """
+        try:
+            now = {
+                path.name: path.read_bytes()
+                for path in directory.iterdir()
+                if path.is_file()
+            }
+            changed = [
+                {"athlete_id": athlete_id, "name": name, "content": content}
+                for name, content in now.items()
+                if given.get(name) != content
+            ]
+            gone = given.keys() - now.keys()
+            with self.sessions() as db, db.begin():
+                if gone:
+                    db.execute(
+                        delete(Dump).where(
+                            Dump.athlete_id == athlete_id, Dump.name.in_(gone)
+                        )
+                    )
+                if changed:
+                    new = insert(Dump).values(changed)
+                    db.execute(
+                        new.on_conflict_do_update(
+                            index_elements=[Dump.athlete_id, Dump.name],
+                            set_={"content": new.excluded.content},
+                        )
+                    )
+        except Exception:
+            log.exception("Could not keep the session cache")
+            return
+        if changed or gone:
+            log.info("Session cache: %d file(s) kept, %d gone", len(changed), len(gone))
+
 
 def _collect(stream: IO[str], into: list[str]) -> None:
     """Each line as it comes, so the output so far can be shown."""
@@ -335,18 +398,48 @@ def token_file(config: dict[str, Any], home: Path) -> Path:
     A store anywhere else is refused: the decrypted session given to a run is
     deleted with its home, and one written outside it would outlive the run.
     """
-    named = (config.get("settings") or {}).get("garmin") or {}
-    store = str(named.get("token_store") or "~/.config/repwise")
-    relative = store[2:] if store == "~" or store.startswith("~/") else store
-    # An absolute `relative` replaces `home` rather than joining it, which is
-    # what the check below is for.
-    path = (home / relative).resolve()
-    if not path.is_relative_to(home.resolve()):
+    store = str(_garmin(config).get("token_store") or "~/.config/repwise")
+    path = _in_home(store, home)
+    if path is None:
         raise Refused(
             f"settings.garmin.token_store is {store!r}, outside the home a run is "
             "given. Keep it under ~, where the session can be deleted with the run."
         )
     return path if path.suffix == ".json" else path / "garmin_tokens.json"
+
+
+def dump_dir(config: dict[str, Any], home: Path) -> Path | None:
+    """Where repwise keeps its session cache, given `home` as its home.
+
+    None when `activity_caching` is off: repwise reads nothing back from the
+    directory then, so there is nothing worth keeping. Anywhere outside `home`
+    is refused, for the reason token_file() gives.
+    """
+    named = _garmin(config)
+    if named.get("activity_caching") is not True:
+        return None
+    # repwise's own default, with no XDG_DATA_HOME in the run's environment.
+    directory = str(named.get("dump_dir") or "~/.local/share/repwise/dumps")
+    path = _in_home(directory, home)
+    if path is None:
+        raise Refused(
+            f"settings.garmin.dump_dir is {directory!r}, outside the home a run "
+            "is given. Keep it under ~, where the cache can be kept between runs."
+        )
+    return path
+
+
+def _garmin(config: dict[str, Any]) -> dict[str, Any]:
+    return (config.get("settings") or {}).get("garmin") or {}
+
+
+def _in_home(named: str, home: Path) -> Path | None:
+    """A path from workouts.yaml as repwise will read it, or None outside `home`."""
+    relative = named[2:] if named == "~" or named.startswith("~/") else named
+    # An absolute `relative` replaces `home` rather than joining it, which is
+    # what the check below is for.
+    path = (home / relative).resolve()
+    return path if path.is_relative_to(home.resolve()) else None
 
 
 def _write_private(path: Path, content: str) -> None:
