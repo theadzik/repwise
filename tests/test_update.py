@@ -1,5 +1,6 @@
 """Choosing which sessions to update, and updating more than one at a time."""
 
+import copy
 import logging
 import os
 from dataclasses import replace
@@ -18,7 +19,7 @@ from repwise.app.update import (
     sessions_before,
 )
 from repwise.config import ConfigError
-from repwise.domain.models import Config, GarminSettings, Workout
+from repwise.domain.models import HOLD, Config, GarminSettings, Workout, marker_of
 from repwise.errors import ActivityNotFound, ExitCode, GarminError, UsageError
 from repwise.garmin.payloads import performed_sets
 
@@ -288,6 +289,78 @@ def test_a_shared_exercise_ends_up_at_the_most_recent_decision(account):
     """
     run(account, apply=True)
     assert calf_targets(account.saved) == {"111": 18.0, "222": 18.0}
+
+
+def calf_notes(saved) -> dict[str, str]:
+    """The hold marker on the calf raise's note in each written workout."""
+    return {
+        workout_id: marker_of(step.get("description") or "")
+        for workout_id, payload in saved
+        for step in payload["workoutSegments"][0]["workoutSteps"]
+        if step["exerciseName"] == "WEIGHTED_STANDING_CALF_RAISE"
+    }
+
+
+def calf_sessions(newer, older, workouts=None):
+    """Workout A today and Workout B two days ago, each training only the calf.
+
+    The target is 20 x 20 kg, the top of the calf raise's range. `newer` and
+    `older` are the reps each session got on every set, or None for a session
+    that skipped the calf raise and trained the workout's other exercise.
+    """
+
+    def session(reps, name, category):
+        if reps is None:
+            return sets_of(*[active(name, category, 8, 30000.0)] * 3)
+        calf = active("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", reps, 20000.0)
+        return sets_of(*[calf] * 3)
+
+    return FakeSession(
+        activities=[an_activity(900, "Workout A"), an_activity(800, "Workout B")],
+        workouts=workouts
+        or {
+            "111": steps(
+                rep_step("BARBELL_BACK_SQUAT", "SQUAT", 7, 30.0),
+                rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 20, 20.0),
+            ),
+            "222": steps(
+                rep_step("BARBELL_BENCH_PRESS", "BENCH_PRESS", 8, 40.0),
+                rep_step("WEIGHTED_STANDING_CALF_RAISE", "CALF_RAISE", 20, 20.0),
+            ),
+        },
+        sets={
+            "900": session(newer, "BARBELL_BACK_SQUAT", "SQUAT"),
+            "800": session(older, "BARBELL_BENCH_PRESS", "BENCH_PRESS"),
+        },
+    )
+
+
+def test_a_shared_hold_is_the_newest_sessions_and_is_written_once():
+    """Two sessions disagreeing about a shared exercise's hold.
+
+    B, the older, topped the calf raise out, which clears the marker; A, the
+    newer, missed, which sets it. A has the last word, so both end up holding.
+    The older session used to clear both notes on every run before A put the
+    marker back, so a run with nothing new rewrote both workouts.
+    """
+    first = calf_sessions(newer=17, older=20)
+    run(first, apply=True)
+    assert calf_notes(first.saved) == {"111": HOLD, "222": HOLD}
+
+    stored = {workout_id: copy.deepcopy(payload) for workout_id, payload in first.saved}
+    again = calf_sessions(newer=17, older=20, workouts=stored)
+    run(again, apply=True)
+
+    assert again.saved == []
+
+
+def test_an_older_sessions_hold_still_reaches_a_workout_whose_session_skipped_it():
+    """Only a newer session that trained the exercise takes the marker over."""
+    account = calf_sessions(newer=None, older=17)
+
+    run(account, apply=True)
+
+    assert calf_notes(account.saved) == {"111": HOLD, "222": HOLD}
 
 
 def test_the_same_exercise_on_another_load_is_not_synced(account):

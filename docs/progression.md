@@ -572,7 +572,10 @@ workout's history, which is what keeps the copies identical.
 
 When one run covers several sessions, they are replayed oldest first, so if two
 of them moved the same shared exercise the more recent session's decision is
-the one that stands.
+the one that stands. The [hold marker](#coming-back-from-a-stall) is decided by
+the most recent session that trained the exercise and by no other, so an older
+session that disagrees does not clear it only for the newer one to write it
+back.
 
 Matching uses the same name-then-category rule as everywhere else, so
 `garmin_name` must agree between the two entries. A shared exercise must also

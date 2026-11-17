@@ -342,6 +342,33 @@ def logged_for(
     return []
 
 
+def shared_key(spec: ExerciseSpec) -> tuple[str, str]:
+    """What makes two workouts' entries one exercise: the movement and its load.
+
+    The same rule `update` applies when it carries a decision from one workout
+    into another, where the same Garmin name on other equipment is a different
+    exercise.
+    """
+    return normalise(spec.garmin_name), spec.load
+
+
+def trained_exercises(
+    workout: Workout, payload: dict[str, Any], performed: Performed
+) -> set[tuple[str, str]]:
+    """The exercises a session holds sets for, as `shared_key` names them.
+
+    Matched exactly as `plan_workout` matches them when it judges the session,
+    so that this is the set of exercises that session will have a verdict on.
+    """
+    specs = index_specs(workout.exercises)
+    found = set()
+    for block in iter_exercise_blocks(payload):
+        spec = _match(block.step, specs)
+        if spec is not None and _logged_for(spec, block.step, performed, specs):
+            found.add(shared_key(spec))
+    return found
+
+
 def _logged_for(
     spec: ExerciseSpec,
     step: dict[str, Any],
@@ -1168,6 +1195,7 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
     asked: dict[str, Target] | None = None,
     *,
     trusted: Container[str] | None = None,
+    superseded: Container[tuple[str, str]] = (),
 ) -> Plan:
     """Bring a workout in line with the config, and advance what was trained.
 
@@ -1192,6 +1220,13 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
     exercise Garmin holds under another name is reused or rebuilt. Without it
     every name falls back to its category, which is the behaviour this tool had
     before it could tell a real exercise name from an invented one.
+
+    `superseded` is the exercises, as `shared_key` names them, that a newer
+    session in the same run also trained. Their target is still judged here,
+    but their marker is that session's to decide, so this one leaves the note
+    as it is and carries no marker to other workouts. Deciding it here as well
+    would rewrite the note on every run whenever the two sessions disagree,
+    only for the newer one to write it back.
     """
     specs = index_specs(workout.exercises)
 
@@ -1241,6 +1276,8 @@ def plan_workout(  # noqa: PLR0913 - each argument is one independent input
             added=added,
             shaped=shaped,
         )
+        if change is not None and shared_key(spec) in superseded:
+            change = replace(change, marker=None)
 
         decided = change.new if change is not None else current
         # The last word on the target, whether a session decided it or nobody

@@ -417,7 +417,11 @@ different workout, a second `--apply` over the same activity - leaves whatever
 the note already says, so the note is where the fact lives rather than
 something recomputed each run. An exercise that appears in more than one
 workout carries the same marker in all of them, on the same terms as its
-target: same movement, same equipment.
+target: same movement, same equipment. When one run covers several sessions
+that trained it, only the most recent decides the marker. An older one still
+moves the target, but leaves the note alone, so two sessions that disagree -
+one topping out, the next missing - do not rewrite the note back and forth on
+every run.
 
 An exercise you have [frozen](progression.md#freezing-an-exercise) uses the
 same slot for a different word. A frozen session that hit says how long its
