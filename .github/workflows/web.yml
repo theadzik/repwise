@@ -107,7 +107,7 @@ jobs:
     needs: [test, get-tag]
     # Nothing to publish before the first tag. A pull request still builds.
     if: ${{ github.event_name == 'pull_request' || needs.get-tag.outputs.git_tag != '' }}
-    uses: theadzik/github-workflows/.github/workflows/build-and-push.yaml@c83c3e8f6838981737c0eee922da5fcac368537e # v4.1.1
+    uses: theadzik/github-workflows/.github/workflows/build-and-push.yaml@fe4b50e00556e7cae1d1057048a2cc337b9a1404 # v4.1.2
     permissions:
       contents: read
       id-token: write
