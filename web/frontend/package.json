@@ -8,9 +8,9 @@
     "types": "openapi-typescript openapi.json --output src/schema.d.ts"
   },
   "dependencies": {
-    "@mantine/core": "9.8.0",
-    "@mantine/hooks": "9.8.0",
-    "@tanstack/react-query": "5.107.1",
+    "@mantine/core": "9.8.1",
+    "@mantine/hooks": "9.8.1",
+    "@tanstack/react-query": "5.108.1",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
@@ -19,7 +19,7 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.3.0",
     "openapi-typescript": "7.13.0",
-    "typescript": "5.9.3",
+    "typescript": "7.0.2",
     "vite": "8.3.8"
   }
 }
