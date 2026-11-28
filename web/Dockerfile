@@ -1,7 +1,7 @@
 # One image for the service's three commands: api, worker, migrate.
 # The build context is this directory.
 
-FROM dhi.io/node:24.22.3-alpine3.24-dev AS frontend
+FROM dhi.io/node:26.13.1-alpine3.24-dev AS frontend
 
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
